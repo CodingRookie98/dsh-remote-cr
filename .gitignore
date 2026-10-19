@@ -1,0 +1,24 @@
+# deps / build
+node_modules/
+dist/
+lib/
+*.tsbuildinfo
+pnpm-lock.yaml.bak*
+*.log
+
+# local runtime artifacts
+.dsh-teleport/
+.remote-test/
+test-artifacts/
+
+# editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# secrets — never commit
+.credentials.yaml
+*.pem
+skills-lock.json
+.agents/skills/
