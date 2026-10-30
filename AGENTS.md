@@ -27,7 +27,7 @@
 
 - 语言：TypeScript，ESM only；宿主已提供的 `@deepseek-ai/dsh-*` 一律 `peerDependencies`，`dependencies` 只放第三方运行时（如 `ssh2`）与解析库。
 - 包结构建议：单一仓库、多入口（`./local` 本地宿主半、`./client` 浏览器半、`./companion` 远端伴生插件、`./installer` 引导器），通过 `package.json#exports` 暴露。
-- 兼容性：`dsh.compatibility.dshReleases` 声明支持的宿主版本矩阵；每次升级宿主都要重跑兼容测试。
+- 兼容性：用 `package.json` 的 `engines.dsh` 声明支持的宿主版本矩阵（`dsh.compatibility.dshReleases` 是已废弃的旧键，DSH 检出 `grep -rn dshReleases` 0 命中）；每次升级宿主都要重跑兼容测试。依据见 `docs/design/requirements.md` §5 与 `docs/decisions/ADR-0004-plugin-sync.md`。
 - 测试：单元测试 + 真机集成（Windows + WSL2 + 至少一台 SSH 目标）；关键路径必须有「真的在远端跑」的证据（`uname -a`/`pwd` 断言）。
 - 文档：中文为主；代码标识符、API 名称用英文；每个设计文档以「结论先行」开头。
 
