@@ -1,0 +1,4 @@
+# M0 spike bundle patch: inserts the teleport spike row into the web profile.
+- insert:
+    - id: teleport-spike
+      name: '@dsh-teleport/spike'

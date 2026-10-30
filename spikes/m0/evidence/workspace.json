@@ -1,0 +1,38 @@
+{
+  "unit": {
+    "name": "workspace",
+    "version": 2
+  },
+  "global": {
+    "initialized": true,
+    "defaultWorkspaceId": "46bfdf58-4ef4-4fd9-b883-6464ac84dd70",
+    "workspaceIds": [
+      "a417b391-8fbc-443b-b98c-bd7869522c3e",
+      "46bfdf58-4ef4-4fd9-b883-6464ac84dd70"
+    ],
+    "archivedSessionIds": [],
+    "pinnedSessionIds": []
+  },
+  "tables": {
+    "workspaces": {
+      "46bfdf58-4ef4-4fd9-b883-6464ac84dd70": {
+        "path": "C:\\Users\\hui\\OneDrive\\文档\\deepseek-harness\\default-workspace",
+        "title": "default-workspace",
+        "sessionIds": [
+          "session-38c123d1-65ae-46c0-b638-72557b674c90"
+        ],
+        "createdAt": "2026-10-26T06:42:24.011Z",
+        "updatedAt": "2026-10-26T06:42:24.540Z"
+      },
+      "a417b391-8fbc-443b-b98c-bd7869522c3e": {
+        "path": "\\\\wsl.localhost\\ubuntu_dev\\home\\hui\\workspace",
+        "title": "workspace",
+        "sessionIds": [
+          "session-47c59070-46ef-46fa-9e79-a8de45a0a45b"
+        ],
+        "createdAt": "2026-10-26T06:44:50.261Z",
+        "updatedAt": "2026-10-26T06:44:50.467Z"
+      }
+    }
+  }
+}

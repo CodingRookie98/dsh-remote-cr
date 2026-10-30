@@ -1,0 +1,24 @@
+# R1-1 反向通路的隔离 sshd 配置（模板）
+#
+# 用途：在本机起一个**独立** sshd 实例验证 `ssh -R`，不碰系统 sshd、不碰 ~/.ssh。
+# 用法：见同目录 run.sh —— 它会把 __WORKDIR__ 替换成本目录的绝对路径。
+
+Port 2222
+ListenAddress 127.0.0.1
+
+HostKey __WORKDIR__/hostkey
+PidFile __WORKDIR__/sshd.pid
+AuthorizedKeysFile __WORKDIR__/authorized_keys
+
+PasswordAuthentication no
+PubkeyAuthentication yes
+
+# 测试目录的 ACL 不受 %ProgramData%\ssh\sshd_config 那套严格约束
+StrictModes no
+
+# 这两个是本 spike 的被测项：允许转发，但不对外绑定
+AllowTcpForwarding yes
+GatewayPorts no
+
+LogLevel VERBOSE
+Subsystem sftp none
