@@ -11,6 +11,18 @@ pnpm-lock.yaml.bak*
 .remote-test/
 test-artifacts/
 
+# review runtime state (dual-round-review anchors; never versioned)
+.review-context/
+# goal-loop 派发账本与检查点：高频易变运行时状态，只在本机保留，不入库
+.goal-loop/
+
+# local spike scratch space (isolated DSH_HOME, chrome profiles, probe logs)
+.tmp-spike/
+# CDP probe runtime state: headless Chrome profiles are created beside the scripts
+spikes/**/cdp/chrome-profile*/
+# 运行时生成物：含 ed25519 私钥（hostkey/clientkey）、pid、日志 —— 绝不入库
+spikes/**/work/
+
 # editors / OS
 .DS_Store
 Thumbs.db
