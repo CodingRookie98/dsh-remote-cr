@@ -74,13 +74,13 @@ npm 上存在（0.2.1-rc.2 线）：
 3. **persona/提示模板变量严格** → 只允许宿主注册过的变量（0.2.1 至少 `provider`/`mode`/`model`；`cwd` 未注册）；任何新增变量先做兼容探测。
 4. **默认 `directoryFlow` 不能被抢** → 会拖垮官方目录选择插件（社区实测导致 DSH 打不开）。
 5. **Windows 宿主**：本机路径/盘符、ACL 沙箱、WSL interop、`\\wsl.localhost` 9P 语义（原子 rename、symlink、mtime 粒度）都有坑；WSL 内路径不要用 `node:path` 拼接（POSIX 语义）。
-6. **版本绑定**：0.2.0 / 0.2.1 线的 peer 与契约不同；插件需声明 `dsh.compatibility.dshReleases` 并在启动时探测能力（`dsh-wsl-workspace` 的兼容矩阵是范本）。
+6. **版本绑定**：0.2.0 / 0.2.1 线的 peer 与契约不同；插件需声明 **`engines.dsh`** 或 **`@deepseek-ai/dsh-*` 的 `peerDependencies`**（`packages/boot/app-boot/src/plugin-compatibility.ts:55-74` 是唯一读取方；`dsh.compatibility.dshReleases` 在宿主侧零读取方，**2026-10-26 更正**，原表述有误），并在启动时探测能力（`dsh-wsl-workspace` 的兼容矩阵是范本）。
 7. **客户端/服务端两半**：`dsh.client.platform = web`，客户端 bundle 由宿主服务；改客户端必须刷新页面；调试要能拿到注入的 DSH 版本。
 8. **安装器与 pnpm**：`dsh plugin add` 失败时可能残留半提交依赖（README 提到「退出 0 但插件不激活」的旧坑）→ 安装器必须回读校验 bundle 登记。
 
 ## 8. 设计含义（直接约束 architecture.md）
 
 - 首选「**远端宿主 + 本地 sidecar 插件**」：本地插件负责槽位/API/隧道/进程，远端 companion 负责控制通道与投影。
-- 隧道/代理必须支持：SSH（`ssh -L`）与 WSL（localhost 转发，无需 sshd）。
-- 凭据一律反向代理（参考 remote-explorer，已验证）。
+- 隧道/代理必须支持：SSH（`ssh -L` 正向 + `ssh -R` 反向，**同一条连接**）与 WSL（**不能假设 localhost 直通**；M1 实测后定档：`wsl.exe --exec` **stdio 桥为默认**，`mirrored` 下 loopback 直通为优化，宿主网关档已退役——见 `../design/architecture.md` §7.0 与 `../decisions/ADR-0002-backends-wsl-ssh.md` 第三条修订记录）。反向通路是「凭据不出本机」的物理前提，见 `../design/architecture.md` §7.0。
+- 凭据一律反向代理（参考 remote-explorer，已验证）——**注意**：参考实现里的「反向代理」指的是服务端换 token 的回环代理，方向是本地→远端；dsh-teleport 还额外需要**远端→本机**的通路（§7.0）。
 - 与 DSH 版本耦合点集中在：槽位名、session/controller 契约、persona 变量、profile bundle 机制；用能力探测 + 兼容矩阵兜底。
