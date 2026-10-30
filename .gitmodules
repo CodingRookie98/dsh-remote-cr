@@ -1,0 +1,4 @@
+[submodule "vendor/zcode"]
+	path = vendor/zcode
+	url = https://github.com/zai-org/ZCode
+	branch = main
