@@ -27,10 +27,10 @@
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
 - **当前活跃阶段**: P3 核心功能原子实现
-- **当前活跃子任务**: Task P3.1（三段退避 + `offline` 状态机）
+- **当前活跃子任务**: Task P3.2（Backend 抽象 + WSL 实现）
 - **当前子任务重试计数**: 0/3
 - **外层循环迭代**: 0/5
-- **最后一次验证状态**: ✅ P3.0 已通过 —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
+- **最后一次验证状态**: ✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
 - **最新有效提交**: 待本次原子提交（`252a2ff` 之后第一批：T5/T6 文档 + 计划文档 + P3.0 骨架）
 - **阻断原因**: 无
 
@@ -164,10 +164,11 @@
   - **✅ 完成（2026-10-31）实测**: `pnpm install` → `Done in 3.8s` / +41 packages；`pnpm exec tsc -p tsconfig.json --noEmit` → Exit 0（无输出）；`node --test "src/**/*.test.ts"` → **9 / 9 passed, fail 0**；`NEGATIVE_CONTROL=1 node --test "src/**/*.test.ts"` → **Exit 1**（断言 `dsh-teleport SHARED protocol v1` ≠ `dsh-teleport shared protocol v1`，可假性成立）；`pnpm exec tsc -p tsconfig.json` emit → Exit 0，`lib/` 产物 `import` 后输出 `dsh-teleport shared protocol v1`
 
 ### P3: 核心功能原子实现 (TDD 循环)
-- [ ] **Task P3.1**: 三段退避 + `offline` 连接状态机（自建，T6 已反证官方不提供）
+- [x] **Task P3.1**: 三段退避 + `offline` 连接状态机（自建，T6 已反证官方不提供）
   - **涉及文件**: `src/shared/reconnect.ts`, `src/shared/reconnect.test.ts`
   - **TDD 步骤**: 🔴 失败单测（断言 2000/4000/8000 ×3 → 120000 offline；手动重连把 attempt 打回 0）➔ 🟢 最简实现 ➔ 🔵 重构 ➔ ✅ 单测通过 ➔ 💾 原子提交
   - **验收命令**: `node --test src/shared/reconnect.test.ts`
+  - **✅ 完成（2026-10-31）实测**: 6 条断言全绿（三档间隔 / 九次循环后转 offline 且不回弹 / settle 与手动重连都归零 / describeReconnect 两相位文案 / `ReconnectDriver` 失败自动排下一档且成功即停 + 手动重连立刻试一次 / 负控）；注入 `ReconnectTimers` 假定时器，`node --test` 全套 15/15 passed，`tsc --noEmit` Exit 0，`NEGATIVE_CONTROL=1` Exit 1
 - [ ] **Task P3.2**: Backend 抽象 + WSL 实现（探测 / 引导 / 启动 / 反向通路定档）
   - **涉及文件**: `src/local/backend/**`, `src/installer/**`, 对应 `*.test.ts`
   - **验收**: 真机连上 WSL 并启动远端 `dsh`；③ stdio 桥为默认、① 仅 `mirrored` 优化且失败即回落（A2）；③ 与 ① 双不通时**硬失败**并给可操作提示；端口占用 → `remote/port-in-use`（B3）
