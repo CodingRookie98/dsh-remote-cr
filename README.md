@@ -5,7 +5,7 @@
 > 对标 VS Code Remote-SSH / Zed Remote / ZCode 远程开发：远端跑完整 agent 运行时（宿主、插件、会话、文件），本地只做呈现与凭据代理。
 
 - 项目名：**dsh-teleport**（中文：**瞬移**）
-- 状态：**调研完成，UI/功能设计完成，M0 Spike 主线已验证**（2026-10-26）；下一步 M0 收尾 → M1
+- 状态：**调研完成，UI/功能设计完成，M0 已关闭**（2026-10-31）；**M1 进行中**——ADR-0003 两层阈值（T5 跨机字节 / T6 跨机失败可见）已运行时取证通过，产品代码尚未开始（计划：[`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](./docs/project/plans/2026-10-31-m1-wsl-closed-loop.md)）
 - 目标平台：Windows 上的 DSH Desktop / dsh web + 本机 WSL2 发行版 / 任意 POSIX SSH 主机
 - 后端交付顺序：**WSL2（M1）→ SSH（M2）→ Docker（M5）**
 - 非目标（v1）：完整 IDE（LSP/Monaco）、多人协作、headless-only 部署；Docker 可用链路排到 M5
@@ -64,7 +64,7 @@
 |---|---|
 | [`ADR-0001`](./docs/decisions/ADR-0001-host-on-remote.md) | 采用「宿主在远端」模型（B 型），不做 A 型的增强版 |
 | [`ADR-0002`](./docs/decisions/ADR-0002-backends-wsl-ssh.md) | 第一版只做 WSL + SSH 双后端（Docker 已改为 M5，见 ADR-0005） |
-| [`ADR-0003`](./docs/decisions/ADR-0003-embedding-strategy.md) | 嵌入路线：**采用 C 型**（复用官方 Remote 内核 + 自建 transport adapter；T1–T4 已过，跨机待 M1 T5/T6） |
+| [`ADR-0003`](./docs/decisions/ADR-0003-embedding-strategy.md) | 嵌入路线：**采用 C 型**（复用官方 Remote 内核 + 自建 transport adapter；T1–T6 **全部通过**，T5/T6 已于 2026-10-31 运行时取证，降级分支不触发） |
 | [`ADR-0004`](./docs/decisions/ADR-0004-plugin-sync.md) | 插件同步：远端原生安装优先、三分类、已存在项不覆盖、凭据不同步 |
 | [`ADR-0005`](./docs/decisions/ADR-0005-workspace-entry-ui.md) | 工作区入口与身份：另起瞬移面板、`priority:-1` 顶掉 directoryFlow、WSL=UNC / SSH=锚点 |
 
@@ -73,8 +73,9 @@
 | 文件 | 内容 |
 |---|---|
 | [`spikes/m0/README.md`](./spikes/m0/README.md) | **交接单**：项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 步骤与踩坑 |
-| [`docs/project/reviews/`](./docs/project/reviews/) | 上一轮双轮审查归档（历史记录，不改） |
-| [`spikes/`](./spikes/README.md) | **可执行代码**：M0 spike 插件包、13 个手写 CDP/路径语义探针（无第三方依赖）、反向隧道复跑件 |
+| [`docs/project/plans/`](./docs/project/plans/) | **执行计划（唯一真相源）**：当前为 M1 WSL 闭环，含 12 项未裁决的书面裁决与 P3.0–P5 原子任务表 |
+| [`docs/project/reviews/`](./docs/project/reviews/) | 双轮审查归档（历史记录，不改） |
+| [`spikes/`](./spikes/README.md) | **可执行代码**：M0 spike 插件包、13 个手写 CDP/路径语义探针、M1 反向通路与跨机 T5/T6 探针（全部无第三方依赖，断言可假） |
 
 ## 命名
 
@@ -92,13 +93,21 @@
 
 ## 下一步
 
-1. **M0 收尾**（主线已通过；§9.2 原有 4 条已消 3 条，见 [`docs/design/ui-design.md`](./docs/design/ui-design.md) §9.2）：
-   - ~~投影层与**工具实参**的衔接~~ **已消除**（V15/V16）：真实工具派发下投影后的 POSIX 实参直接可用，UNC cwd 的卷根就是 share，`/etc/hostname` 与 `\\wsl.localhost\<distro>\etc\hostname` 是同一文件。**不需要 `tools/execute` 改写层**；
-   - ~~是否有第三处渲染 `session.cwd` 的 context~~ **已消除**（V14）：全量枚举 `systemPrompt` 注册点，运行时只有 `working-directory:current` 与 `sandbox:policy` 两处；
-   - **远端 Host（真 B 型）下 `directoryPicker` capability 与 `ctx.fs` 是否等价**——§9.2 唯一剩下的机制风险；
-   - 新增两条由此推出的待办：锚点后端（SSH/Docker）的路径映射（UNC 白拿了等价，锚点没有）、`write`/`edit` 的路径等价补测。
-2. ~~**嵌入路线裁决**~~ **已定稿（ADR-0003 已接受）**：采用 **C 型**——复用官方 Remote 内核（`dsh-client-connection` + `dsh-api-gateway` + `dsh-api-remotes`）+ 自建 transport adapter。四条证伪式阈值 T1–T4 全部取证通过：`installConnection` 是包导出、`ClientTransportHooks` 接受完整载体（`rpc`/`fetch`/`openStream`/`loadBundle` 四字段齐全）、注入通道有**生产消费者**（`apps/web/src/main.ts:25-26` 桌面形态、`experimental/webworker-runtime` worker 形态）、宿主侧 `webserver/index-inject` 让插件在 bootstrap 前写 `globalThis.__DSH_TRANSPORT__`。**净收益诚实核算：省约 1000–1200 行（状态机+退避+协议），但 transport/引导/凭据代理约 900–1000 行仍要自己写**；C 相对 B 的真实优势是「协议是官方的、升级不用跟着改」。
-3. 之后进入 **M1（WSL 闭环）**。
+**阶段**：M0 已关闭（2026-10-31），**M1 进行中**——地基 spike 全部成立，产品代码从零开始。执行细节见 [`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](./docs/project/plans/2026-10-31-m1-wsl-closed-loop.md)（唯一真相源）。
+
+**M1 现存的真实缺口**（按依赖顺序，不是一个清单而是一条链）：
+
+1. **P3.0 工程骨架**：仓库里目前没有 `package.json` / `tsconfig.json` / `pnpm-workspace.yaml`，一行产品代码都没有。先建骨架（`./local` `./client` `./companion` `./installer` 四入口 exports、`@deepseek-ai/dsh-*` 走 `peerDependencies`、`engines.dsh` 写 `>=0.2.1-rc.0 <0.3.0`——prerelease 区间必须写全三段，否则 semver 判否），跑通 `tsc --noEmit` + `node --test`。
+2. **P3.1 自建连接语义**：官方内核只给三态、`disconnected` 在 Node 侧不出现、退避是 `500ms×2` 封顶 `10s`（实测首重试 563–1021ms），而产品要求 `2s/4s/8s×3 → offline 2min`。三段退避 + 细化状态机必须自己写，**不能靠调 `backoffBaseMs` 糊过去**。
+3. **P3.2–P3.3 WSL 后端**：`wsl.exe --exec` 调用、UTF-16LE 解码、含空格/中文的发行版名（**当前未实测**）、UNC 双候选 + `cat >` 回退、`ownedChildren` 两级 dispose、绝不 `wsl --terminate`；端口占用返回 `remote/port-in-use`。
+4. **P3.4–P3.7 产品行为**：四选一添加工作区 + 分阶段进度/取消/错误、瞬移面板投影、凭据代理 + 同步屏障（A6 要求**本机代理侧有真实入站请求记录 + 占位令牌替换日志行**，配置写个端点不算通过）、环境策略默认 `reuse`。
+5. **P3.5.1–P3.5.2 出口演示**：断线端到端 + `requirements.md` §7.1 口径的 P50/P90 报告（每项 ≥5 次、冷热两组、基线机限定）。
+
+**M2 及以后欠账**（不在 M1 范围）：SSH 后端（A9 是 M2 出口条件，M1 不得写成「A9 已达成」）、多远端与 `sync` 档（M3）、MCP 路径重写（M3）、Docker 可用链路（M5）、NAT 网络模式（未测）。
+
+**已裁决的未决项**（12 项，逐条理由与反向条件见计划 §0）：A1 桥 5–25ms 接受为已知代价 / A2 ① 优化档每次连接探测一次、失败当次连接内永久回落 ③ / A3 ② 网关维持退役 / A4 不新开 ADR / A5 绑单块宿主网卡不放行 / A6 批次 2 的 4 条黄灯并入 P4 终审输入 / B1 M0 关闭（iframe 作废、companion 并入引导器、单通道由 T5 判完成、代理改写降级为仅 mirrored、MCP 推到 M3）/ B3 不做部署锁改做端口占用检测 / B4 手机端留后续 / B5 降级保留证据门 / B6 G-1/G-2/G-3 归 `m1-reverse-path` 单元结案。
+
+**唯一仍需人类裁决的一件事**：M1 是否开隔离分支执行。`~/.dsh/AGENTS.md` §0 的 git 白名单只含只读 `git branch`，创建分支不在白名单内；计划文档当前按 `main` 直做记录，等用户点头再改。
 
 > 交接单：[`spikes/m0/README.md`](./spikes/m0/README.md) —— 项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 的步骤与踩坑。
 

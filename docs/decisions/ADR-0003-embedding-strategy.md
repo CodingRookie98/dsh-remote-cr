@@ -1,6 +1,6 @@
 # ADR-0003 · 嵌入路线：C 型内核可复用，但只省「协议与连接层」，不省「transport」
 
-- 状态：**已接受**（2026-10-26，M0 出口定稿）—— 范围限于「路线选择：采用 C 型」；「跨机可用」待 M1 的 T5/T6（见 §取证结果与 2026-10-27 修订）
+- 状态：**已接受**（2026-10-26，M0 出口定稿）—— 范围限于「路线选择：采用 C 型」；第二层两层阈值已于 **2026-10-31 全部运行时取证通过**（T5 跨机字节、T6 跨机失败可见），见 §取证结果、2026-10-27 修订、2026-10-31 T5 取证与 T6 取证
 - 日期：2026-10-19 提议 / 2026-10-26 定稿
 - 取代：无
 
@@ -55,7 +55,7 @@ T1–T4：
 
 ### 取证结果
 
-第一层阈值 T1–T4 **全部满足**（DSH `0.2.1-rc.3`，全部为源码事实，非推测）；第二层 T5–T6 **未取证**：
+第一层阈值 T1–T4 **全部满足**（DSH `0.2.1-rc.3`，全部为源码事实，非推测）；第二层 **T5 与 T6 均已于 2026-10-31 运行时取证通过**（基线 DSH `0.2.1-rc.5`）：
 
 | 阈值 | 结果 | 证据 |
 |---|---|---|
@@ -63,9 +63,11 @@ T1–T4：
 | **T2** 完整载体 | ✅ | `:84-114` 的 `ClientTransportHooks` 同时接受 `rpc` / `fetch` / `openStream` / `loadBundle` 四个字段，四个都在 |
 | **T3** 生产消费者 | ✅ | `apps/web/src/main.ts:25-26`（桌面形态，`ownsHost: true`）、`packages/experimental/webworker-runtime/src/client/index.ts:163`（worker 形态） |
 | **T4** bootstrap 前注入 | ✅ | `:336-347` 的 `apply()` 读 `globalThis.__DSH_TRANSPORT__`；宿主侧 `packages/host/webserver/src/index.ts:36` 的 `webserver/index-inject` 让插件注入 head 脚本 |
-| **T5** 跨机字节 | ⏳ **M1 首项** | 未取证。M1 开局第一件事：WSL 里起 dsh，transport adapter 过隧道，远端 `uname -a` 断言 |
-| **T6** 跨机失败可见 | ⏳ **M1** | 未取证。断线 / 版本不匹配 / 远端无 Node 三条失败路径各要一条实跑日志 |
+| **T5** 跨机字节 | ✅ **2026-10-31 通过** | `spikes/m1/cross-machine-t5/probe.cjs`（12/12 断言，exit 0；负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T5-4,T5-5,T5-5b]`，exit 1）。WSL2 distro 内起 `dsh web`，本地 Node 用官方 `installConnection` + 自定义 `fetch`/`createWebSocket` 打到它：`session/list` 返回 649 条远端会话（`cwd=/home/hui/workspace/tools/deepseek-harness`）、`workspaceFiles/read /proc/version` 返回 `Linux version 6.18.54.1-microsoft-standard-WSL2`、`workspaceFiles/stat` 走 lookup 作用域成功、`directoryPicker/list` 返回 `path=/home/hui`、`/api/remote.mux` 升起到 OPEN 且收到 `{"type":"item","streamId":"t5-job-list",...}` 逻辑流帧。证据与环境见 `spikes/m1/cross-machine-t5/README.md` |
+| **T6** 跨机失败可见 | ✅ **2026-10-31 通过** | `spikes/m1/cross-machine-t6/probe.cjs`（9/9 断言，exit 0；负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T6-2,T6-3,T6-4b,T6-4d]`，exit 1）。三条失败路径各一条实跑证据：① **版本不匹配**——远端 `0.2.1-rc.5` 对 `engines.dsh: >=0.3.0` 判 `incompatible`，对 `>=0.2.1-rc.0 <0.3.0` 放行，判定与文案均来自官方 `evaluatePluginCompatibility` / `pluginCompatibilityWarning`（含 `allow-version` 迁移路径）；② **远端无 Node**——启动判定 `exit=1` 且日志带 `nohup: failed to run command 'node-missing-teleport': No such file or directory`；③ **断线**——杀远端后 generation 撤回为 `undefined` + 重试 `#1/#2` + 手动 `reconnect()` 把 attempt 计数器打回 `#1`。证据与环境见 `spikes/m1/cross-machine-t6/README.md` |
 
+> **T5 通过记录（2026-10-31）**：跨机字节已实测成立——官方内核在 Windows 侧 Node 24 下 `import` 成功（只外部依赖 `@deepseek-ai/schemastery`），`installConnection(ctx,{transport})` 只需一个 `{provide}` 桩 ctx 即可驱动，四个接缝 `rpc`/`fetch`/`openStream`/`createWebSocket`+`streamBaseUrl` 均可用；唯一必须自建的是「握手能带 Cookie 的 WS 客户端」（Node 内置 `WebSocket` 不能注入 `Cookie`，而 `/api/remote.mux` 的 admission 只认 `/connect` 下发的 v2 签名 Cookie）。**因此 T5 的回退分支（「内核 + 自有 RPC 封装」约 1200–1600 行）不触发。**
+>
 > **判定口径（R1-15 修订，2026-10-27）**：T1–T4 全过只证明「接缝公开可用」，**不证明 C 型能跑跨机**。原始版本把四条阈值当作 C 型的全部判据并据此签署「C 型成立」，属于把必要条件当充分条件。当前状态应表述为「**接缝成立，C 型待 M1 验证**」，而不是「C 型成立」。上表的 T5/T6 一行就是这条待验证项的登记位置。
 
 **能力逐项**：
@@ -89,7 +91,7 @@ T1–T4：
 | **T6 不满足（跨机失败静默）** | **不降级，先补失败路径再谈路线**——铁律 4「失败要响」是硬约束，静默回落本地比 A 型更差 | 工期 +1 周，但这是准入项不是选项 |
 | 三条路线都不可行 | **否定 B 型架构本身**，回到 ADR-0001 重新评估「宿主远端」是否成立 | 项目级重估 |
 
-**当前状态：T1–T4 全过，T5/T6 未取证 → 回退分支未触发，但 C 型**结论降为「接缝成立，跨机待验」**（R1-15 修订，2026-10-27）。
+**当前状态（2026-10-31 更新）：T1–T4 全过、T5 与 T6 均已运行时取证通过 → C 型成立（两层阈值全满足），T5 的回退分支「内核 + 自有 RPC 封装」（约 1200–1600 行）与 T6 的「先补失败路径」回退项均不触发**。（历史表述：「接缝成立，跨机待验」（R1-15 修订 2026-10-27）→「接缝成立，跨机字节已验证；跨机失败可见性待 T6」（2026-10-31 T5 取证后）。）
 
 ## 净收益的诚实核算
 
@@ -133,3 +135,56 @@ T1–T4：
 | 官方连接层只有三态，ZCode 是十态 | 排障时状态粒度不够 | 自建 adapter 内部维护细分状态，映射到官方三态上报 |
 | `remoteAccess.decide()` 的鉴权语义未实测 | 远端 daemon 的鉴权可能撞车 | M0 遗留项，M1 首周验 |
 | 同页多 host 依赖 `isolate` 标签互不相同（决策 7） | 标签碰撞会让两台 host 悄悄共用一个 connection，症状是「切到远端却读本地数据」 | label 由 `Symbol('host:' + hostId)` 生成不做字符串复用；装配函数对已存在的 label 直接抛错而非覆盖；M3 落地时加一条「两台 host 同时在线且数据不串」的集成断言 |
+
+## 2026-10-31 修订 · T5 运行时取证（跨机字节成立）
+
+**结论：T5 满足，C 型的第二层判据过了一半。** 证据 = `spikes/m1/cross-machine-t5/probe.cjs`（12/12，exit 0）与同目录 `README.md`（含完整实测输出与踩坑记录）。负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T5-4,T5-5,T5-5b]`、exit 1，满足「断言必须可假」。
+
+**取证方式**：WSL2 distro（`ubuntu_dev`）内起 `dsh web --host 127.0.0.1 --port 8899`；Windows 侧 Node 24 用官方 `packages/client/connection/lib/client.node.js` 的 `installConnection(ctx, { transport })`，把 `fetch` 改写成带上 `/connect` 下发 Cookie 的转发，`createWebSocket` 换成自建零依赖 WS 客户端。**没有启动隧道**——mirrored 模式下 Windows 与 distro 共享回环，所以先用直连把「内核接缝能不能跨机」这一问单独钉死；隧道属于 transport adapter 的活，另在 T6 与 M1 主干验。
+
+**远端事实断言**（全部由远端 dsh 返回，非本地构造）：
+
+| 断言 | 观测值 |
+|---|---|
+| `session/list` | 649 条远端会话，首条 `cwd=/home/hui/workspace/tools/deepseek-harness` |
+| `workspaceFiles/read` on `/proc/version` | `Linux version 6.18.54.1-microsoft-standard-WSL2 (root@9b80f41eb17c) (gcc (GCC) 13.2.0...` |
+| `workspaceFiles/stat` on `/proc/sys/kernel/osrelease` | `absolutePath=/proc/sys/kernel/osrelease`，lookup 作用域 wire 名 `workspaceFileScopeId` = sessionId |
+| `directoryPicker/list` | `path=/home/hui` |
+| `/api/remote.mux` | upgrade 到 OPEN；`job/list` 逻辑流收到 `{"type":"item","streamId":"t5-job-list","value":{"type":"rows","jobs":[]}}` |
+
+**对实现面的四条硬结论**（M1 直接消费）：
+
+1. **官方构建产物可直接 `import`，不需要先搭 monorepo**：`client.node.js` 只外部依赖 `@deepseek-ai/schemastery`，Windows 侧 Node 24 `import()` 成功。⇒ M1 可以先写探针级验证再建包结构，不必等脚手架。
+2. **`installConnection` 只用一个 `{provide(ns, v)}` 桩 ctx 就能驱动**（除 `provide` 外不碰其它 ctx 能力）。产品侧真正接进 cordis 时仍要走正式 ctx，但测试可以零依赖。
+3. **唯一必须自建的是「握手能带 Cookie 的 WS 客户端」**：Node 内置 `WebSocket` 不能注入 `Cookie`，而 `/api/remote.mux` 的 admission 只认 `/connect` 下发的 v2 签名 Cookie。约 120 行（RFC6455 掩码 + ping/pong）。
+4. **两种 Cookie 不能混用、且一条 cookie 只能拥有一条 WS**：浏览器 cookie 是 `version:1`（`isAuthenticated` 只认这个），`/connect` 下发的是 `version:2`；`admitConnection` 里 `ownsSocket` 一旦为真，重复连直接 409。⇒ **断线重连必须重新 `/connect` 换 cookie**，不能拿旧 cookie 重连。这一条直接影响 M1「断线与重连」任务的设计。
+
+**遗留风险表更新**：
+
+- 「`installConnection` 的 `transport.rpc` 一旦提供就完全绕过 HTTP，包括凭据注入点」→ **本次未消除**：T5 走的是 `fetch` + `createWebSocket`，**没有提供 `rpc`**。凭据代理仍是 M1 要单独设计的位置。
+- 「`remoteAccess.decide()` 的鉴权语义未实测」→ **本次未消除**：T5 用的是 `/connect` 的 launch token + Cookie，不走 `remoteAccess.decide()`。产品的「凭据不出本机」方案仍要在 M1 首周验。
+- 「`__DSH_TRANSPORT__` 无版本承诺」→ **未消除**。本次取证的宿主版本是 `0.2.1-rc.5`，而 `requirements.md` §6 写的兼容基线是 `0.2.1-rc.3`，**基线数字已过时**，M1 计划要按 rc.5 重定并记录升级回归口径。
+
+## 2026-10-31 修订 · T6 运行时取证（跨机失败可见成立）
+
+**结论：T6 满足，C 型的第二层判据全部通过。** 证据 = `spikes/m1/cross-machine-t6/probe.cjs`（9/9 断言，exit 0）与同目录 `README.md`。负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T6-2,T6-3,T6-4b,T6-4d]`、exit 1，满足「断言必须可假」。
+
+**取证方式**：复用 T5 的 `spikes/m1/harness.cjs`（258 行零依赖，自管远端 dsh 起停 + `/connect` 握手 + 带 Cookie 的 WS 客户端 + `rpcRaw`），在 Windows 侧 Node 24 用官方 `installConnection` 驱动，三条失败路径逐条构造并断言**可观察的失败信号**（而非「抛了个错」）。
+
+| 失败路径 | 构造方式 | 观测证据 |
+|---|---|---|
+| 版本不匹配 | 拿远端真实版本（`workspaceFiles/read` 读远端 `package.json`）喂给官方 `evaluatePluginCompatibility`，两个方向各判一次 | `engines.dsh: >=0.3.0` → `incompatible={...runtimeVersion:"0.2.1-rc.5"...}`；`>=0.2.1-rc.0 <0.3.0` → `compatible=undefined`（放行）。文案含 `is incompatible with dsh` 与 `allow-version` 迁移路径 |
+| 远端无 Node | `nodeCommand` 换成一个不存在的可执行名（负控换回真 `node`） | `exit=1`，日志尾部 `nohup: failed to run command 'node-missing-teleport': No such file or directory` |
+| 断线 | 连上后 kill 远端 dsh 进程 | generation `getSnapshot()` 撤回为 `undefined`；`console.warn` 出现 `connection lost, retry #1/#2`；`reconnectRequested` 递增；手动 `reconnect()` 后 attempt 计数器打回 `#1`（`attempts=[1,2,3,1]`） |
+
+**对实现面的三条硬结论**（M1 直接消费）：
+
+1. **官方三态不够产品用**：`ConnectionState` 只有 `connected`/`disconnected`/`connecting`，而 `disconnected` 仅由浏览器 `online`/`offline` 事件驱动（`watchBrowserNetwork` 在无 `window` 时返回 noop）——Node 侧永不出现。`requirements.md` 要求的「首连 / 重连中 / 已重连 / **offline** / 需重连」必须由 teleport 层自建，再映射到官方三态上报（与本 ADR 遗留风险表第 3 行一致）。
+2. **退避参数不能靠官方**：官方是 `backoffBaseMs 500 × factor 2`、封顶 `10000ms`、50–100% 抖动，**实测首次重试间隔 563–1021ms**（`gapsMs=[563,1021]`；另一跑 `[635]`）；而 `requirements.md` 要求 `2s/4s/8s × 3` 再进 offline 每 2min。⇒ M1「断线与重连」必须自建三段退避 + offline 计时器，官方的 `backoffBaseMs` 只作为底层兜底。
+3. **`ConnectionHandle` 不导出 `resolveConnectionConfig`**：`packages/client/connection/lib/client.node.js` 的导出面只有 `RpcId / apply / inject / installConnection / transportError`，config 默认值只能实测、不能读。⇒ 产品侧要断言退避行为，必须像本探针一样**观测相邻重试的时间戳差值**，不能断言 config 字段。
+
+**遗留风险表更新**：
+
+- 三条原风险（`transport.rpc` 绕过 HTTP / `remoteAccess.decide()` 未实测 / `__DSH_TRANSPORT__` 无版本承诺）**T6 均未消除**——T6 只证「失败可见」，不证「凭据通路」与「版本稳定」。
+- 新增：**官方重连语义与本产品规格不一致**（见上第 2 条）。这是**设计约束而非缺陷**，但若不显式覆盖，实现会悄悄继承 500ms 首重试，违背 `requirements.md` §7.1 的测量口径。
+

@@ -20,18 +20,29 @@
 
 ## M0 · 架构 Spike（1–2 周）
 
+> **✅ 已关闭（2026-10-31，Lead 裁决·用户已授权自主裁决）**。出口四项全部满足：ADR-0003 定稿（T1–T6 全过，2026-10-31 补齐 T5/T6 运行时取证）、`architecture.md` 更新（§7.0 反向通路定档 + §8.3 单通道 + §13 清单 + §14 后端矩阵）、风险表更新（§13 :322/:323 已改判）、`ui-design.md` §9.2 原 4 条已消 3 条、`reuse` 探测字段与提示文案已定稿（ADR-0004 P1–P7）。
+>
+> **任务表遗留 5 项未勾，逐项处置（不是「没做」而是「不需要做 / 已被取代 / 转移」）**：
+> - **iframe 原型 → 作废**：它是 ADR-0003 中「T4 不满足时回退 A 型」的产物；T4 已过、C 型成立，iframe 不再需要。
+> - **远端 companion 最小通讯 → 并入 M1 引导器**：T5/T6 已证明「远端已有 `dsh web`」主路径不需要 companion；companion 只在远端无 dsh、需引导安装并上报版本时出现。
+> - **单通道验证 → 已由 T5 取证判完成**：同一条 WS 上同时承载 `$events` 逻辑流与 `session/list` RPC（`spikes/m1/cross-machine-t5/probe.cjs` 的 T5-4/T5-4c）。
+> - **WSL 代理改写 mirrored 开/关两态 → 降级为「仅 mirrored」**：③ stdio 桥不依赖网络模式，只有 ① 优化档关心 mirrored；**NAT 态未测**（改 `.wslconfig` 会影响宿主全部 distro，本轮不动），如实记为未验证。
+> - **MCP 路径重写 → 推到 M3**：v1 不实现 `rewritePathArgForRemote`；M1 的口径改为「检测到 MCP 配置含本地绝对路径即结构化报错」，不静默错配。
+>
+> 逐项裁决理由与反向条件见 [`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](../project/plans/2026-10-31-m1-wsl-closed-loop.md) §0（B1.1–B1.5）。
+
 **目标**：确定嵌入路线（ADR-0003）、验通工作区投影层、跑通槽位原型，排除最致命的技术风险。工作区身份方案已于 2026-10-26 定案（WSL=UNC / SSH=锚点，见 `architecture.md` §4.1），M0 只需验投影层。
 
 | 任务 | 产出 |
 |---|---|
 | 验证官方 Remote 内核是否可被第三方插件使用（`@deepseek-ai/dsh-api-remotes` / `dsh-api-gateway`）。**判据：它是否已提供 transport 无关的 RPC + 事件流 + 连接生命周期** | 结论 + 最小 demo/失败原因 |
 | **槽位最小原型**：`sidebar.panellist`（id `teleport`，order 20）+ `main`（key `teleport`）配对挂出瞬移面板；`shell.overlay` 挂连接进度；以 `priority: -1` **顶掉两个 `directoryFlow` hole**（`sidebar.workspaces` / `conversation.hero.workspace`），`local` 分支**自写浏览器走插件自有路由**（官方 picker 不可深引；`ctx.uiWorkspace.listDirectory` 也不可用——本机 capability 是 `native`，见 `ui-design.md` §9.1 V6/V8/V9） | ✅ 已验证（`ui-design.md` §9.1 V1/V2/V6/V8/V9/V13）：官方「Add workspace…」被四选一接管，本机分支能列目录并建工作区；窄视口下 panellist 退化为 36×36 纯图标、`aria-label` 保留 |
-| iframe 原型：本地回环代理 → 远端 dsh 页面，cookie/token/父窗口校验 | 结论 + 风险 |
+| ~~iframe 原型~~：本地回环代理 → 远端 dsh 页面，cookie/token/父窗口校验 | **作废（2026-10-31）**：属 A 型回退分支产物，T4 已过、C 型成立，不再需要 |
 | **工作区身份验证**（方案已定，验投影层）：WSL 用 UNC `\\wsl.localhost\<distro>\<path>` 直接 `createWorkspace` + `attachSession`；SSH 用本地锚点 + cwd 映射 | ✅ 已验证（`ui-design.md` §9.1 V3/V4/V5/V7/V10/V14/V15/V16）：UNC 可建工作区、header.cwd 原样落盘、prepend 监听可把模型看到的 cwd 与 `sandbox:policy` 边界同时改写成 `/home/...`、**真实工具派发下投影后的 POSIX 实参直接可用（无需改写层）**、全量枚举确认无第三处 cwd context。**剩余风险**：远端 Host 等价性、锚点后端的路径映射（见 §9.2） |
-| 远端 companion 最小通讯（健康检查 + 版本上报） | 协议草案 |
-| **单通道验证**：一条隧道上 HTTP GET → HTTP POST → WS upgrade → 第二路业务 WS | 结论（决定 §8.3 实现） |
-| **WSL 代理改写验证**：mirrored networking 开/关两态下 WSL 内访问宿主回环代理 | 结论（决定 §7 复杂度） |
-| **MCP 路径重写验证**：DSH 的 MCP 配置是否含本地绝对路径参数 | 结论（决定是否实现 `rewritePathArgForRemote`） |
+| ~~远端 companion 最小通讯~~（健康检查 + 版本上报） | **并入 M1 引导器**（P3.2）：仅「远端无 dsh、需引导安装」时启用 |
+| **单通道验证**：一条隧道上 HTTP GET → HTTP POST → WS upgrade → 第二路业务 WS | ✅ **已由 T5 取证判完成（2026-10-31）**：同一条 WS 上并行 `$events` 逻辑流与 `session/list` RPC；复跑 `node spikes/m1/cross-machine-t5/probe.cjs` |
+| ~~WSL 代理改写验证~~（mirrored 开/关两态） | **降级为「仅 mirrored」（2026-10-31）**：③ stdio 桥不依赖网络模式，只有 ① 优化档需要 mirrored；**NAT 态未测**（改 `.wslconfig` 影响宿主全部 distro），如实记未验证 |
+| ~~MCP 路径重写验证~~：DSH 的 MCP 配置是否含本地绝对路径参数 | **推到 M3（2026-10-31）**：v1 不实现 `rewritePathArgForRemote`；M1 改为「检测到即结构化报错」，不静默错配 |
 | **`reuse` 环境探测契约**（R1-10）：远端 dsh 版本、profile 指纹、已装插件集合的**探测字段定义**与「版本不匹配 → 拒绝 / 插件差异 → 非阻塞提示」的文案 | ✅ **字段清单 + 提示文案已定稿** → [`ADR-0004` §`reuse` 环境探测契约](../decisions/ADR-0004-plugin-sync.md)：P1–P7 七个字段逐项标了「来源 / 权威性 / 缺失时」；`reject`/`diff`/`unknown` 三态 + `fingerprint-drift` 诊断，文案模板 M1 直接消费。R1-22 指出的一点已固化：**profile 指纹是 teleport 自建派生量（DSH 检出无官方指纹 API），只能加速判等、不能授权**；判定永远回到 P3+P4+P5 逐项比对 |
 
 **出口**：ADR-0003 定稿；`docs/design/architecture.md` 更新；风险表更新；`ui-design.md` §9.2 的 4 条「仍未验证」至少消掉 3 条；**环境策略默认值（`reuse`）的探测字段与差异提示文案已定稿**（R1-10：默认值已定，但「探测什么、怎么提示差异」必须在本阶段固化，否则 M1 实现者只能自行假设，A5 口径随环境漂移；R1-22：只绑出口不绑字段 → 已由 [`ADR-0004`](../decisions/ADR-0004-plugin-sync.md) §`reuse` 环境探测契约 的 P1–P7 字段表收口）。**当前进度：§9.1 已累积 V1–V16；§9.2 原有 4 条已消掉 3 条**——「窄侧栏 rail」(V13)、「工具实参衔接」(V15/V16)、「第三处 cwd context」(V14) 全部关闭，只剩「远端 Host 等价性」，另新增两条由此推出的待办（锚点后端路径映射、`write`/`edit` 路径等价补测）。spike 的插件包、CDP 脚本与实测证据已迁到代码区 [`spikes/m0/`](../../spikes/m0/README.md)（可直接复跑）。**R1-1 反向通路已实测取证**（[`spikes/m0/evidence/r1-1-reverse-tunnel.md`](../../spikes/m0/evidence/r1-1-reverse-tunnel.md)）。
@@ -40,18 +51,20 @@
 
 **目标**：WSL 后端从零到「可用」，达到验收 A1–A8 的 **WSL 轮**。
 
-> **进度（2026-10-30）**：地基三条（UNC 工作区读写闭环、**反向通路逐档定档（③ stdio 桥默认 / ① `mirrored` 优化 / ② 网关已退役）**、两级 dispose）已 spike 实测成立，见 `spikes/m1/README.md`；**产品行为（瞬移面板、插件注册、凭据替换、断线重连）尚未开始**，本节任务表仍全部未勾选。
+> **执行计划**：[`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](../project/plans/2026-10-31-m1-wsl-closed-loop.md)（V1.0.0，Heavy Track）——含 12 项未裁决的书面裁决（§0）、验收口径与不验收项（§1.0）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**本节的验收口径以该计划 §1.0 为准**，两者冲突时改本节而不是改计划的口径（口径只能由用户裁决变更）。
+
+> **进度（2026-10-31）**：地基五条已 spike 实测成立，见 `spikes/m1/README.md`——三条来自 WSL 闭环（UNC 工作区读写闭环、**反向通路逐档定档（③ stdio 桥默认 / ① `mirrored` 优化 / ② 网关已退役）**、两级 dispose），另外两条是 **ADR-0003 第二层阈值**：**T5 跨机字节**（`spikes/m1/cross-machine-t5/`，12/12 断言 + 负控，官方 `installConnection` + 自定义 `fetch`/`createWebSocket` 打到 WSL 内 `dsh web`，远端会话/文件/目录/逻辑流全部取回）与 **T6 跨机失败可见**（`spikes/m1/cross-machine-t6/`，9/9 断言 + 负控，版本不匹配 / 远端无 Node / 断线三条失败路径各有实跑证据）。**C 型至此两层阈值全满足**，ADR-0003 的降级分支（「内核 + 自建 RPC 封装」1200–1600 行）不触发。**产品行为（瞬移面板、插件注册、凭据替换、断线重连）尚未开始**，本节任务表除已标注「已 spike 实测」的验收片段外仍全部未勾选。
 
 **出口不含 A9**：A9（后端矩阵）要求 SSH 也达到 A1–A8，是 **M2 的出口条件**。M1 签署时 SSH 轮仍是欠账，不得写成「A9 已达成」或「SSH 可后补所以没关系」——欠账在 M2 到期，M2 补齐前 M2 不得出口（R1-20：原写「SSH 可后补」与 `requirements.md` 旧句「每条都要 WSL + SSH 各至少一轮」互斥，两处口径已同时改正）。
 
 | 任务 | 验收 |
 |---|---|
-| Backend 抽象 + WSL 实现（探测/引导/启动/**反向通路定档：③ stdio 桥默认、① `mirrored` 优化、② 网关已退役**） | 真机连上 WSL 并启动远端 dsh；**远端能打到本机凭据代理**（默认 `wsl.exe --exec` stdio 桥，`mirrored` 直通作优化；**默认通路（③）起不来且 ① 不通时必须硬失败**并给可操作提示，不得静默降级——② 已于 2026-10-30 退役，不再计入「全失败」判定）。**地基已 spike 实测**（2026-10-30）：①③ 通、② 在「代理只绑 `127.0.0.1`」约束下不可用，复跑 `node spikes/m1/wsl-closed-loop/probe.cjs` |
+| Backend 抽象 + WSL 实现（探测/引导/启动/**反向通路定档：③ stdio 桥默认、① `mirrored` 优化、② 网关已退役**） | 真机连上 WSL 并启动远端 dsh；**远端能打到本机凭据代理**（默认 `wsl.exe --exec` stdio 桥，`mirrored` 直通作优化；**默认通路（③）起不来且 ① 不通时必须硬失败**并给可操作提示，不得静默降级——② 已于 2026-10-30 退役，不再计入「全失败」判定）。**地基已 spike 实测**（2026-10-30）：①③ 通、② 在「代理只绑 `127.0.0.1`」约束下不可用，复跑 `node spikes/m1/wsl-closed-loop/probe.cjs`。**连接层已 spike 实测**（2026-10-31，T5）：官方 `installConnection` + 自定义 transport 能打到 WSL 内 `dsh web` 并取回远端事实，复跑 `node spikes/m1/cross-machine-t5/probe.cjs`。**失败可见已 spike 实测**（2026-10-31，T6）：版本不匹配 / 远端无 Node / 断线三条路径均给出结构化判定与可重试路径，复跑 `node spikes/m1/cross-machine-t6/probe.cjs` |
 | WSL 细节：`--exec` 调用、UTF-16LE 解码、发行版双空格解析、UNC 双候选 + `cat >` 回退、`ownedChildren` 两级 dispose、**绝不 `wsl --terminate`** | 发行版名含空格/中文可用；取消后无残留 `wsl.exe`。**已 spike 实测**：两级 dispose 成立（杀 `wsl.exe` 句柄即回收 distro 侧子进程）；含空格/中文名**未实测** |
 | **四选一添加工作区**（本机 / WSL / SSH-灰 / Docker-灰）+ 连接进度/取消/错误分阶段 | 用户能独立完成一次连接；「Add workspace…」入口被接管 |
 | 工作区与会话投影（**瞬移面板**出现远端工作区、可新建会话）。WSL 工作区用 UNC 直挂（真本机目录，官方机制全可用） | 会话首个命令在远端执行（`pwd`/`uname` 断言）；UNC 工作区能被官方 `createWorkspace` 接受。**已 spike 实测**：UNC 双向读写闭环逐字一致、`cat >` 回退可用；官方 `createWorkspace`/`attachSession` 已在 M0 V3–V5 验过 |
 | 凭据代理（占位令牌 → 本地替换）+ **同步屏障** | 远端环境无真实 key；推理可用；屏障未过时**不显示已连接** |
-| 断线与重连（2s/4s/8s×3 → offline 2min）、fail-closed、进程回收、退出策略 | 杀隧道/重启远端后可恢复；断连期写操作报错不落本地；无孤儿进程 |
+| 断线与重连（2s/4s/8s×3 → offline 2min）、fail-closed、进程回收、退出策略 | 杀隧道/重启远端后可恢复；断连期写操作报错不落本地；无孤儿进程。**须知（T6 实测）**：官方内核只给三态、`disconnected` 在 Node 侧不出现、退避是 `500ms×2 封顶 10s`（实测首重试 563–1021ms）⇒ 本行的三段退避与 `offline` 态**必须自建**，不能靠 `backoffBaseMs` 调参糊过去；另 `/connect` 下发的 v2 Cookie 一 cookie 只能拥一条 WS，重连必须重新 `/connect` 换 cookie |
 | 环境策略 v1（**默认 `reuse`**，`isolated` 可选；`sync` 留 M3） | 行为可预期；默认用上远端已有的 `~/.dsh` |
 
 **出口**：WSL 真机演示：瞬移面板里打开远端工作区 → 新建会话 → 远端执行 → 断线重连 → 退出回收。

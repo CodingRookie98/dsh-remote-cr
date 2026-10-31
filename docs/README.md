@@ -40,8 +40,10 @@
 | 文件 | 内容 |
 |---|---|
 | [m0-spike/README.md](../spikes/m0/README.md) | **交接单**：项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 步骤与踩坑 |
-| [m1-spike/README.md](../spikes/m1/README.md) | **交接单**：M1 地基三条实测（UNC 读写闭环 / 反向通路逐档定档：③ stdio 桥默认、① `mirrored` 优化、② 网关退役 / 两级 dispose）、桥的代价形态（区间，不承诺倍数）、对实现的三个落点、未验证 6 条；子包 [`wsl-closed-loop/`](../spikes/m1/wsl-closed-loop/README.md) 为 A1–A11 可复跑探针 |
+| [plans/2026-10-31-m1-wsl-closed-loop.md](./project/plans/2026-10-31-m1-wsl-closed-loop.md) | **M1 执行计划（唯一真相源）**：12 项未裁决的书面裁决（§0 A1–A6 / B1–B6）、验收口径与明确不验收项（§1.0）、依赖选型与严禁事项（§1.2/§1.3）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**动 M1 代码前先读它** |
+| [m1-spike/README.md](../spikes/m1/README.md) | **交接单**：M1 地基五条实测（UNC 读写闭环 / 反向通路逐档定档：③ stdio 桥默认、① `mirrored` 优化、② 网关退役 / 两级 dispose / T5 跨机字节 / T6 跨机失败可见）、桥的代价形态（区间，不承诺倍数）、对实现的三个落点、未验证 6 条；子包 [`wsl-closed-loop/`](../spikes/m1/wsl-closed-loop/README.md)、[`cross-machine-t5/`](../spikes/m1/cross-machine-t5/README.md)、[`cross-machine-t6/`](../spikes/m1/cross-machine-t6/README.md) 为可复跑探针 |
 | [reviews/2026-10-19-design-baseline/](./project/reviews/2026-10-19-design-baseline/) | 上一轮双轮审查归档（历史，不改） |
+| [reviews/2026-10-30-m1-reverse-path/](./project/reviews/2026-10-30-m1-reverse-path/) | 反向通路交付单元的双轮审查归档（裁决 ✅ 准予交付；4 条黄灯已修复、4 条 ⚖️ 交人类已在 M1 计划 §0 收口） |
 
 > **代码不在 `docs/` 下**：spike 插件与 CDP 探针是可执行代码，位于仓库根的 [`spikes/`](../spikes/README.md)；本目录只放文档，`project/` 只保留不可执行的审查归档。
 
@@ -49,7 +51,7 @@
 
 1. 新人/新 agent：根 `README.md` → 本文件 → `AGENTS.md`；
 2. 要做设计：`01` → `02` → `04` → `requirements` → `architecture` → `ui-design` → `zcode-remote/01` → `zcode-remote/05`；
-3. 要动实现：`03` → `04` → `milestones` → `ui-design` → ADRs → 按后端读 `zcode-remote/02`（SSH）或 `03`（WSL）；
+3. 要动实现：`project/plans/` 里当前里程碑的计划文档 → `03` → `04` → `milestones` → `ui-design` → ADRs → 按后端读 `zcode-remote/02`（SSH）或 `03`（WSL）；
 4. 要定协议/状态机：`zcode-remote/04` → `zcode-remote/05` §5（生命周期）。
 
 ## 文档约定

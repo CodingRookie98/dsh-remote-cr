@@ -56,7 +56,7 @@
 
 ## 6. 约束
 
-- 目标宿主：DSH Desktop 0.2.x（至少 0.2.0-rc.2 / 0.2.1-rc.2 两线；当前验证基线为 **0.2.1-rc.3**），dsh web profile 兼容。兼容声明用 **`engines.dsh`** 或 **`@deepseek-ai/dsh-*` 的 `peerDependencies`**（`packages/boot/app-boot/src/plugin-compatibility.ts:55-74` 是唯一读取方；`dsh.compatibility.dshReleases` 在宿主侧零读取方，已废弃），判定规则见 `architecture.md` §5 与 `ADR-0004`。
+- 目标宿主：DSH Desktop 0.2.x（至少 0.2.0-rc.2 / 0.2.1-rc.2 两线；当前验证基线为 **0.2.1-rc.5**——2026-10-31 T5 跨机取证即在本机 rc.5 上跑通，原写 rc.3 已过时，见 `spikes/m1/cross-machine-t5/README.md`），dsh web profile 兼容。兼容声明用 **`engines.dsh`** 或 **`@deepseek-ai/dsh-*` 的 `peerDependencies`**（`packages/boot/app-boot/src/plugin-compatibility.ts:55-74` 是唯一读取方；`dsh.compatibility.dshReleases` 在宿主侧零读取方，已废弃），判定规则见 `architecture.md` §5 与 `ADR-0004`。
 - Windows 本机 + WSL2；SSH 目标为 POSIX（Linux/macOS）。
 - 远端需要 Node + dsh（由我们安装或复用），版本对齐规则由我们定义。
 - 不修改 DSH 内核代码；只用已文档化的扩展点；内核缺口用「兼容层 + 明确降级」处理。
@@ -102,4 +102,4 @@
 | 2 | 是否自动同步插件/技能 | **不自动**。`sync` 是显式勾选，缺失项默认勾选、已存在项灰掉不覆盖 | 用户 2026-10-26 裁决；`ADR-0004` |
 | 3 | 多远端同时在线 | **v1 单台**，切换即断开上一台；多台留 M3 | 用户 2026-10-26 裁决；`ADR-0005` §决策 5 |
 | 4 | 远程工作区被 `remote_control`/手机端访问 | 未定，留后续特性 | — |
-| 5 | 同一远端被两个本地 DSH 实例连接 | **暂不做**跨进程部署锁；M0 判定是否需要 | `docs/research/zcode-remote/05-capability-map.md` #31 |
+| 5 | 同一远端被两个本地 DSH 实例连接 | **不做部署锁，改做端口占用检测**（2026-10-31 裁决，M0 判定完成）。理由：① T6 实测证明两个实例各自 `/connect` 拿**不同** v2 Cookie、`ownsSocket` 是 per-peer，不会互相踢；② 真正冲突只有同一 `DSH_HOME` 上第二个 `dsh web` 触发 `EADDRINUSE`，表现为启动失败而非数据竞争。落地口径：检测到端口被占即返回结构化错误 `remote/port-in-use`，并给三个可选项（复用已有实例 / 另选端口 / 关闭对方进程），**不静默接管、不自动杀进程** | `docs/research/zcode-remote/05-capability-map.md` #31；`spikes/m1/cross-machine-t6/probe.cjs`（T6-4b 双通道实证）；[`plans/2026-10-31-m1-wsl-closed-loop.md`](../project/plans/2026-10-31-m1-wsl-closed-loop.md) §0 B3 |
