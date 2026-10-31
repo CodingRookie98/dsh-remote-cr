@@ -27,11 +27,11 @@
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
 - **当前活跃阶段**: P3 核心功能原子实现
-- **当前活跃子任务**: Task P3.5（工作区与会话投影，WSL 走 UNC 直挂）
+- **当前活跃子任务**: Task P3.5.1（断线重连端到端 + fail-closed + 孤儿回收）
 - **当前子任务重试计数**: 0/3
 - **外层循环迭代**: 0/5
-- **最后一次验证状态**: ✅ P3.4 已通过 —— `node --test "src/**/*.test.ts"` = **224 / 224 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `16 modules -> lib/client.js (52319 B)`；信封冒烟（假 `window.__ModuleLoader__` + 假 react）读出 `id dsh-teleport`、`inject ["slots","layout"]`、`apply` 为 function；`NEGATIVE_CONTROL=1` → **35 红 / 189 绿**（新增 11 条可假性断言）。此前记录：✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
-- **最新有效提交**: `bb412a2`（M0 关闭 + M1 计划 + T5/T6 证据）；P3.4 由本次原子提交承载
+- **最后一次验证状态**: ✅ P3.5 已通过 —— `node --test "src/**/*.test.ts"` = **249 / 249 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `17 modules -> lib/client.js (62683 B)`；真机 `node spikes/m1/p35-projection/probe.cjs` → **7/7 passed, exit 0**（`P35-5` 取证到 `cwd=/home/hui/workspace/tools/deepseek-harness` 与 `uname=Linux CodingRookie 6.18.54.1-microsoft-standard-WSL2`）；负控 `NEGATIVE_CONTROL=1` → **失败集恰为 [P35-2,P35-3,P35-4,P35-5,P35-6]**。此前记录：✅ P3.4 已通过 —— `node --test "src/**/*.test.ts"` = **224 / 224 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `16 modules -> lib/client.js (52319 B)`；信封冒烟（假 `window.__ModuleLoader__` + 假 react）读出 `id dsh-teleport`、`inject ["slots","layout"]`、`apply` 为 function；`NEGATIVE_CONTROL=1` → **35 红 / 189 绿**（新增 11 条可假性断言）。此前记录：✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
+- **最新有效提交**: `e61e90e`（P3.4 四选一向导）；P3.5 由本次原子提交承载
 - **阻断原因**: 无
 
 ---
@@ -142,6 +142,10 @@
   node spikes/m1/cross-machine-t5/probe.cjs
   node spikes/m1/cross-machine-t6/probe.cjs
 
+  # L2 逐阶段真机探针：P3.5 投影闭环（正向 + 负控）
+  node spikes/m1/p35-projection/probe.cjs
+  NEGATIVE_CONTROL=1 node spikes/m1/p35-projection/probe.cjs
+
   # L2 可假性对照（负控必须给出红灯，否则断言不算成立）
   NEGATIVE_CONTROL=1 node spikes/m1/cross-machine-t5/probe.cjs
   NEGATIVE_CONTROL=1 node spikes/m1/cross-machine-t6/probe.cjs
@@ -185,9 +189,12 @@
   - **`dsh.client` 字段语义实测确认（本任务验收项之一）**: ① `packages/client/modules/src/client/manifest.ts:173-193 parseDshClient` —— `platform` 必填 string、`inject`/`external` 必须是字符串数组、`immediately` 必须是 boolean，任一不合规直接抛 `client-modules: <pkg> <field> must be …`；② `inject` 的语义是**包名依赖**（`packages/util/package-manifest/src/types.ts:84` 注释原文 "Informational package-name dependencies, not Cordis service injection"），不是 cordis 服务名；③ `packages/client/modules/src/index.ts:844-879 resolveMeta` 只对 **Loader 已有行**做 `locatePkgJson`，所以 `cordis.patch.yml` 必须先插一行宿主半，否则 `dsh.client` 声明永不被读取；④ 缺 `exports['./client']` 直接抛 `declares dsh.client but exports no "./client" bundle`，且该导出必须是**单文件信封**（`lib/client.js`），不能是 tsc 的 ESM 产物。
   - **偏离与登记（供 P4 独立审查）**: ① ui-design §4 写「SSH 未灰」，M1 验收写「SSH-灰」，本任务按 M1 验收实现（`src/shared/choices.ts` 文件头已写明该偏差与 M2 的改法）；② `src/shared/halves.test.ts` 原先硬编码「每个半的产物都是 `./lib/<half>/index.js`」，client 半必须指向信封 `./lib/client.js`，已改成逐半显式映射表并写明理由；③ `src/local/api/routes.ts` 的守卫顺序改成「先官方 `connection.requestRejection`、后本机回环」，理由：反序会让「本机发起但 Origin 不对」的请求绕过官方围栏。
   - **本轮未覆盖（诚实标注）**: ① 真机浏览器里点完四选一的端到端演示留到 P3.5.2（本任务的证据是信封冒烟 + 224 条单测，不含真机点击）；② `/teleport/api/workspace` 的 attach 阶段目前只到「UNC 目录存在性校验」，真正的 `createWorkspace` 投影是 P3.5。
-- [ ] **Task P3.5**: 工作区与会话投影（WSL 走 UNC 直挂）
-  - **涉及文件**: `src/local/projection/**`
+- [x] **Task P3.5**: 工作区与会话投影（WSL 走 UNC 直挂）
+  - **涉及文件**: `src/local/projection/**`、`src/client/panel.ts`、`src/shared/api.ts`（投影线上形状）、`src/local/api/routes.ts`（4 条投影路由）
   - **验收**: 瞬移面板出现远端工作区、可新建会话；会话首个命令在远端执行（`pwd` + `uname -a` 断言）
+  - **✅ 完成（2026-10-31）实测**: 十一个模块 `remote.ts` / `ws.ts` / `live.ts` / `attach.ts` / `probe.ts` / `prompt.ts` / `unc-cwd.ts` / `store.ts` / `service.ts` / `shape.ts` + 浏览器半 `panel.ts`。全套 **249 / 249 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `17 modules -> lib/client.js (62683 B)`。真机探针 `node spikes/m1/p35-projection/probe.cjs` → **7/7 passed, exit 0**：`P35-1 {connected:true}` / `P35-2 {id:'70aa0df3-8e6f-44d1-881c-edde4ba6e3fc'}` / `P35-3 {isDirectory:true}` / `P35-4 {sessionId:'session-70be1853-…', ms:118050}` / `P35-5 {cwd:'/home/hui/workspace/tools/deepseek-harness', uname:'Linux CodingRookie 6.18.54.1-microsoft-standard-WSL2 …'}` / `P35-6 {workspaces:1, sessions:9}` / `P35-7 {portFree:true}`。负控 `NEGATIVE_CONTROL=1` → **失败集恰为 [P35-2,P35-3,P35-4,P35-5,P35-6]**（P35-2/P35-3 被变异点直接打中，P35-4..6 级联）。
+  - **本轮踩坑（已进实现与探针）**: ① 复用档首次 `session/create` **118–138 s** 是挂载整套 agent preset 的一次性代价（隔离档 73 ms、二次 85 ms）⇒ 按端点分级超时 `session/create` → 240 s；② `openStream` 的裸 async generator 在「等下一帧」时 `iterator.return()` 排队不结算 ⇒ 改成 `StreamHandle` 带 `cancel()`；③ uplink 帧在远端登记 streamId 前发出会被静默丢弃 ⇒ `startUplink()` 延后到首帧（`terminal/attach` snapshot）到达；④ 带主题的提示符把 `ESC[?25h ESC[?2004l` 挂在真实输出**前面**且 PTY 用 `\r` 分行 ⇒ `stripAnsi()` + `split(/\r\n|\r|\n/)`，否则解析器静默返回 `undefined`，症状被伪装成「远端没执行」；⑤ 负控期望集漏写级联红点 `P35-3` ⇒ 期望集必须列全。
+  - **本轮未覆盖（诚实标注，见 `spikes/m1/p35-projection/README.md`）**: ① 真浏览器里点完这条链路（`planAttach` → `POST /teleport/api/attach` → 面板渲染）属 P3.5.2；② 断线重连与 `workspace/follow` 增量投影属 P3.5.1（本任务刻意只用一元 RPC）；③ `session/create` 的 P50/P90 只量到三个点，完整报告留 P3.5.2。
 - [x] **Task P3.6**: 凭据代理 + 同步屏障
   - **涉及文件**: `src/local/proxy/**`
   - **验收**: 远端环境/磁盘只有占位令牌；本机代理侧留下该远端 host 的**真实入站请求记录 + 替换日志行**（A6 取证口径）；屏障未过时 UI 不显示「已连接」

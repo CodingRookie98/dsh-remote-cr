@@ -13,7 +13,7 @@
  * - `done`/`failed`/`cancelled`：终态，失败必须能一键复制四段报告。
  */
 
-import type { DirListing, FlowSnapshot, WorkspaceAddInput } from '../shared/api.ts'
+import type { DirListing, FlowSnapshot, SourceDefaults, WorkspaceAddInput } from '../shared/api.ts'
 import type { SourceOption, WorkspaceSource } from '../shared/choices.ts'
 import { flowReport, progressOf, type FlowState } from '../shared/flow.ts'
 
@@ -35,6 +35,14 @@ export interface WizardState {
   readonly listingError: string | null
   /** 后台流程快照；未发起时为 null。 */
   readonly flow: FlowSnapshot | null
+  /**
+   * 接入远端用的默认值（端口 + 检出根）。
+   *
+   * 跟着 `/sources` 一起回来：它们是同一台机器的部署事实，分两次请求只会让
+   * 面板多一个「还不知道端口」的中间态。检出根没配置时是空串，面板据此
+   * 明确拒绝接入而不是猜一个路径。
+   */
+  readonly defaults: SourceDefaults
 }
 
 /** 初始（关闭）状态。`sources` 缓存不清，重开时不必再探测一遍。 */
@@ -50,6 +58,7 @@ export function initialWizard(): WizardState {
     listing: null,
     listingError: null,
     flow: null,
+    defaults: { port: 8899, remoteRoot: '' },
   }
 }
 
@@ -81,7 +90,12 @@ export function defaultDistro(distros: WizardState['distros']): string | null {
 /** 探测结果回来了。`wslAvailable` 为假时仍然把原因留下，UI 要显示它。 */
 export function receiveSources(
   state: WizardState,
-  payload: { readonly options: readonly SourceOption[]; readonly distros: WizardState['distros']; readonly probeError: string | null },
+  payload: {
+    readonly options: readonly SourceOption[]
+    readonly distros: WizardState['distros']
+    readonly probeError: string | null
+    readonly defaults: SourceDefaults
+  },
 ): WizardState {
   return {
     ...state,
@@ -89,6 +103,7 @@ export function receiveSources(
     distros: payload.distros,
     sourcesError: payload.probeError,
     distro: state.distro ?? defaultDistro(payload.distros),
+    defaults: payload.defaults,
   }
 }
 

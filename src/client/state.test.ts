@@ -25,6 +25,8 @@ import {
   shouldPoll,
 } from './state.ts'
 
+const DEFAULTS = { port: 8899, remoteRoot: '/home/dev/harness' }
+
 const DISTROS = [
   { name: 'Ubuntu 22.04 LTS', state: 'Stopped', version: 2, isDefault: false },
   { name: 'ubuntu_dev', state: 'Running', version: 2, isDefault: true },
@@ -35,6 +37,7 @@ function withSources() {
     options: sourceOptions({ wslAvailable: true }),
     distros: DISTROS,
     probeError: null,
+    defaults: DEFAULTS,
   })
   return openWizard(state)
 }
@@ -61,6 +64,7 @@ test('wsl 分支没有发行版就不许进浏览；本机分支不需要发行�
     options: sourceOptions({ wslAvailable: true }),
     distros: [],
     probeError: null,
+    defaults: DEFAULTS,
   }))
   assert.equal(canBrowse(selectSource(noDistro, 'wsl')), false)
   assert.equal(canBrowse(selectSource(withSources(), 'local')), true)

@@ -18,9 +18,28 @@
 
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { DirEntry, DirListing, WorkspaceRecord } from '../shared/api.ts'
+import type {
+  DirEntry,
+  DirListing,
+  ProbeOutcome,
+  ProjectedSessionInfo,
+  ProjectedWorkspaceInfo,
+  ProjectionSnapshotInfo,
+  WorkspaceRecord,
+} from '../shared/api.ts'
 import { canCancel, describeFlow, FLOW_PHASE_LABELS, type FlowState } from '../shared/flow.ts'
-import { cancelFlow, listDirectory, listWorkspaces, loadSources, readFlow, startWorkspace } from './api.ts'
+import {
+  attachWorkspace,
+  cancelFlow,
+  createRemoteSession,
+  listDirectory,
+  listWorkspaces,
+  loadSources,
+  probeRemoteSession,
+  readFlow,
+  readProjection,
+  startWorkspace,
+} from './api.ts'
 import {
   addInputOf,
   beginFlow,
@@ -43,6 +62,7 @@ import {
   shouldPoll,
   type WizardState,
 } from './state.ts'
+import { formatUpdatedAt, planAttach, probeReport, probeSummary } from './panel.ts'
 import { wizardStore } from './wizard-store.ts'
 
 /** 轮询间隔：一次远端 node 探测要几秒，250ms 够细也够省。 */
@@ -412,25 +432,49 @@ export function TeleportIcon(): unknown {
 }
 
 /**
- * 主面板：当前流程 + 已添加的远端工作区。
+ * 主面板：向导进度 + 已添加的目录 + 已投影的远端工作区与会话 + 会话取证。
  *
- * 它不承担「添加」入口——那是两个 directoryFlow 洞的职责。这里只做状态呈现：
- * 流程走到哪、已有哪些远端工作区。流程落终态时重读一次 `/workspaces`。
+ * 三段式而不是一个大列表，因为它们回答三个不同的问题：
+ * 1. **本机已添加**：向导交出去的那些路径（\`WorkspaceRecord\`），是「我知道哪些目录」；
+ * 2. **远端投影**：远端 \`workspace/create\` 认下来的那些（\`ProjectedWorkspaceInfo\`），
+ *    是「远端真的存在哪些工作区」——两者不合并（\`ui-design.md\` §3：本地与远端不合并）；
+ * 3. **会话**：投影出来的只读摘要 + 一键取证，是 A2「宿主在远端」的证据面。
+ *
+ * 铁律 4：每个不能点的按钮都带 \`title\` 说明为什么不能点。
  */
 export function TeleportPanel(): unknown {
   const state = useWizard()
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
+  const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [probe, setProbe] = useState<ProbeOutcome | null>(null)
+  const [activeSession, setActiveSession] = useState<string | null>(null)
 
+  const refresh = useMemo(
+    () => async (): Promise<void> => {
+      try {
+        const [listed, projected] = await Promise.all([listWorkspaces(), readProjection()])
+        setRecords(listed)
+        setSnapshot(projected)
+        setError(null)
+      } catch (caught) {
+        setError(messageOf(caught))
+      }
+    },
+    [],
+  )
+
+  // 向导落终态时重读一次：刚添加的目录应当立刻出现在「本机已添加」里。
   useEffect(() => {
     let alive = true
     void (async () => {
       try {
-        const listed = await listWorkspaces()
-        if (alive) {
-          setRecords(listed)
-          setError(null)
-        }
+        const [listed, projected] = await Promise.all([listWorkspaces(), readProjection()])
+        if (!alive) return
+        setRecords(listed)
+        setSnapshot(projected)
+        setError(null)
       } catch (caught) {
         if (alive) setError(messageOf(caught))
       }
@@ -440,16 +484,144 @@ export function TeleportPanel(): unknown {
     }
   }, [state.step])
 
+  const onAttach = async (record: WorkspaceRecord): Promise<void> => {
+    const defaults = snapshot?.defaults ?? state.defaults
+    const plan = planAttach(record, defaults)
+    if (!plan.ok) {
+      setError(plan.reason)
+      return
+    }
+    setBusy(record.localPath)
+    try {
+      const outcome = await attachWorkspace(plan.input)
+      setError(null)
+      await refresh()
+      setActiveSession(outcome.sessions[0]?.sessionId ?? null)
+    } catch (caught) {
+      setError(messageOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onCreateSession = async (workspaceId: string): Promise<void> => {
+    setBusy('session:' + workspaceId)
+    try {
+      const created = await createRemoteSession({ workspaceId })
+      setError(null)
+      setActiveSession(created.sessionId)
+      await refresh()
+    } catch (caught) {
+      setError(messageOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onProbe = async (sessionId: string): Promise<void> => {
+    setBusy('probe:' + sessionId)
+    try {
+      const outcome = await probeRemoteSession(sessionId)
+      setProbe(outcome)
+      setActiveSession(sessionId)
+      setError(null)
+    } catch (caught) {
+      setError(messageOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const flow = state.flow?.state
   const summary = useMemo(() => (flow === undefined ? '尚未连接远端' : describeFlow(flow)), [flow])
-  const rows = records.map((record) =>
-    h(
+  const defaults = snapshot?.defaults ?? state.defaults
+
+  const addRows = records.map((record) => {
+    const plan = planAttach(record, defaults)
+    const key = 'attach:' + record.localPath
+    return h(
       'div',
-      { key: record.localPath, 'data-teleport': 'workspace' },
+      { key: record.localPath, 'data-teleport': 'workspace', 'data-source': record.source },
       h('span', { 'data-teleport': 'workspace-source' }, record.source),
       h('span', { 'data-teleport': 'workspace-path' }, record.localPath),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'attach',
+          'data-ok': String(plan.ok),
+          disabled: !plan.ok || busy === key || busy === record.localPath,
+          title: plan.ok ? '在远端注册这个工作区并拉取会话' : plan.reason,
+          onClick: () => void onAttach(record),
+        },
+        busy === record.localPath ? '接入中…' : '接入远端',
+      ),
+    )
+  })
+
+  const projectedRows = (snapshot?.workspaces ?? []).map((workspace: ProjectedWorkspaceInfo) =>
+    h(
+      'div',
+      { key: workspace.id, 'data-teleport': 'projected', 'data-availability': workspace.availability },
+      h('span', { 'data-teleport': 'projected-title' }, workspace.title),
+      h('span', { 'data-teleport': 'projected-path' }, workspace.remotePath ?? workspace.localPath),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'new-session',
+          disabled: busy === 'session:' + workspace.id || snapshot?.connected !== true,
+          title: snapshot?.connected === true ? '在远端这个工作区里新建会话' : '尚未连接远端，先点「接入远端」',
+          onClick: () => void onCreateSession(workspace.id),
+        },
+        busy === 'session:' + workspace.id ? '新建中…' : '新建会话',
+      ),
     ),
   )
+
+  const sessionRows = (snapshot?.sessions ?? []).map((session: ProjectedSessionInfo) =>
+    h(
+      'div',
+      {
+        key: session.sessionId,
+        'data-teleport': 'session',
+        'data-availability': session.availability,
+        'data-active': String(activeSession === session.sessionId),
+      },
+      h('span', { 'data-teleport': 'session-id' }, session.sessionId),
+      h('span', { 'data-teleport': 'session-updated' }, formatUpdatedAt(session.updatedAt)),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'probe',
+          disabled: busy === 'probe:' + session.sessionId || session.availability !== 'online',
+          title: session.availability === 'online' ? '在远端会话终端里跑 pwd + uname -a' : '会话离线，重连后再取证',
+          onClick: () => void onProbe(session.sessionId),
+        },
+        busy === 'probe:' + session.sessionId ? '取证中…' : '取证',
+      ),
+    ),
+  )
+
+  const probeBox =
+    probe === null
+      ? null
+      : h(
+          'div',
+          { 'data-teleport': 'probe-result', 'data-remote': String(probe.executedRemotely) },
+          h('div', { 'data-teleport': 'probe-summary' }, probeSummary(probe)),
+          h(
+            'pre',
+            { 'data-teleport': 'probe-report', style: { whiteSpace: 'pre-wrap', fontSize: '11px' } },
+            probeReport(probe),
+          ),
+          h(
+            'button',
+            { type: 'button', 'data-teleport': 'probe-copy', onClick: () => void copyText(probeReport(probe)) },
+            '复制取证报告',
+          ),
+        )
 
   return h(
     'div',
@@ -460,9 +632,33 @@ export function TeleportPanel(): unknown {
     isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
     h(
       'div',
-      { 'data-teleport': 'panel-workspaces' },
-      ...(rows.length === 0 ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有远端工作区')] : rows),
+      { 'data-teleport': 'panel-connected' },
+      snapshot === null
+        ? '尚未读取投影'
+        : snapshot.connected
+          ? '远端已连接 · ' + (snapshot.target?.distro ?? '')
+          : '远端未连接',
     ),
+    h(
+      'div',
+      { 'data-teleport': 'panel-workspaces' },
+      ...(addRows.length === 0 ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有添加目录')] : addRows),
+    ),
+    h(
+      'div',
+      { 'data-teleport': 'panel-projected' },
+      ...(projectedRows.length === 0
+        ? [h('div', { 'data-teleport': 'panel-projected-empty' }, '远端还没有投影的工作区')]
+        : projectedRows),
+    ),
+    h(
+      'div',
+      { 'data-teleport': 'panel-sessions' },
+      ...(sessionRows.length === 0
+        ? [h('div', { 'data-teleport': 'panel-sessions-empty' }, '还没有远端会话')]
+        : sessionRows),
+    ),
+    probeBox,
     error === null ? null : h('div', { 'data-teleport': 'panel-error' }, error),
   )
 }

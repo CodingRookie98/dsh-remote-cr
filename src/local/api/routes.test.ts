@@ -135,14 +135,18 @@ function rig(overrides: Partial<HostDeps> = {}): Rig {
   }
 }
 
-test('六条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('十条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
     [
+      '/teleport/api/attach POST',
       '/teleport/api/flow GET',
       '/teleport/api/flow/cancel POST',
       '/teleport/api/list GET',
+      '/teleport/api/probe POST',
+      '/teleport/api/projection GET',
+      '/teleport/api/session POST',
       '/teleport/api/sources GET',
       '/teleport/api/workspace POST',
       '/teleport/api/workspaces GET',

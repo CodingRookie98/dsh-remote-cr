@@ -97,6 +97,8 @@ export interface SourcesPayload {
   readonly probeError: string | null
   readonly options: readonly import('../shared/choices.ts').SourceOption[]
   readonly selectable: readonly import('../shared/choices.ts').WorkspaceSource[]
+  /** 接入远端用的默认端口与检出根；检出根没配置时是空串（UI 要显式说清楚）。 */
+  readonly defaults: import('../shared/api.ts').SourceDefaults
 }
 
 /** 读四选一的可用性 + WSL 发行版清单。 */
@@ -133,4 +135,37 @@ export function cancelFlow(id: string, fetchImpl?: typeof fetch): Promise<import
 /** 已添加的工作区清单。 */
 export function listWorkspaces(fetchImpl?: typeof fetch): Promise<readonly import('../shared/api.ts').WorkspaceRecord[]> {
   return callApi('/workspaces', {}, fetchImpl)
+}
+/** 读一次投影快照（远端工作区 + 会话 + 连接状态）。 */
+export function readProjection(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo> {
+  return callApi('/projection', {}, fetchImpl)
+}
+
+/** 接入一个远端工作区（远端 `workspace/create`，幂等）。 */
+export function attachWorkspace(
+  input: import('../shared/api.ts').AttachInput,
+  fetchImpl?: typeof fetch,
+): Promise<import('../shared/api.ts').AttachOutcome> {
+  return callApi('/attach', { method: 'POST', body: input }, fetchImpl)
+}
+
+/** 在一个已接入的远端工作区里新建会话（远端 `session/create`）。 */
+export function createRemoteSession(
+  input: { workspaceId: string; agentPreset?: string | undefined },
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly sessionId: string; readonly agentPreset?: string | undefined }> {
+  return callApi('/session', { method: 'POST', body: input }, fetchImpl)
+}
+
+/**
+ * 会话取证：在远端会话的终端里跑 `pwd` + `uname -a`，回传结论。
+ *
+ * 断言失败不抛异常——`executedRemotely: false` 本身就是取证结果，
+ * 抛掉就只剩一句错误，看不到实际输出。
+ */
+export function probeRemoteSession(
+  sessionId: string,
+  fetchImpl?: typeof fetch,
+): Promise<import('../shared/api.ts').ProbeOutcome> {
+  return callApi('/probe', { method: 'POST', body: { sessionId } }, fetchImpl)
 }

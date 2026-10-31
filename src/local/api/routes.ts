@@ -16,10 +16,18 @@ import { stat } from 'node:fs/promises'
 
 import {
   API_PREFIX,
+  type AttachInput,
+  type AttachOutcome,
   type DirListing,
   type DistroInfo,
   type FlowSnapshot,
+  type ProbeOutcome,
+  type ProjectedSessionInfo,
+  type ProjectedWorkspaceInfo,
+  type ProjectionSnapshotInfo,
   type RemoteFacts,
+  type RemoteTargetInfo,
+  type SourceDefaults,
   type SourceReport,
   type WorkspaceAddInput,
   type WorkspaceRecord,
@@ -28,9 +36,13 @@ import { selectableSources, sourceOptions, type WorkspaceSource } from '../../sh
 import { TeleportError } from '../backend/errors.ts'
 import { parseWslVerboseList } from '../backend/wsl/distro.ts'
 import { runInDistro, runWslManagement } from '../backend/wsl/exec.ts'
-import { uncCandidates } from '../backend/wsl/unc.ts'
+import { toUnc, uncCandidates } from '../backend/wsl/unc.ts'
 import { listDistroDirectory, listLocalDirectory } from './browse.ts'
 import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
+import { readTarget } from '../projection/live.ts'
+import { assertRemoteExecution } from '../projection/probe.ts'
+import type { ConnectTarget, ProjectionService } from '../projection/service.ts'
+import type { ProjectedSession, ProjectedWorkspace } from '../projection/store.ts'
 import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
 import { WorkspaceFlows } from './workspace.ts'
 
@@ -70,6 +82,13 @@ export interface RouteOptions {
    * 不对的请求会先被放行，等于把官方围栏绕过去了。
    */
   readonly reject?: (req: IncomingMessage) => 401 | 403 | undefined
+  /**
+   * 投影服务；省略时投影路由会明确报「未接线」而不是假装成功。
+   *
+   * 做成可选是为了让 P3.4 的路由单测不必造一个真服务——那些测试关心的是
+   * 四选一与目录浏览，不该被投影的依赖拖着走。
+   */
+  readonly projection?: ProjectionService
 }
 
 /** 默认 `wsl.exe`；允许用环境变量指向特定版本（多 WSL 安装时用得上）。 */
@@ -273,6 +292,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       ...report,
       options: options4,
       selectable: selectableSources(options4),
+      defaults: readDefaults(),
     }))
   })
 
@@ -321,5 +341,176 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     sendJson(res, 200, okEnvelope(records))
   })
 
+  // ── 投影（P3.5）──────────────────────────────────────────────────────────
+  // 四条路由分开而不是合成一条：/attach 会起远端进程，/session 与 /probe 只做
+  // 一次 RPC。合起来的话「读面板」这种只读动作也会被拖进连接生命周期。
+
+  /** 投影服务没接线时明确报错——假装成功会让面板显示一个空列表，看不出问题。 */
+  const requireProjection = (): ProjectionService => {
+    const service = options.projection
+    if (service === undefined) {
+      throw new TeleportError({
+        code: 'remote/unknown',
+        detail: '投影服务没有接线：宿主半启动时未传入 projection',
+        nextActions: ['确认插件版本与本地 DSH 一致', '重启 dsh 后重试'],
+      })
+    }
+    return service
+  }
+
+  mount('/projection', ['GET'], async (_req, res) => {
+    const service = requireProjection()
+    const snapshot = service.snapshot()
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>({
+      workspaces: snapshot.workspaces.map(toWorkspaceInfo),
+      sessions: snapshot.sessions.map(toSessionInfo),
+      connected: snapshot.connected,
+      target: snapshot.target === null ? null : toTargetInfo(snapshot.target),
+      defaults: readDefaults(),
+    }))
+  })
+
+  mount('/attach', ['POST'], async (req, res) => {
+    const service = requireProjection()
+    const input = parseAttachInput(await readJsonBody(req))
+    const result = await service.attach(input.target, {
+      remotePath: input.remotePath,
+      localPath: input.localPath,
+      ...(input.title === undefined ? {} : { title: input.title }),
+    })
+    sendJson(res, 200, okEnvelope<AttachOutcome>({
+      workspace: toWorkspaceInfo(result.workspace),
+      sessions: result.sessions.map(toSessionInfo),
+      created: result.created,
+    }))
+  })
+
+  mount('/session', ['POST'], async (req, res) => {
+    const service = requireProjection()
+    const record = asBody(await readJsonBody(req))
+    const workspaceId = record['workspaceId']
+    if (typeof workspaceId !== 'string' || workspaceId === '') {
+      throw new TeleportError({
+        code: 'remote/unknown',
+        detail: '缺少 workspaceId',
+        nextActions: ['先接入远端工作区，再新建会话'],
+      })
+    }
+    const preset = record['agentPreset']
+    const agentPreset = typeof preset === 'string' && preset !== '' ? preset : undefined
+    const created = await service.createSession(workspaceId, {
+      ...(agentPreset === undefined ? {} : { agentPreset }),
+    })
+    sendJson(res, 200, okEnvelope(created))
+  })
+
+  mount('/probe', ['POST'], async (req, res) => {
+    const service = requireProjection()
+    const record = asBody(await readJsonBody(req))
+    const sessionId = record['sessionId']
+    if (typeof sessionId !== 'string' || sessionId === '') {
+      throw new TeleportError({
+        code: 'remote/unknown',
+        detail: '缺少 sessionId',
+        nextActions: ['先建一个远端会话，再取证'],
+      })
+    }
+    const result = await service.probe(sessionId)
+    // 断言失败**不抛**：它是取证结论（「这条命令没跑在远端」），要原样交给 UI 显示；
+    // 抛成错误反而会让面板只剩一句异常，看不到实际输出。
+    let verdict: string | null = null
+    try {
+      assertRemoteExecution(result)
+    } catch (error) {
+      verdict = error instanceof Error ? error.message : String(error)
+    }
+    sendJson(res, 200, okEnvelope<ProbeOutcome>({
+      sessionId: result.sessionId,
+      terminalId: result.terminalId,
+      cwd: result.cwd,
+      uname: result.uname,
+      executedRemotely: verdict === null,
+      remoteVerdict: verdict,
+      transcript: result.transcript,
+    }))
+  })
+
   return mounted
+}
+
+/**
+ * 「接入远端」的两个默认值。
+ *
+ * 为什么从环境变量取：远端 dsh 检出根只有部署者知道，插件猜一个看着像的路径
+ * 比留空更糟——用户会以为那是探测出来的。端口有安全默认（8899），检出根没有。
+ */
+function readDefaults(): SourceDefaults {
+  const rawPort = process.env['DSH_TELEPORT_PORT']
+  const parsed = rawPort === undefined ? Number.NaN : Number.parseInt(rawPort, 10)
+  const port = Number.isInteger(parsed) && parsed > 0 && parsed < 65_536 ? parsed : 8899
+  const remoteRoot = process.env['DSH_TELEPORT_REMOTE_ROOT'] ?? ''
+  return { port, remoteRoot }
+}
+
+/** 请求体窄化成普通对象；数组与 null 当空对象处理（缺字段会各自报错）。 */
+function asBody(body: unknown): Record<string, unknown> {
+  return typeof body === 'object' && body !== null && !Array.isArray(body)
+    ? (body as Record<string, unknown>)
+    : {}
+}
+
+/** 投影表的线上形状：字段名与 `ProjectedWorkspace` 一致，只是显式列出来。 */
+function toWorkspaceInfo(workspace: ProjectedWorkspace): ProjectedWorkspaceInfo {
+  return {
+    id: workspace.id,
+    localPath: workspace.localPath,
+    remotePath: workspace.remotePath,
+    backend: workspace.backend,
+    distro: workspace.distro,
+    title: workspace.title,
+    availability: workspace.availability,
+  }
+}
+
+function toSessionInfo(session: ProjectedSession): ProjectedSessionInfo {
+  return {
+    sessionId: session.sessionId,
+    workspaceId: session.workspaceId,
+    title: session.title,
+    updatedAt: session.updatedAt,
+    availability: session.availability,
+  }
+}
+
+function toTargetInfo(target: ConnectTarget): RemoteTargetInfo {
+  return { distro: target.distro, port: target.port, remoteRoot: target.remoteRoot }
+}
+
+/**
+ * 解析 `/attach` 的请求体。
+ *
+ * `localPath` 省略时按 distro 推第一条 UNC 候选：那是 WSL 的**默认注册形态**
+ * （`architecture.md` §4.1），让 UI 不必自己拼反斜杠。
+ */
+export function parseAttachInput(body: unknown): AttachInput & { readonly localPath: string } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new TeleportError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
+  }
+  const record = body as Record<string, unknown>
+  const target = readTarget(record['target'])
+  const remotePath = record['remotePath']
+  if (typeof remotePath !== 'string' || !remotePath.startsWith('/')) {
+    throw new TeleportError({
+      code: 'remote/path-unreadable',
+      detail: 'remotePath 必须是 POSIX 绝对路径',
+      nextActions: ['重新选择远端目录'],
+    })
+  }
+  const givenLocal = record['localPath']
+  const localPath = typeof givenLocal === 'string' && givenLocal !== ''
+    ? givenLocal
+    : toUnc(target.distro, remotePath)
+  const rawTitle = record['title']
+  const title = typeof rawTitle === 'string' && rawTitle !== '' ? rawTitle : undefined
+  return { target, remotePath, localPath, ...(title === undefined ? {} : { title }) }
 }

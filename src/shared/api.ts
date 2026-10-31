@@ -84,3 +84,98 @@ export interface FlowSnapshot {
   readonly state: FlowState
   readonly record: WorkspaceRecord | null
 }
+
+/**
+ * 一次「接入」所需的目标参数默认值。
+ *
+ * 宿主半从环境变量取（`DSH_TELEPORT_PORT` / `DSH_TELEPORT_REMOTE_ROOT`），
+ * 因为「远端 dsh 检出在哪」只有部署者知道，插件不该猜一个看着像的路径。
+ * 拿不到就留空串，由 UI 显示成必填而不是静默用错路径。
+ */
+export interface SourceDefaults {
+  readonly port: number
+  /** 远端 dsh 检出根的默认值；没配置时为空串（UI 要用户自己填）。 */
+  readonly remoteRoot: string
+}
+
+/** 一台可连接的远端（v1 只有 WSL；锚点后端将来加 host/锚点目录）。 */
+export interface RemoteTargetInfo {
+  readonly distro: string
+  /** 远端 `dsh web` 监听端口。 */
+  readonly port: number
+  /** 远端检出根（POSIX 绝对路径）。 */
+  readonly remoteRoot: string
+}
+
+/** 一个被投影的远端工作区（宿主半 `ProjectionStore` 的线上形状）。 */
+export interface ProjectedWorkspaceInfo {
+  /** 远端注册表给的 id，不是本地编的。 */
+  readonly id: string
+  /** 注册给本地 DSH 的路径（WSL 为 UNC）。 */
+  readonly localPath: string
+  /** 远端真实 POSIX 路径；未知时 null。 */
+  readonly remotePath: string | null
+  readonly backend: 'wsl' | 'ssh' | 'docker'
+  readonly distro: string | null
+  readonly title: string
+  readonly availability: 'online' | 'offline'
+}
+
+/** 一个被投影的远端会话（只读摘要，不含消息正文）。 */
+export interface ProjectedSessionInfo {
+  readonly sessionId: string
+  readonly workspaceId: string
+  readonly title: string
+  /** ISO-8601；远端没给时间就是 undefined（不用本地时钟编造）。 */
+  readonly updatedAt: string | undefined
+  readonly availability: 'online' | 'offline'
+}
+
+/** 面板要的全部投影数据 + 连接状态 + 接入默认值。 */
+export interface ProjectionSnapshotInfo {
+  readonly workspaces: readonly ProjectedWorkspaceInfo[]
+  readonly sessions: readonly ProjectedSessionInfo[]
+  readonly connected: boolean
+  readonly target: RemoteTargetInfo | null
+  /**
+   * 接入默认值（端口 + 远端检出根）。
+   *
+   * 跟着快照一起给：面板要靠它判断「现在能不能接入」，分两次请求只会多一个
+   * 「还不知道端口」的中间态。检出根没配置时是空串，面板据此明确拒绝。
+   */
+  readonly defaults: SourceDefaults
+}
+
+/** 一次「接入远端工作区」的请求。 */
+export interface AttachInput {
+  readonly target: RemoteTargetInfo
+  /** 远端宿主上的绝对 POSIX 路径。 */
+  readonly remotePath: string
+  /** 注册给本地 DSH 的路径（UNC）；省略时按 distro 推出第一条 UNC 候选。 */
+  readonly localPath?: string
+  readonly title?: string
+}
+
+/** 接入成果。 */
+export interface AttachOutcome {
+  readonly workspace: ProjectedWorkspaceInfo
+  readonly sessions: readonly ProjectedSessionInfo[]
+  /** 远端这次是新建还是幂等命中。 */
+  readonly created: boolean
+}
+
+/** 会话取证结果（M1 验收「首个命令在远端执行」的证据）。 */
+export interface ProbeOutcome {
+  readonly sessionId: string
+  readonly terminalId: string
+  /** 远端会话工作目录（POSIX 绝对路径）。 */
+  readonly cwd: string
+  /** `uname -a` 整行。 */
+  readonly uname: string
+  /** 断言结论：命令是不是真的跑在远端。 */
+  readonly executedRemotely: boolean
+  /** 不是远端时给出的原因；是远端时为 null。 */
+  readonly remoteVerdict: string | null
+  /** 截断后的终端文本，供「可复制日志」。 */
+  readonly transcript: string
+}
