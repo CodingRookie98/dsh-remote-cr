@@ -169,12 +169,15 @@
   - **TDD 步骤**: 🔴 失败单测（断言 2000/4000/8000 ×3 → 120000 offline；手动重连把 attempt 打回 0）➔ 🟢 最简实现 ➔ 🔵 重构 ➔ ✅ 单测通过 ➔ 💾 原子提交
   - **验收命令**: `node --test src/shared/reconnect.test.ts`
   - **✅ 完成（2026-10-31）实测**: 6 条断言全绿（三档间隔 / 九次循环后转 offline 且不回弹 / settle 与手动重连都归零 / describeReconnect 两相位文案 / `ReconnectDriver` 失败自动排下一档且成功即停 + 手动重连立刻试一次 / 负控）；注入 `ReconnectTimers` 假定时器，`node --test` 全套 15/15 passed，`tsc --noEmit` Exit 0，`NEGATIVE_CONTROL=1` Exit 1
-- [ ] **Task P3.2**: Backend 抽象 + WSL 实现（探测 / 引导 / 启动 / 反向通路定档）
+- [x] **Task P3.2**: Backend 抽象 + WSL 实现（探测 / 引导 / 启动 / 反向通路定档）
   - **涉及文件**: `src/local/backend/**`, `src/installer/**`, 对应 `*.test.ts`
   - **验收**: 真机连上 WSL 并启动远端 `dsh`；③ stdio 桥为默认、① 仅 `mirrored` 优化且失败即回落（A2）；③ 与 ① 双不通时**硬失败**并给可操作提示；端口占用 → `remote/port-in-use`（B3）
-- [ ] **Task P3.3**: WSL 细节与进程回收
+  - **✅ 完成（2026-10-31）实测**: `src/local/backend/backend.ts`（`BackendKind`/`BackendProbe`/`LaunchRequest`/`RemoteBackend`，接口内零 WSL 细节）、`wsl/launch.ts`（`buildDshArgs`/`buildLaunchArgs`/`launchRemoteDsh`）、`wsl/remote-dsh.ts`（`parseDshEndpoint`/`readStartFailure`/`classifyStartFailure`，**先判具体原因再落到 `remote/startup-failed`**）。真机探针 `node spikes/m1/p32-launch/probe.cjs` → **7/7 passed, exit 0**：`P32-1 {"port":8901,"tokenLen":43}` / `P32-2 {"handshake":303,"cookie":"ok","page":200}` / `P32-3 {"remoteHome":"/home/hui","localHome":"C:\\Users\\hui","differs":true}` / `P32-4 {"clean":true,"portFree":true}` / `P32-5 code=remote/port-in-use`（建议 8904）/ `P32-6 code=remote/node-missing`（detail 含 `node-missing-teleport`）/ `P32-7 code=remote/cancelled`（且端口回收）。负控 `NEGATIVE_CONTROL=1` → **失败集恰为 {P32-2,P32-3,P32-4}**，判据是「失败集必须恰好等于变异点」。① mirrored 优化档**本轮未走**（走 ③ stdio 桥），按 ADR-0002 它是优化项非必答项，已在 README「已知未覆盖」登记。
+- [x] **Task P3.3**: WSL 细节与进程回收
   - **涉及文件**: `src/local/backend/wsl/**`
   - **验收**: `--exec` 调用、UTF-16LE 解码、发行版双空格解析、UNC 双候选 + `cat >` 回退、`ownedChildren` 两级 dispose、绝不 `wsl --terminate`；含空格/中文发行版名可用（**当前未实测，本任务补齐**）
+  - **✅ 完成（2026-10-31）实测**: `wsl/exec.ts`（唯一 spawn 点，`shell:false`，保留原始字节由入口决定解码）、`wsl/distro.ts`（`parseWslVerboseList` 按 `/\s{2,}/` 切列、名字允许含空格、中文表头用 `(s|$)` 而非 `\b`）、`wsl/unc.ts`、`wsl/children.ts`（`OwnedChildren` 两级 dispose，`survivors` 如实上报）。真机 `spikes/m1/p33-wsl-exec`：**P33 8/8 + UNC 6/6**；**含空格/中文发行版名实测通过**（`--list --verbose` 首 12 hex = `200020004e0041004d004500`，即带前导空格的 ` NAME` 表头；`--list --quiet` 首项 `7500620075006e0074007500` = `ubuntu`）。远端无残留复核：`ls -d /home/hui/.dsh-teleport-unc-probe` → `GONE`，`ss -ltn | grep -E ':890[0-9] '` → `NO_LISTENER`。
+  - **真机教训（已进实现）**: ① 工作目录必须走 `wsl --cd` 不能用 `spawn` 的 `cwd`（后者是 Windows 路径，交给 distro 内 POSIX 路径只会 ENOENT）；② 「远端无 node」有 `nohup: failed to run command` 与 `execvpe(x) failed` 两种文案，探针首跑因只认前者而红；③ 不能按 `/proc/<pid>/comm == node` 筛进程（`node -e` 的 comm 是 `MainThread`），判据须落在 `readlink /proc/<pid>/exe`。
 - [ ] **Task P3.4**: 四选一添加工作区 + 连接进度/取消/错误分阶段
   - **涉及文件**: `src/client/**`
   - **验收**: 「Add workspace…」被接管、四选一（本机 / WSL / SSH-灰 / Docker-灰）、分阶段进度可取消、错误分阶段可复制；同时实测确认 `dsh.client` 清单字段语义
