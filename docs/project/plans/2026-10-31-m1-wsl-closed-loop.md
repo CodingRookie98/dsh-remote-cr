@@ -27,11 +27,11 @@
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
 - **当前活跃阶段**: P3 核心功能原子实现
-- **当前活跃子任务**: Task P3.2（Backend 抽象 + WSL 实现）
+- **当前活跃子任务**: Task P3.5（工作区与会话投影，WSL 走 UNC 直挂）
 - **当前子任务重试计数**: 0/3
 - **外层循环迭代**: 0/5
-- **最后一次验证状态**: ✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
-- **最新有效提交**: 待本次原子提交（`252a2ff` 之后第一批：T5/T6 文档 + 计划文档 + P3.0 骨架）
+- **最后一次验证状态**: ✅ P3.4 已通过 —— `node --test "src/**/*.test.ts"` = **224 / 224 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `16 modules -> lib/client.js (52319 B)`；信封冒烟（假 `window.__ModuleLoader__` + 假 react）读出 `id dsh-teleport`、`inject ["slots","layout"]`、`apply` 为 function；`NEGATIVE_CONTROL=1` → **35 红 / 189 绿**（新增 11 条可假性断言）。此前记录：✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
+- **最新有效提交**: `bb412a2`（M0 关闭 + M1 计划 + T5/T6 证据）；P3.4 由本次原子提交承载
 - **阻断原因**: 无
 
 ---
@@ -178,9 +178,13 @@
   - **验收**: `--exec` 调用、UTF-16LE 解码、发行版双空格解析、UNC 双候选 + `cat >` 回退、`ownedChildren` 两级 dispose、绝不 `wsl --terminate`；含空格/中文发行版名可用（**当前未实测，本任务补齐**）
   - **✅ 完成（2026-10-31）实测**: `wsl/exec.ts`（唯一 spawn 点，`shell:false`，保留原始字节由入口决定解码）、`wsl/distro.ts`（`parseWslVerboseList` 按 `/\s{2,}/` 切列、名字允许含空格、中文表头用 `(s|$)` 而非 `\b`）、`wsl/unc.ts`、`wsl/children.ts`（`OwnedChildren` 两级 dispose，`survivors` 如实上报）。真机 `spikes/m1/p33-wsl-exec`：**P33 8/8 + UNC 6/6**；**含空格/中文发行版名实测通过**（`--list --verbose` 首 12 hex = `200020004e0041004d004500`，即带前导空格的 ` NAME` 表头；`--list --quiet` 首项 `7500620075006e0074007500` = `ubuntu`）。远端无残留复核：`ls -d /home/hui/.dsh-teleport-unc-probe` → `GONE`，`ss -ltn | grep -E ':890[0-9] '` → `NO_LISTENER`。
   - **真机教训（已进实现）**: ① 工作目录必须走 `wsl --cd` 不能用 `spawn` 的 `cwd`（后者是 Windows 路径，交给 distro 内 POSIX 路径只会 ENOENT）；② 「远端无 node」有 `nohup: failed to run command` 与 `execvpe(x) failed` 两种文案，探针首跑因只认前者而红；③ 不能按 `/proc/<pid>/comm == node` 筛进程（`node -e` 的 comm 是 `MainThread`），判据须落在 `readlink /proc/<pid>/exe`。
-- [ ] **Task P3.4**: 四选一添加工作区 + 连接进度/取消/错误分阶段
-  - **涉及文件**: `src/client/**`
+- [x] **Task P3.4**: 四选一添加工作区 + 连接进度/取消/错误分阶段
+  - **涉及文件**: `src/client/**`, `src/shared/{api,flow,choices}.ts`, `src/local/api/**`, `src/index.ts`, `cordis.patch.yml`, `scripts/build-client.mjs`, `tsconfig.client.json`, `package.json`
   - **验收**: 「Add workspace…」被接管、四选一（本机 / WSL / SSH-灰 / Docker-灰）、分阶段进度可取消、错误分阶段可复制；同时实测确认 `dsh.client` 清单字段语义
+  - **✅ 完成（2026-10-31）实测**: 浏览器半 `src/client/**`（`plugin.ts` 只做装配，`registration.ts` 是可单测的纯注册逻辑，`components.ts` 用宿主模块表的 react）+ 共享层 `flow.ts`（7 阶段状态机）/ `choices.ts`（四选一）/ `api.ts` + 宿主半 `src/local/api/**`（6 条 exact 路由 + `workspace.ts` 三阶段流程 + 回环守卫）。**全套 224/224 passed**、双 tsconfig Exit 0、`build:client` → `16 modules -> lib/client.js (52319 B)`、`NEGATIVE_CONTROL=1` 35 红/189 绿。
+  - **`dsh.client` 字段语义实测确认（本任务验收项之一）**: ① `packages/client/modules/src/client/manifest.ts:173-193 parseDshClient` —— `platform` 必填 string、`inject`/`external` 必须是字符串数组、`immediately` 必须是 boolean，任一不合规直接抛 `client-modules: <pkg> <field> must be …`；② `inject` 的语义是**包名依赖**（`packages/util/package-manifest/src/types.ts:84` 注释原文 "Informational package-name dependencies, not Cordis service injection"），不是 cordis 服务名；③ `packages/client/modules/src/index.ts:844-879 resolveMeta` 只对 **Loader 已有行**做 `locatePkgJson`，所以 `cordis.patch.yml` 必须先插一行宿主半，否则 `dsh.client` 声明永不被读取；④ 缺 `exports['./client']` 直接抛 `declares dsh.client but exports no "./client" bundle`，且该导出必须是**单文件信封**（`lib/client.js`），不能是 tsc 的 ESM 产物。
+  - **偏离与登记（供 P4 独立审查）**: ① ui-design §4 写「SSH 未灰」，M1 验收写「SSH-灰」，本任务按 M1 验收实现（`src/shared/choices.ts` 文件头已写明该偏差与 M2 的改法）；② `src/shared/halves.test.ts` 原先硬编码「每个半的产物都是 `./lib/<half>/index.js`」，client 半必须指向信封 `./lib/client.js`，已改成逐半显式映射表并写明理由；③ `src/local/api/routes.ts` 的守卫顺序改成「先官方 `connection.requestRejection`、后本机回环」，理由：反序会让「本机发起但 Origin 不对」的请求绕过官方围栏。
+  - **本轮未覆盖（诚实标注）**: ① 真机浏览器里点完四选一的端到端演示留到 P3.5.2（本任务的证据是信封冒烟 + 224 条单测，不含真机点击）；② `/teleport/api/workspace` 的 attach 阶段目前只到「UNC 目录存在性校验」，真正的 `createWorkspace` 投影是 P3.5。
 - [ ] **Task P3.5**: 工作区与会话投影（WSL 走 UNC 直挂）
   - **涉及文件**: `src/local/projection/**`
   - **验收**: 瞬移面板出现远端工作区、可新建会话；会话首个命令在远端执行（`pwd` + `uname -a` 断言）

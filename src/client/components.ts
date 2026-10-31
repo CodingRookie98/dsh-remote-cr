@@ -1,0 +1,471 @@
+/**
+ * 瞬移面板与「添加工作区」向导的组件（浏览器半，零 JSX）。
+ *
+ * 为什么不用 `.tsx`：`tsconfig.client.json` 只收 `.ts`，且本仓库不装 `@types/react`
+ * ——宿主模块表提供 `react` 运行时，我们只声明真正用到的几个 API
+ * （`src/client/react.d.ts`）。手写 `createElement` 反而让「到底用了哪些 API」一目了然。
+ *
+ * 三条纪律：
+ * 1. **不静默降级**：不可用的来源灰显并写明原因；失败给四段可复制报告，不吞错。
+ * 2. **`onPicked` 每次 `open` 恰好一次**：`DirectoryFlowOwnerProps` 的契约
+ *    （`ui-design.md` §4），重复回传会让 owner 反复 createWorkspace。
+ * 3. **不许 import `node:*`**：这一半进浏览器包，node 内建在模块表里解析不到。
+ *
+ * 本文件同时被两套 tsconfig 编译：根 `tsconfig.json`（node lib，无 DOM）与
+ * `tsconfig.client.json`（含 DOM）。所以这里**只用两边都有的全局**，DOM 专属的
+ * 东西（如 `navigator.clipboard`）一律走本地窄接口取，而不是依赖 `lib.dom`。
+ */
+
+import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
+
+import type { DirEntry, DirListing, WorkspaceRecord } from '../shared/api.ts'
+import { canCancel, describeFlow, FLOW_PHASE_LABELS, type FlowState } from '../shared/flow.ts'
+import { cancelFlow, listDirectory, listWorkspaces, loadSources, readFlow, startWorkspace } from './api.ts'
+import {
+  addInputOf,
+  beginFlow,
+  canBrowse,
+  closeWizard,
+  enterBrowse,
+  failListing,
+  failSources,
+  initialWizard,
+  isTerminal,
+  openWizard,
+  pickedPathOf,
+  progressPercent,
+  receiveFlow,
+  receiveListing,
+  receiveSources,
+  reportOf,
+  selectDistro,
+  selectSource,
+  shouldPoll,
+  type WizardState,
+} from './state.ts'
+import { wizardStore } from './wizard-store.ts'
+
+/** 轮询间隔：一次远端 node 探测要几秒，250ms 够细也够省。 */
+const POLL_MS = 250
+
+type AnyProps = Record<string, unknown>
+
+function readFunction<T>(props: AnyProps, name: string): T | undefined {
+  const value = props[name]
+  return typeof value === 'function' ? (value as T) : undefined
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** 更新 store 并返回新状态（读旧值会拿到上一帧，容易写出差一帧的 bug）。 */
+function update(mutate: (state: WizardState) => WizardState): WizardState {
+  wizardStore.set(mutate)
+  return wizardStore.get()
+}
+
+/** 订阅 store；退订函数交给 `useEffect`。 */
+function useWizard(): WizardState {
+  const [state, setState] = useState<WizardState>(() => wizardStore.get())
+  useEffect(() => wizardStore.subscribe(setState), [])
+  return state
+}
+
+function idleFlow(): FlowState {
+  return { status: 'idle', phase: 'probe', completed: [], error: undefined }
+}
+
+/** 拼接子目录：本机用反斜杠，distro 内用正斜杠。 */
+export function joinPath(base: string, name: string): string {
+  const separator = base.includes('\\') && !base.startsWith('/') ? '\\' : '/'
+  return base.endsWith(separator) ? base + name : base + separator + name
+}
+
+/** 一次目录浏览：成功写 listing，失败写 listingError（都留在对话框里，不弹全局错误）。 */
+async function browseTo(state: WizardState, path: string | undefined): Promise<void> {
+  try {
+    const distro = state.source === 'wsl' ? (state.distro ?? undefined) : undefined
+    const listing = await listDirectory({ distro, path })
+    update((current) => receiveListing(current, listing))
+  } catch (error) {
+    update((current) => failListing(current, messageOf(error)))
+  }
+}
+
+/** 轮询一次流程快照。 */
+async function pollOnce(id: string): Promise<void> {
+  try {
+    const snapshot = await readFlow(id)
+    update((current) => receiveFlow(current, snapshot))
+  } catch (error) {
+    update((current) => failListing(current, messageOf(error)))
+  }
+}
+
+/**
+ * 打开向导时读一次四选一（失败不抛，落进 `sourcesError` 由 UI 显示）。
+ *
+ * 注意每次 `update` 的入参都是**已拿到手的值**，不是「先 await 再在 reducer 里取」：
+ * reducer 必须是纯函数，而且 `await` 只能出现在 async 函数体里（不能藏在箭头函数里）。
+ */
+async function loadSourcesInto(): Promise<void> {
+  try {
+    const payload = await loadSources()
+    update((current) => receiveSources(current, payload))
+  } catch (error) {
+    const message = messageOf(error)
+    update((current) => failSources(current, message))
+  }
+}
+
+/** 点「选择这个目录」：发起流程，成功进 running 屏。 */
+async function confirmPick(state: WizardState): Promise<void> {
+  try {
+    const snapshot = await startWorkspace(addInputOf(state))
+    update((current) => beginFlow(current, snapshot))
+  } catch (error) {
+    const message = messageOf(error)
+    update((current) => failListing(current, message))
+  }
+}
+
+/** 取消当前流程。 */
+async function cancelCurrent(id: string): Promise<void> {
+  try {
+    const snapshot = await cancelFlow(id)
+    update((current) => receiveFlow(current, snapshot))
+  } catch (error) {
+    const message = messageOf(error)
+    update((current) => failListing(current, message))
+  }
+}
+
+/**
+ * 剪贴板写入。
+ *
+ * 不直接用 `navigator.clipboard`：本文件也被根 `tsconfig.json`（`lib: es2024`，
+ * 无 DOM）编译，那里没有 `Navigator.clipboard` 这个成员。用一个窄接口取，
+ * 拿不到就返回 false —— 某些上下文会拒剪贴板权限，不能因此抛错。
+ */
+export async function copyText(text: string): Promise<boolean> {
+  const holder = (globalThis as { navigator?: { clipboard?: { writeText?: (value: string) => Promise<void> } } })
+    .navigator
+  const write = holder?.clipboard?.writeText
+  if (typeof write !== 'function') return false
+  try {
+    await write.call(holder?.clipboard, text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function progressBar(state: WizardState): unknown {
+  const percent = progressPercent(state)
+  return h(
+    'div',
+    { 'data-teleport': 'progress' },
+    h('div', { 'data-teleport': 'progress-label' }, describeFlow(state.flow?.state ?? idleFlow())),
+    h(
+      'div',
+      { 'data-teleport': 'progress-track', style: { height: '4px', background: '#e5e5e5', borderRadius: '2px' } },
+      h('div', {
+        'data-teleport': 'progress-fill',
+        style: { width: String(percent) + '%', height: '4px', background: '#2f6fed', borderRadius: '2px' },
+      }),
+    ),
+    h('div', { 'data-teleport': 'progress-percent' }, String(percent) + '%'),
+  )
+}
+
+function errorBox(state: WizardState, onCopy: () => void, onRetry: () => void): unknown {
+  return h(
+    'div',
+    { 'data-teleport': 'error' },
+    h('pre', { 'data-teleport': 'report', style: { whiteSpace: 'pre-wrap', fontSize: '11px' } }, reportOf(state)),
+    h('button', { type: 'button', 'data-teleport': 'copy', onClick: onCopy }, '复制日志'),
+    h('button', { type: 'button', 'data-teleport': 'retry', onClick: onRetry }, '重试'),
+  )
+}
+
+function listingView(state: WizardState, onEnter: (path: string) => void, onUp: () => void): unknown {
+  if (state.listingError !== null) {
+    return h(
+      'div',
+      { 'data-teleport': 'listing-error' },
+      h('div', null, state.listingError),
+      h('button', { type: 'button', 'data-teleport': 'up', onClick: onUp }, '返回上一级'),
+    )
+  }
+  const listing: DirListing | null = state.listing
+  if (listing === null) return h('div', { 'data-teleport': 'listing-loading' }, '读取目录…')
+  const rows = listing.entries.map((entry: DirEntry) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        key: entry.name,
+        'data-teleport': 'entry',
+        'data-kind': entry.kind,
+        onClick: () => {
+          if (entry.kind === 'directory') onEnter(joinPath(listing.path, entry.name))
+        },
+      },
+      entry.kind === 'directory' ? entry.name + '/' : entry.name,
+    ),
+  )
+  return h(
+    'div',
+    { 'data-teleport': 'listing' },
+    h('div', { 'data-teleport': 'listing-path' }, listing.path),
+    listing.truncated ? h('div', { 'data-teleport': 'listing-truncated' }, '目录项过多，只显示前 500 条') : null,
+    h('div', { 'data-teleport': 'entries', style: { maxHeight: '240px', overflowY: 'auto' } }, ...rows),
+  )
+}
+
+/**
+ * 「添加工作区」向导。
+ *
+ * 挂在 `conversation.hero.workspace.directoryFlow` 与 `sidebar.workspaces.directoryFlow`
+ * 两个洞上，用 `priority: -1` 抢在官方浏览对话框之前。owner props 是摊平进来的
+ * （`ui-renderer` 的 scoped-slots 行为，M0 实测 V12），所以直接从 props 取。
+ */
+export function DirectoryFlow(props: AnyProps): unknown {
+  const state = useWizard()
+  const open = props['open'] === true
+  const busy = props['busy'] === true
+  const onPicked = readFunction<(path: string) => void>(props, 'onPicked')
+  const onCancel = readFunction<() => void>(props, 'onCancel')
+  const onError = readFunction<(message: string) => void>(props, 'onError')
+  /** `onPicked` 每次 open 恰好一次：ref 记住这一轮是否已经回传过。 */
+  const reported = useRef(false)
+
+  // owner 每次把 open 翻成 true 都算一轮新的选择。
+  useEffect(() => {
+    if (!open) {
+      reported.current = false
+      update(closeWizard)
+      return
+    }
+    if (wizardStore.get().step !== 'closed') return
+    update(openWizard)
+    void loadSourcesInto()
+  }, [open])
+
+  // 成功：把本机绝对路径回传给 owner，恰好一次。
+  useEffect(() => {
+    if (state.step !== 'done' || reported.current) return
+    const path = pickedPathOf(state)
+    if (path === null) return
+    reported.current = true
+    onPicked?.(path)
+  }, [state.step, state.flow, onPicked])
+
+  // 失败：告诉 owner 一句人话，但不替它决定关不关。
+  useEffect(() => {
+    if (state.step !== 'failed') return
+    onError?.(state.flow?.state.error?.detail ?? state.listingError ?? '添加工作区失败')
+  }, [state.step, state.flow, state.listingError, onError])
+
+  // 只有进行中才轮询。
+  const flowId = state.flow?.id
+  const polling = shouldPoll(state) && flowId !== undefined
+  useEffect(() => {
+    if (!polling || flowId === undefined) return
+    const timer = setInterval(() => {
+      void pollOnce(flowId)
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [polling, flowId])
+
+  if (!open) return null
+
+  const body: unknown[] = []
+  if (state.step === 'choose') {
+    const options = state.options
+    body.push(h('div', { 'data-teleport': 'title' }, '添加工作区'))
+    body.push(
+      options === null
+        ? h('div', { 'data-teleport': 'sources-loading' }, state.sourcesError ?? '探测本机能力…')
+        : h(
+            'div',
+            { 'data-teleport': 'sources' },
+            ...options.map((option) =>
+              h(
+                'button',
+                {
+                  type: 'button',
+                  key: option.id,
+                  'data-teleport': 'source',
+                  'data-source': option.id,
+                  'data-availability': option.availability,
+                  disabled: option.availability !== 'available',
+                  title: option.reason,
+                  onClick: () => {
+                    const next = update((current) => selectSource(current, option.id))
+                    if (!canBrowse(next)) return
+                    const start = next.source === 'wsl' ? '/' : undefined
+                    const browsing = update((current) => enterBrowse(current, start ?? ''))
+                    void browseTo(browsing, start)
+                  },
+                },
+                option.label + (option.availability === 'available' ? '' : '（' + option.reason + '）'),
+              ),
+            ),
+          ),
+    )
+    if (state.source === 'wsl') {
+      body.push(
+        h(
+          'div',
+          { 'data-teleport': 'distros' },
+          ...state.distros.map((distro) =>
+            h(
+              'button',
+              {
+                type: 'button',
+                key: distro.name,
+                'data-teleport': 'distro',
+                'data-selected': String(state.distro === distro.name),
+                onClick: () => update((current) => selectDistro(current, distro.name)),
+              },
+              distro.name + ' (' + distro.state + ')',
+            ),
+          ),
+        ),
+      )
+    }
+  } else if (state.step === 'browse') {
+    body.push(
+      h('div', { 'data-teleport': 'title' }, '选择目录'),
+      listingView(
+        state,
+        (path) => void browseTo(state, path),
+        () => {
+          const parent = state.listing?.parent
+          if (parent !== null && parent !== undefined) void browseTo(state, parent)
+        },
+      ),
+      h(
+        'div',
+        { 'data-teleport': 'actions' },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-teleport': 'back',
+            onClick: () => update((current) => ({ ...current, step: 'choose' })),
+          },
+          '返回',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-teleport': 'confirm',
+            disabled: busy || state.listing === null,
+            onClick: () => void confirmPick(state),
+          },
+          busy ? '正在创建工作区…' : '选择这个目录',
+        ),
+      ),
+    )
+  } else if (state.step === 'running') {
+    body.push(h('div', { 'data-teleport': 'title' }, '正在添加工作区'), progressBar(state))
+    const flow = state.flow?.state
+    if (flow !== undefined && canCancel(flow) && flowId !== undefined) {
+      body.push(
+        h(
+          'button',
+          { type: 'button', 'data-teleport': 'cancel', onClick: () => void cancelCurrent(flowId) },
+          '取消',
+        ),
+      )
+    }
+  } else if (state.step === 'done') {
+    body.push(
+      h('div', { 'data-teleport': 'title' }, '已添加'),
+      h('div', { 'data-teleport': 'done-path' }, pickedPathOf(state) ?? ''),
+      h('button', { type: 'button', 'data-teleport': 'close', onClick: () => onCancel?.() }, '关闭'),
+    )
+  } else {
+    body.push(
+      h('div', { 'data-teleport': 'title' }, state.step === 'cancelled' ? '已取消' : '添加失败'),
+      errorBox(
+        state,
+        () => {
+          void copyText(reportOf(state))
+        },
+        () => update(openWizard),
+      ),
+      h('button', { type: 'button', 'data-teleport': 'close', onClick: () => onCancel?.() }, '关闭'),
+    )
+  }
+
+  return h('div', { 'data-teleport': 'wizard', 'data-step': state.step }, ...body)
+}
+
+/** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
+export function TeleportIcon(): unknown {
+  return h('span', { 'data-teleport': 'panellist-icon', title: '瞬移' }, 'TP')
+}
+
+/**
+ * 主面板：当前流程 + 已添加的远端工作区。
+ *
+ * 它不承担「添加」入口——那是两个 directoryFlow 洞的职责。这里只做状态呈现：
+ * 流程走到哪、已有哪些远端工作区。流程落终态时重读一次 `/workspaces`。
+ */
+export function TeleportPanel(): unknown {
+  const state = useWizard()
+  const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const listed = await listWorkspaces()
+        if (alive) {
+          setRecords(listed)
+          setError(null)
+        }
+      } catch (caught) {
+        if (alive) setError(messageOf(caught))
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [state.step])
+
+  const flow = state.flow?.state
+  const summary = useMemo(() => (flow === undefined ? '尚未连接远端' : describeFlow(flow)), [flow])
+  const rows = records.map((record) =>
+    h(
+      'div',
+      { key: record.localPath, 'data-teleport': 'workspace' },
+      h('span', { 'data-teleport': 'workspace-source' }, record.source),
+      h('span', { 'data-teleport': 'workspace-path' }, record.localPath),
+    ),
+  )
+
+  return h(
+    'div',
+    { 'data-teleport': 'panel' },
+    h('div', { 'data-teleport': 'panel-title' }, '瞬移'),
+    h('div', { 'data-teleport': 'panel-flow' }, summary),
+    flow === undefined ? null : h('div', { 'data-teleport': 'panel-phase' }, FLOW_PHASE_LABELS[flow.phase]),
+    isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
+    h(
+      'div',
+      { 'data-teleport': 'panel-workspaces' },
+      ...(rows.length === 0 ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有远端工作区')] : rows),
+    ),
+    error === null ? null : h('div', { 'data-teleport': 'panel-error' }, error),
+  )
+}
+
+/** 初始状态导出给诊断面用（避免 `initialWizard` 在组件里被误当成可变单例）。 */
+export const WIZARD_INITIAL: WizardState = initialWizard()

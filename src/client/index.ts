@@ -1,20 +1,20 @@
 /**
- * 浏览器半（`dsh-teleport/client`，browser 侧）。
+ * 浏览器半（`dsh-teleport/client`，browser 侧）的**产物入口**。
  *
- * 瞬移面板、四选一添加工作区、连接进度/取消/错误分阶段。这一半不许 import `node:*`。
+ * 这个文件会被 `scripts/build-client.mjs` 编成 `lib/client-raw/client/index.js`，
+ * 再被封进官方信封 `lib/client.js`。模块系统只从**入口模块的 exports** 上读
+ * `apply` / `inject`（`packages/client/modules/src/client/system.ts`），所以这里
+ * 必须把 `plugin.ts` 的那两个名字原样再导出——少一行就是「注册了但没生效」。
  *
- * 本文件当前只落最小可验证的表面（`HALF` 标识 + 共享层再导出），具体能力随
- * M1 的 P3.1–P3.7 逐个补齐；在此之前不宣称任何行为已实现。
+ * 纪律：本半不许 import `node:*`，也不许 import 宿主半的任何模块。
  */
 
-import { describeHalf, type PluginHalf } from '../shared/halves.ts'
+export { HALF, describeSelf, PLUGIN_HALVES, describeHalf, SHARED_PROTOCOL_VERSION, describeShared } from './half.ts'
+export type { PluginHalf } from './half.ts'
 
-export const HALF: PluginHalf = 'client'
-
-/** 稳定标识，供日志断言与「四个半都加载到了吗」的启动自检使用。 */
-export function describeSelf(): string {
-  return describeHalf(HALF)
-}
-
-export { PLUGIN_HALVES, describeHalf, type PluginHalf } from '../shared/halves.ts'
-export { SHARED_PROTOCOL_VERSION, describeShared } from '../shared/index.ts'
+export { apply, inject, PANEL_ID } from './plugin.ts'
+export { DIRECTORY_FLOW_SLOTS, PANEL_ORDER, registerSlots } from './registration.ts'
+export type { RegistrationContext, SlotRegistration, TeleportComponents } from './registration.ts'
+export { DirectoryFlow, TeleportIcon, TeleportPanel, WIZARD_INITIAL } from './components.ts'
+export { wizardStore } from './wizard-store.ts'
+export type { TeleportDiagnostics, SlotRecord } from './diagnostics.ts'

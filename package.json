@@ -22,7 +22,7 @@
     },
     "./client": {
       "types": "./lib/client/index.d.ts",
-      "default": "./lib/client/index.js"
+      "default": "./lib/client.js"
     },
     "./companion": {
       "types": "./lib/companion/index.d.ts",
@@ -32,19 +32,47 @@
       "types": "./lib/installer/index.d.ts",
       "default": "./lib/installer/index.js"
     },
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib/index.js",
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "lib/client.js",
+    "cordis.patch.yml"
+  ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
     "dsh": ">=0.2.1-rc.0 <0.3.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:client": "node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",
     "spike:t6": "node spikes/m1/cross-machine-t6/probe.cjs"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.1-rc.0 <0.3.0"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
+    }
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",

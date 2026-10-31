@@ -17,12 +17,23 @@ test('四个半与 package.json#exports 不漏项：每个半都有子路径导�
   }
 })
 
-test('每个半的 exports 都指向一个真实存在的产物路径（防止加了目录忘了 exports 的另一半）', () => {
+// 每个半的产物路径。client 是唯一的例外：它必须指向**官方信封** `lib/client.js`
+// （`window.__ModuleLoader__.load({...})` 那一层），而不是 tsc 的 `lib/client/index.js`——
+// 官方 `client-modules` 拿到 exports['./client'] 后直接当脚本加载，tsc 的 ESM 产物
+// 在浏览器里根本执行不了。见 src/build/client-bundle.ts 与 scripts/build-client.mjs。
+const HALF_ENTRIES: Record<(typeof PLUGIN_HALVES)[number], string> = {
+  local: './lib/local/index.js',
+  client: './lib/client.js',
+  companion: './lib/companion/index.js',
+  installer: './lib/installer/index.js',
+}
+
+test('每个半的 exports 都指向约定的产物路径（防止加了目录忘了 exports 的另一半）', () => {
   for (const half of PLUGIN_HALVES) {
     const entry = pkg.exports[`./${half}`]
     assert.equal(typeof entry, 'object')
     const target = (entry as Record<string, string>).default
-    assert.equal(target, `./lib/${half}/index.js`)
+    assert.equal(target, HALF_ENTRIES[half], `./${half} 的产物路径不对`)
   }
 })
 

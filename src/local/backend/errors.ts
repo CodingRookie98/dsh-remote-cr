@@ -31,6 +31,7 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/tunnel-unavailable': 'tunnel',
   'remote/auth-failed': 'launch',
   'remote/workspace-unwritable': 'attach',
+  'remote/path-unreadable': 'attach',
   'remote/cancelled': 'probe',
   'remote/unknown': 'probe',
 }
