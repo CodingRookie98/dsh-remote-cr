@@ -184,9 +184,12 @@
 - [ ] **Task P3.5**: 工作区与会话投影（WSL 走 UNC 直挂）
   - **涉及文件**: `src/local/projection/**`
   - **验收**: 瞬移面板出现远端工作区、可新建会话；会话首个命令在远端执行（`pwd` + `uname -a` 断言）
-- [ ] **Task P3.6**: 凭据代理 + 同步屏障
+- [x] **Task P3.6**: 凭据代理 + 同步屏障
   - **涉及文件**: `src/local/proxy/**`
   - **验收**: 远端环境/磁盘只有占位令牌；本机代理侧留下该远端 host 的**真实入站请求记录 + 替换日志行**（A6 取证口径）；屏障未过时 UI 不显示「已连接」
+  - **✅ 完成（2026-10-31）实测**: 五个模块 `placeholder.ts` / `credentials.ts` / `proxy.ts` / `bridge.ts` / `barrier.ts`，单测 25 条；全套 **111/111 passed**、`tsc --noEmit` Exit 0、`NEGATIVE_CONTROL=1` **19 红**（13 条既有可假性 + barrier 6 条，无正向误伤）。真机探针 `node spikes/m1/p36-proxy/probe.cjs` → **7/7 passed, exit 0**：`P36-1` 占位串确定性（同 salt 同值/异 salt 异值）；`P36-2` 远端 `provider.json` 含占位串、`leaksSecret:false`；`P36-3` `applied`→`online` / `failed`→`failed`+`retryable:true`+`proxy/sync-failed`；`P36-4` 并发 3 次只写 1 次、再调写第 2 次（不缓存）、`inFlight:false`；`P36-5` 远端 curl 经 ③ stdio 桥 → **200**，`record.remote='wsl:ubuntu_dev'`、`substitutions=[{header:'authorization',ref:'DEEPSEEK_API_KEY'}]`、上游收到 `Bearer sk-local-only-…`、代理记录中搜不到真值；`P36-6` 远端带真钥匙 → **403** `real-credential-on-remote`、上游增量 **0**；`P36-7` 宿主非回环 `203.0.113.99` 连代理失败、同端口形态绑 `0.0.0.0` 的对照 server 连得上。负控 `NEGATIVE_CONTROL=1` → **失败集恰为 {P36-2..P36-7} 6 条**、POS 1/7。
+  - **本轮踩坑（已进探针）**: ① 对照组 server 不能在测量之前 `close()`，否则「对照可达」恒 false，变异点过去也照样绿 —— 空气断言只能靠负控抓；② 服务桥的进程必须用异步 `execFile`/`spawn`，`spawnSync` 会堵死事件循环导致收不到 OPEN 帧；③ 探针用合成密钥 `sk-local-only-<ts>`，不读 `~/.dsh/.credentials.yaml` 真值。
+  - **本轮未覆盖（诚实标注，见 `spikes/m1/p36-proxy/README.md`）**: ① 优化档（`mirrored` 直连）未走；真实上游端点未接；§7.1 P50/P90 未测；salt 落盘策略未裁决（P3.7）；账号平台类端点 403/WAF 降级形态未验。
 - [ ] **Task P3.7**: 环境策略 v1（默认 `reuse`，`isolated` 可选）
   - **涉及文件**: `src/local/env-policy/**`
   - **验收**: 默认用上远端已有 `~/.dsh`；`isolated` 通过 `DSH_HOME` 覆盖成立；探测字段按 ADR-0004 P1–P7
