@@ -157,3 +157,26 @@ export class ReconnectDriver {
     }
   }
 }
+
+/**
+ * 连接相位：面板能看到的四种状态。
+ *
+ * 为什么不直接用 `ReconnectPhase`：那个只有 `retrying`/`offline`，是**调度器**的内部
+ * 两态，缺了「从没连过」（`idle`）和「连上了」（`connected`）。凑成四态才能让快照
+ * 一句话说清当前处境，而且四下分支穷尽，新增状态会被 `switch` 的返回类型挡住。
+ */
+export type LinkPhase = 'idle' | 'connected' | 'retrying' | 'offline'
+
+/** 相位的人话说明；宿主半写快照、面板写状态行，共用同一份措辞。 */
+export function describeLink(phase: LinkPhase): string {
+  switch (phase) {
+    case 'idle':
+      return '尚未连接远端'
+    case 'connected':
+      return '远端已连接'
+    case 'retrying':
+      return '连接已断开，正在按 2s / 4s / 8s 重试'
+    case 'offline':
+      return '远端暂时不可用，每 2 分钟重试一次'
+  }
+}

@@ -358,16 +358,21 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     return service
   }
 
-  mount('/projection', ['GET'], async (_req, res) => {
-    const service = requireProjection()
+  /** 快照的线上形状。三条路由（读面板 / 断开 / 重连）共用，避免字段各写一遍。 */
+  const snapshotInfo = (service: ProjectionService): ProjectionSnapshotInfo => {
     const snapshot = service.snapshot()
-    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>({
+    return {
       workspaces: snapshot.workspaces.map(toWorkspaceInfo),
       sessions: snapshot.sessions.map(toSessionInfo),
       connected: snapshot.connected,
       target: snapshot.target === null ? null : toTargetInfo(snapshot.target),
+      link: snapshot.link,
       defaults: readDefaults(),
-    }))
+    }
+  }
+
+  mount('/projection', ['GET'], async (_req, res) => {
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(requireProjection())))
   })
 
   mount('/attach', ['POST'], async (req, res) => {
@@ -433,6 +438,24 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       remoteVerdict: verdict,
       transcript: result.transcript,
     }))
+  })
+
+  // ── 断连 / 重连（P3.5.1，A7「可一键重连」）──────────────────────────────
+  // 两条路由都回完整快照：面板按完按钮必须立刻拿到新相位（`link`），
+  // 让 UI 再发一次 /projection 只会多一帧「按了没反应」的观感。
+
+  mount('/disconnect', ['POST'], async (_req, res) => {
+    const service = requireProjection()
+    service.disconnect()
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(service)))
+  })
+
+  mount('/reconnect', ['POST'], async (_req, res) => {
+    const service = requireProjection()
+    // 失败**不吞**：重连失败要如实回错（含 nextActions），面板据此显示原因；
+    // 吞掉的话用户只会看到相位停在 retrying，不知道是谁的问题。
+    await service.reconnectNow()
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(service)))
   })
 
   return mounted

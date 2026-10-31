@@ -32,12 +32,14 @@ import {
   attachWorkspace,
   cancelFlow,
   createRemoteSession,
+  disconnectRemote,
   listDirectory,
   listWorkspaces,
   loadSources,
   probeRemoteSession,
   readFlow,
   readProjection,
+  reconnectRemote,
   startWorkspace,
 } from './api.ts'
 import {
@@ -62,7 +64,15 @@ import {
   shouldPoll,
   type WizardState,
 } from './state.ts'
-import { formatUpdatedAt, planAttach, probeReport, probeSummary } from './panel.ts'
+import {
+  disconnectPlan,
+  formatUpdatedAt,
+  linkLine,
+  planAttach,
+  probeReport,
+  probeSummary,
+  reconnectPlan,
+} from './panel.ts'
 import { wizardStore } from './wizard-store.ts'
 
 /** 轮询间隔：一次远端 node 探测要几秒，250ms 够细也够省。 */
@@ -518,6 +528,26 @@ export function TeleportPanel(): unknown {
     }
   }
 
+  /**
+   * 断开 / 重连。
+   *
+   * 两者都直接拿响应里的快照覆盖本地状态：先乐观改再补一次 `readProjection`
+   * 会闪一帧错的相位（按了「重连」却还显示「未连接」）。
+   * 重连失败要**看到原因**，所以错误照样进 `panel-error`。
+   */
+  const onLink = async (action: 'disconnect' | 'reconnect'): Promise<void> => {
+    setBusy(action)
+    try {
+      const next = action === 'disconnect' ? await disconnectRemote() : await reconnectRemote()
+      setSnapshot(next)
+      setError(null)
+    } catch (caught) {
+      setError(messageOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const onProbe = async (sessionId: string): Promise<void> => {
     setBusy('probe:' + sessionId)
     try {
@@ -535,6 +565,8 @@ export function TeleportPanel(): unknown {
   const flow = state.flow?.state
   const summary = useMemo(() => (flow === undefined ? '尚未连接远端' : describeFlow(flow)), [flow])
   const defaults = snapshot?.defaults ?? state.defaults
+  const reconnect = reconnectPlan(snapshot)
+  const disconnect = disconnectPlan(snapshot)
 
   const addRows = records.map((record) => {
     const plan = planAttach(record, defaults)
@@ -630,14 +662,34 @@ export function TeleportPanel(): unknown {
     h('div', { 'data-teleport': 'panel-flow' }, summary),
     flow === undefined ? null : h('div', { 'data-teleport': 'panel-phase' }, FLOW_PHASE_LABELS[flow.phase]),
     isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
+    h('div', { 'data-teleport': 'panel-connected', 'data-link': snapshot?.link ?? 'unknown' }, linkLine(snapshot)),
     h(
       'div',
-      { 'data-teleport': 'panel-connected' },
-      snapshot === null
-        ? '尚未读取投影'
-        : snapshot.connected
-          ? '远端已连接 · ' + (snapshot.target?.distro ?? '')
-          : '远端未连接',
+      { 'data-teleport': 'panel-link-actions' },
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'reconnect',
+          'data-ok': String(reconnect.ok),
+          disabled: !reconnect.ok || busy === 'reconnect',
+          title: reconnect.ok ? '立刻重连远端（失败会把自动重连挂起来）' : reconnect.reason,
+          onClick: () => void onLink('reconnect'),
+        },
+        busy === 'reconnect' ? '重连中…' : '重连',
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'disconnect',
+          'data-ok': String(disconnect.ok),
+          disabled: !disconnect.ok || busy === 'disconnect',
+          title: disconnect.ok ? '断开远端连接（投影条目会留着并标为离线）' : disconnect.reason,
+          onClick: () => void onLink('disconnect'),
+        },
+        busy === 'disconnect' ? '断开中…' : '断开',
+      ),
     ),
     h(
       'div',

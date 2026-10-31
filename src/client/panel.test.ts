@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { ProbeOutcome, WorkspaceRecord } from '../shared/api.ts'
-import { basenameOf, formatUpdatedAt, planAttach, probeReport, probeSummary } from './panel.ts'
+import type { ProbeOutcome, ProjectionSnapshotInfo, WorkspaceRecord } from '../shared/api.ts'
+import {
+  basenameOf,
+  disconnectPlan,
+  formatUpdatedAt,
+  linkLine,
+  planAttach,
+  probeReport,
+  probeSummary,
+  reconnectPlan,
+} from './panel.ts'
 
 /**
  * 负控：把「能不能接入」的判定反转成恒真，验证下面那条断言真的会红。
@@ -94,4 +103,52 @@ test('时间格式化：解析不了就原样返回，绝不拿本地时钟编�
   assert.equal(formatUpdatedAt(undefined), '时间未知')
   assert.equal(formatUpdatedAt('not-a-date'), 'not-a-date')
   assert.equal(formatUpdatedAt('2026-10-31T09:05:06.789Z'), '2026-10-31 09:05:06Z')
+})
+
+function snapshot(overrides: Partial<ProjectionSnapshotInfo> = {}): ProjectionSnapshotInfo {
+  return {
+    workspaces: [],
+    sessions: [],
+    connected: false,
+    target: null,
+    link: 'idle',
+    defaults: DEFAULTS,
+    ...overrides,
+  }
+}
+
+const TARGET = { distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
+
+test('连接状态行读 link 而非 connected：掉线要能说出「正在重试」', () => {
+  assert.equal(linkLine(null), '尚未读取投影')
+  assert.equal(linkLine(snapshot()), '尚未连接远端')
+  assert.equal(linkLine(snapshot({ connected: false, link: 'retrying', target: TARGET })), '连接已断开，正在按 2s / 4s / 8s 重试')
+  assert.equal(linkLine(snapshot({ connected: false, link: 'offline', target: TARGET })), '远端暂时不可用，每 2 分钟重试一次')
+  assert.equal(linkLine(snapshot({ connected: true, link: 'connected', target: TARGET })), '远端已连接 · ubuntu_dev')
+})
+
+test('重连按钮的三种不可点各有各的原因，不含糊成一句「不可用」', () => {
+  const notRead = reconnectPlan(null)
+  assert.equal(notRead.ok, false)
+  if (!notRead.ok) assert.ok(notRead.reason.includes('尚未读取投影'))
+
+  const noTarget = reconnectPlan(snapshot())
+  assert.equal(noTarget.ok, false)
+  if (!noTarget.ok) assert.ok(noTarget.reason.includes('还没有接入过远端'))
+
+  const already = reconnectPlan(snapshot({ connected: true, link: 'connected', target: TARGET }))
+  assert.equal(already.ok, false)
+  if (!already.ok) assert.ok(already.reason.includes('无需重连'))
+
+  assert.equal(reconnectPlan(snapshot({ link: 'retrying', target: TARGET })).ok, true, '掉线时必须能点')
+  assert.equal(reconnectPlan(snapshot({ link: 'offline', target: TARGET })).ok, true)
+})
+
+test('断开按钮：没连过时不可点，连过（含掉线在重试）都能点', () => {
+  const idle = disconnectPlan(snapshot())
+  assert.equal(idle.ok, false)
+  if (!idle.ok) assert.ok(idle.reason.includes('没有远端连接'))
+
+  assert.equal(disconnectPlan(snapshot({ connected: true, link: 'connected', target: TARGET })).ok, true)
+  assert.equal(disconnectPlan(snapshot({ link: 'retrying', target: TARGET })).ok, true)
 })

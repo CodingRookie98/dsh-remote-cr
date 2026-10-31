@@ -8,7 +8,14 @@
  * （铁律 4：失败要响）。
  */
 
-import type { AttachInput, ProbeOutcome, SourceDefaults, WorkspaceRecord } from '../shared/api.ts'
+import type {
+  AttachInput,
+  ProbeOutcome,
+  ProjectionSnapshotInfo,
+  SourceDefaults,
+  WorkspaceRecord,
+} from '../shared/api.ts'
+import { describeLink } from '../shared/reconnect.ts'
 
 /** 接入计划：能接就给出完整入参，不能接就给出人话原因。 */
 export type AttachPlan =
@@ -83,6 +90,45 @@ export function probeSummary(outcome: ProbeOutcome): string {
   return outcome.executedRemotely
     ? '远端执行已确认 · ' + outcome.cwd
     : '未确认远端执行 · ' + (outcome.remoteVerdict ?? '原因未知')
+}
+
+/** 一个按钮能不能点；不能点时必须说明原因（铁律 4）。 */
+export type ButtonPlan = { readonly ok: true } | { readonly ok: false; readonly reason: string }
+
+/**
+ * 连接状态行的一句话。
+ *
+ * 只读 `link` 而不看 `connected`：后者只说「现在能不能发 RPC」，说不了
+ * 「是没连过，还是掉线正在重试」——而这恰恰是用户按下按钮前最想知道的。
+ * 文案直接用共享层的 `describeLink`，宿主半的日志与面板措辞才不会各说一套。
+ */
+export function linkLine(snapshot: ProjectionSnapshotInfo | null): string {
+  if (snapshot === null) return '尚未读取投影'
+  const base = describeLink(snapshot.link)
+  if (snapshot.link !== 'connected' || snapshot.target === null) return base
+  return base + ' · ' + snapshot.target.distro
+}
+
+/**
+ * 「重连」按钮的可点性。
+ *
+ * 三种不点的情况各有各的原因，含糊成一句「不可用」等于让用户猜：
+ * 还没读到投影、压根没连过（没有目标可连回）、以及本来就连着（点了没意义）。
+ */
+export function reconnectPlan(snapshot: ProjectionSnapshotInfo | null): ButtonPlan {
+  if (snapshot === null) return { ok: false, reason: '尚未读取投影，稍候再试' }
+  if (snapshot.link === 'connected') return { ok: false, reason: '远端已连接，无需重连' }
+  if (snapshot.target === null) {
+    return { ok: false, reason: '还没有接入过远端：先在上面的列表里点「接入远端」' }
+  }
+  return { ok: true }
+}
+
+/** 「断开」按钮的可点性：没连过就没什么可断开的。 */
+export function disconnectPlan(snapshot: ProjectionSnapshotInfo | null): ButtonPlan {
+  if (snapshot === null) return { ok: false, reason: '尚未读取投影，稍候再试' }
+  if (snapshot.link === 'idle') return { ok: false, reason: '当前没有远端连接' }
+  return { ok: true }
 }
 
 /**

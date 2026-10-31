@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import type { DirListing, DistroInfo, RemoteFacts, SourceReport } from '../../shared/api.ts'
 import { API_PREFIX } from '../../shared/api.ts'
+import { ProjectionService, type ConnectTarget } from '../projection/service.ts'
+import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
 import { parseAddInput, registerTeleportRoutes } from './routes.ts'
 
@@ -75,7 +77,7 @@ interface Rig {
   call(input: { path: string; method?: string; address?: string; body?: string; query?: Record<string, string> }): Promise<Call>
 }
 
-function rig(overrides: Partial<HostDeps> = {}): Rig {
+function rig(overrides: Partial<HostDeps> = {}, extra: { projection?: ProjectionService } = {}): Rig {
   const calls: string[] = []
   const deps: HostDeps = {
     listSources: async (): Promise<SourceReport> => ({ wslAvailable: true, distros: DISTROS, probeError: null }),
@@ -109,7 +111,11 @@ function rig(overrides: Partial<HostDeps> = {}): Rig {
     },
   }
 
-  const mounted = registerTeleportRoutes(ctx, { deps, wslExecutable: 'wsl.exe' })
+  const mounted = registerTeleportRoutes(ctx, {
+    deps,
+    wslExecutable: 'wsl.exe',
+    ...(extra.projection === undefined ? {} : { projection: extra.projection }),
+  })
   assert.deepEqual(effects.length, mounted.length, '每条路由恰好一个 effect')
 
   return {
@@ -135,17 +141,19 @@ function rig(overrides: Partial<HostDeps> = {}): Rig {
   }
 }
 
-test('十条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('十二条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
     [
       '/teleport/api/attach POST',
+      '/teleport/api/disconnect POST',
       '/teleport/api/flow GET',
       '/teleport/api/flow/cancel POST',
       '/teleport/api/list GET',
       '/teleport/api/probe POST',
       '/teleport/api/projection GET',
+      '/teleport/api/reconnect POST',
       '/teleport/api/session POST',
       '/teleport/api/sources GET',
       '/teleport/api/workspace POST',
@@ -283,6 +291,76 @@ test('parseAddInput：非对象、未知来源都抛结构化错误；空串字�
   assert.throws(() => parseAddInput([]), /必须是对象/)
   assert.throws(() => parseAddInput({ source: 'ftp' }), /未知的工作区来源/)
   assert.deepEqual(parseAddInput({ source: 'wsl', distro: '', path: '/x' }), { source: 'wsl', path: '/x' })
+})
+
+/** 一个能接上、能断、能重连的投影服务（假 connect，不碰真机）。 */
+function projectionRig(): ProjectionService {
+  return new ProjectionService({
+    store: new ProjectionStore(),
+    async connect(): Promise<{ rpc: never; dispose(): void }> {
+      return { rpc: fakeProjectionRpc(), dispose() {} }
+    },
+  })
+}
+
+function fakeProjectionRpc(): never {
+  return {
+    async call(endpoint: string) {
+      if (endpoint === 'workspace/create') {
+        return { workspace: { workspaceId: 'ws-1', path: '/w', title: 'w', sessionIds: [], createdAt: '', updatedAt: '' }, created: true }
+      }
+      if (endpoint === 'session/list') return { items: [] }
+      throw new Error('假的 RPC 没有准备 ' + endpoint)
+    },
+    openStream() {
+      return { cancel() {}, async *[Symbol.asyncIterator]() {} }
+    },
+  } as never
+}
+
+const PROJECTION_TARGET: ConnectTarget = { distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
+
+test('/disconnect 回整份快照：条目留着标 offline，相位不再是 connected', async () => {
+  const projection = projectionRig()
+  const r = rig({}, { projection })
+  await r.call({ path: '/attach', method: 'POST', body: JSON.stringify({ target: PROJECTION_TARGET, remotePath: '/w' }) })
+
+  const before = (await r.call({ path: '/projection' })).json as { value: { connected: boolean; link: string } }
+  assert.equal(before.value.connected, true)
+  assert.equal(before.value.link, 'connected')
+
+  const after = (await r.call({ path: '/disconnect', method: 'POST', body: '{}' }))
+  assert.equal(after.status, 200)
+  const value = (after.json as { value: { connected: boolean; link: string; workspaces: { availability: string }[] } }).value
+  assert.equal(value.connected, false)
+  assert.equal(value.link, 'idle', '手动断开后没有驱动在跑')
+  assert.equal(value.workspaces.length, 1, '断连不删条目，只标离线')
+  assert.equal(value.workspaces[0]?.availability, 'offline')
+})
+
+test('/reconnect 成功后回 connected 快照；失败如实回错，不假装成功', async () => {
+  const projection = projectionRig()
+  const r = rig({}, { projection })
+  await r.call({ path: '/attach', method: 'POST', body: JSON.stringify({ target: PROJECTION_TARGET, remotePath: '/w' }) })
+  await r.call({ path: '/disconnect', method: 'POST', body: '{}' })
+
+  const ok = await r.call({ path: '/reconnect', method: 'POST', body: '{}' })
+  assert.equal(ok.status, 200)
+  const value = (ok.json as { value: { connected: boolean; link: string } }).value
+  assert.equal(value.connected, true)
+  assert.equal(value.link, 'connected')
+
+  // 从没连过就重连：必须回错误信封（HTTP 仍是 200，与其它路由一致），不能假装成功。
+  const untouched = new ProjectionService({
+    store: new ProjectionStore(),
+    connect: async () => {
+      throw new Error('不该被调用')
+    },
+  })
+  const noTarget = await rig({}, { projection: untouched }).call({ path: '/reconnect', method: 'POST', body: '{}' })
+  assert.equal(noTarget.status, 200)
+  assert.equal((noTarget.json as { ok: boolean }).ok, false, '没连过就重连必须回错误，而不是空成功')
+  assert.ok((noTarget.json as { detail: string }).detail.includes('还没有连过任何远端'))
 })
 
 test('NEGATIVE_CONTROL 可假性：把回环守卫去掉必须让 403 断言失败', async () => {

@@ -27,11 +27,11 @@
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
 - **当前活跃阶段**: P3 核心功能原子实现
-- **当前活跃子任务**: Task P3.5.1（断线重连端到端 + fail-closed + 孤儿回收）
+- **当前活跃子任务**: Task P3.5.2（M1 出口演示 + §7.1 P50/P90 测量报告）
 - **当前子任务重试计数**: 0/3
 - **外层循环迭代**: 0/5
-- **最后一次验证状态**: ✅ P3.5 已通过 —— `node --test "src/**/*.test.ts"` = **249 / 249 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `17 modules -> lib/client.js (62683 B)`；真机 `node spikes/m1/p35-projection/probe.cjs` → **7/7 passed, exit 0**（`P35-5` 取证到 `cwd=/home/hui/workspace/tools/deepseek-harness` 与 `uname=Linux CodingRookie 6.18.54.1-microsoft-standard-WSL2`）；负控 `NEGATIVE_CONTROL=1` → **失败集恰为 [P35-2,P35-3,P35-4,P35-5,P35-6]**。此前记录：✅ P3.4 已通过 —— `node --test "src/**/*.test.ts"` = **224 / 224 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `16 modules -> lib/client.js (52319 B)`；信封冒烟（假 `window.__ModuleLoader__` + 假 react）读出 `id dsh-teleport`、`inject ["slots","layout"]`、`apply` 为 function；`NEGATIVE_CONTROL=1` → **35 红 / 189 绿**（新增 11 条可假性断言）。此前记录：✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
-- **最新有效提交**: `e61e90e`（P3.4 四选一向导）；P3.5 由本次原子提交承载
+- **最后一次验证状态**: ✅ P3.5.1 已通过 —— `node --test "src/**/*.test.ts"` = **263 / 263 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `17 modules -> lib/client.js (66360 B)`；真机 `node spikes/m1/p351-reconnect/probe.cjs` → **6/6 passed, exit 0**（P351-3 自动重连实测 **10 182 ms**；P351-6 `{"portFree":true,"leftover":0}`）；负控 `NEGATIVE_CONTROL=1` → **失败集恰为 [P351-3,P351-4]**（P351-5 手动重连照绿，证明探针能区分「自动重连坏了」与「重连能力坏了」）；计划指定的 `node spikes/m1/cross-machine-t6/probe.cjs` → **9/9 passed, exit 0**。此前记录：✅ P3.5 已通过 —— `node --test "src/**/*.test.ts"` = **249 / 249 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `17 modules -> lib/client.js (62683 B)`；真机 `node spikes/m1/p35-projection/probe.cjs` → **7/7 passed, exit 0**（`P35-5` 取证到 `cwd=/home/hui/workspace/tools/deepseek-harness` 与 `uname=Linux CodingRookie 6.18.54.1-microsoft-standard-WSL2`）；负控 `NEGATIVE_CONTROL=1` → **失败集恰为 [P35-2,P35-3,P35-4,P35-5,P35-6]**。此前记录：✅ P3.4 已通过 —— `node --test "src/**/*.test.ts"` = **224 / 224 passed**；`tsc -p tsconfig.json --noEmit` 与 `tsc -p tsconfig.client.json --noEmit` 双双 Exit 0；`node scripts/build-client.mjs` → `16 modules -> lib/client.js (52319 B)`；信封冒烟（假 `window.__ModuleLoader__` + 假 react）读出 `id dsh-teleport`、`inject ["slots","layout"]`、`apply` 为 function；`NEGATIVE_CONTROL=1` → **35 红 / 189 绿**（新增 11 条可假性断言）。此前记录：✅ P3.1 已通过 —— `node --test "src/**/*.test.ts"` = **15 / 15 passed**（含 P3.0 的 9 条）；`tsc -p tsconfig.json --noEmit` Exit 0；`NEGATIVE_CONTROL=1` Exit 1。P3.0 记录： —— `pnpm install` Exit 0（+41 packages）；`pnpm exec tsc -p tsconfig.json --noEmit` Exit 0；`node --test "src/**/*.test.ts"` = **9 / 9 passed**；`NEGATIVE_CONTROL=1` 同名命令 Exit 1（可假性成立）；`tsc -p tsconfig.json` emit Exit 0 且产物可 `import`（`dsh-teleport shared protocol v1`）
+- **最新有效提交**: `d6d0b86`（P3.5 投影与远端会话）；P3.5.1 由本次原子提交承载
 - **阻断原因**: 无
 
 ---
@@ -146,6 +146,10 @@
   node spikes/m1/p35-projection/probe.cjs
   NEGATIVE_CONTROL=1 node spikes/m1/p35-projection/probe.cjs
 
+  # L2 逐阶段真机探针：P3.5.1 断线重连（正向 + 负控）
+  node spikes/m1/p351-reconnect/probe.cjs
+  NEGATIVE_CONTROL=1 node spikes/m1/p351-reconnect/probe.cjs
+
   # L2 可假性对照（负控必须给出红灯，否则断言不算成立）
   NEGATIVE_CONTROL=1 node spikes/m1/cross-machine-t5/probe.cjs
   NEGATIVE_CONTROL=1 node spikes/m1/cross-machine-t6/probe.cjs
@@ -210,8 +214,11 @@
   - **本轮未覆盖（诚实标注，见 `spikes/m1/p37-env/README.md`）**: ① `sync` 档真实同步动作（本任务只保证与 `isolated` 共用 home 机制）；② `installBundle` 耗时与失败率（ADR-0004 :154 已登记）；③ `reuse` 下 dsh 自己写远端 `~/.dsh` 无法从外部阻止（P37-7 量的是 teleport 侧）；④ 远端被另一 dsh 实例并发写 profile 的竞态。
 
 ### P3.5: 集成验证与端到端贯通
-- [ ] **Task P3.5.1**: 断线重连端到端（杀隧道 / 重启远端）+ fail-closed + 孤儿回收
+- [x] **Task P3.5.1**: 断线重连端到端（杀隧道 / 重启远端）+ fail-closed + 孤儿回收
   - **验收命令**: `node spikes/m1/cross-machine-t6/probe.cjs`（失败可见）+ 手写复现脚本
+  - **✅ 完成（2026-10-31）实测**: 八个产品文件（`service.ts` 重写 / `shared/reconnect.ts` 加 `LinkPhase`+`describeLink` / `backend/errors.ts` 加 `remote/disconnected` 相位 / `shared/api.ts` 加 `link` / `api/routes.ts` 加 `/disconnect`+`/reconnect` / `client/api.ts` 加两函数 / `client/panel.ts` 加三个纯判定 / `client/components.ts` 加相位行与两个按钮）+ 新建 `service.test.ts`(9 条)、`panel.test.ts` 加 3 条、`routes.test.ts` 加 2 条并把路由清单改成「十二条」。全套 **263 / 263 passed**、`tsc×2` Exit 0、`build-client` → `17 modules / 66360 B`。计划指定的 `node spikes/m1/cross-machine-t6/probe.cjs` → **9/9 passed**；新写真机探针 `node spikes/m1/p351-reconnect/probe.cjs` → **6/6 passed**：P351-2 杀远端后错误码 `remote/tunnel-unavailable` + `link=retrying` + 投影全 `offline`；P351-3 自动重连 **10 182 ms** 连回；P351-4 重连后投影按远端重建、`id 保持=true`；P351-5 `disconnect()` 后 `stillIdle=true`、`reconnectNow()` 当场连通；P351-6 `{"portFree":true,"leftover":0}`。负控（注入永不触发的 `ReconnectTimers`）→ **失败集恰为 {P351-3,P351-4}**，P351-5 **照绿**，证明探针能区分「自动重连坏了」与「重连能力坏了」。
+  - **本轮踩坑（已进探针）**: ① `ReconnectDriver.reconnectNow()` 是 fire-and-forget（排一次、不报结果），面板按一下必须当场知道成没成 ⇒ `ProjectionService.reconnectNow()` 改为 `await #attemptReconnect()`，失败才挂驱动并 rethrow；② 断线后 `#live` 已清，只记 `#live.target` 就丢了「要连回哪儿」⇒ 单开 `#lastTarget`；③ 只重连不重建等于拿旧表骗用户 ⇒ 连回后逐条重放 `workspace/create`（远端幂等，P35-2 已取证；不用 `follow` 流是因为远端无 `workspace/list`，重放比常驻长连接便宜）；④ 判据写成「任何错误都重连」会把业务拒绝也重试一万次 ⇒ `isTransportLoss()` 只认 `remote/tunnel-unavailable`；⑤ `kill -9` 到内核回收监听 socket 有几毫秒延迟 ⇒ `killRemote()` 轮询 `ss -ltn` 最多 10s。
+  - **本轮未覆盖（诚实标注，见 `spikes/m1/p351-reconnect/README.md`）**: ① §7.1 首命令与手动重连的 **P50/P90**（本条只测一次成功与否）；② **浏览器真实点击**路径（探针直调 `ProjectionService`，不经路由与面板按钮，由 P3.5.2 覆盖）；③ `offline` 相位（需 9 次重试全失败才进，探针只等到第一档）；④ **distro 重启**（而非进程被杀）下 cookie 失效 + `/connect` 重新握手的完整时序。
 - [ ] **Task P3.5.2**: M1 出口演示跑通（瞬移面板 → 新建会话 → 远端执行 → 断线重连 → 退出回收），并按 §7.1 出 P50/P90 测量报告
 
 ### P4: 双轮对抗终审与再循环闭环硬门禁 (Dual-Round Review & Re-Loop Gate)

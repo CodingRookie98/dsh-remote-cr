@@ -11,6 +11,7 @@
 
 import type { FlowState } from './flow.ts'
 import type { WorkspaceSource } from './choices.ts'
+import type { LinkPhase } from './reconnect.ts'
 
 /** 宿主半挂载的路由前缀（`docs/design/architecture.md` 组件图）。 */
 export const API_PREFIX = '/teleport/api'
@@ -137,6 +138,14 @@ export interface ProjectionSnapshotInfo {
   readonly sessions: readonly ProjectedSessionInfo[]
   readonly connected: boolean
   readonly target: RemoteTargetInfo | null
+  /**
+   * 连接相位：`idle`（从没连过）/ `connected` / `retrying` / `offline`。
+   *
+   * 和 `connected` 并存而不是二选一：`connected` 回答「现在能不能发 RPC」，
+   * `link` 回答「为什么不能 / 正在怎么补救」。面板的按钮文案全靠它——
+   * 光有 `connected:false` 时，用户分不清是「没连过」还是「掉线正在重试」。
+   */
+  readonly link: LinkPhase
   /**
    * 接入默认值（端口 + 远端检出根）。
    *

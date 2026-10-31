@@ -158,6 +158,25 @@ export function createRemoteSession(
 }
 
 /**
+ * 断开远端：投影条目**留着并标 offline**，同时停掉自动重连。
+ *
+ * 回的是整份快照：面板按完按钮要立刻拿到新相位（`link`），
+ * 再补一次 `readProjection` 只会多一帧「按了没反应」的观感。
+ */
+export function disconnectRemote(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo> {
+  return callApi('/disconnect', { method: 'POST', body: {} }, fetchImpl)
+}
+
+/**
+ * 手动重连：当场试一次，失败如实抛错（面板要显示原因）。
+ *
+ * 成功时同样回整份快照，面板不需要再拉一次投影就能重绘。
+ */
+export function reconnectRemote(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo> {
+  return callApi('/reconnect', { method: 'POST', body: {} }, fetchImpl)
+}
+
+/**
  * 会话取证：在远端会话的终端里跑 `pwd` + `uname -a`，回传结论。
  *
  * 断言失败不抛异常——`executedRemotely: false` 本身就是取证结果，
