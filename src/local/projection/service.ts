@@ -16,6 +16,16 @@
  * 远端把一次 RPC 拒了是业务结论，重连一万次也还是拒；隧道断了才需要重连。
  * 调度交给 `shared/reconnect.ts` 的 `ReconnectDriver`（2s/4s/8s ×3 轮，之后每 2min），
  * 这里只负责「连回来之后把投影表按远端重建」。
+ *
+ * **重连先换传输、不先重启进程**（P3.5.2 真机实测定档）：
+ * - 远端进程还活着时，重开一条 cookie + WS 只要 52ms；
+ * - 重新拉进程要 9–20s 冷启动，之后**进程内第一次 `session/create` 还要再等**（复用
+ *   `~/.dsh` 档实测 123816ms，空档 108ms —— 那是一次性扫描整个会话库的代价，与
+ *   workspace 无关，见 spikes/m1/p352-exit-demo/README.md）。
+ * 所以传输层断掉时把连接**存进 `#detached` 而不是 dispose**：dispose 会连带杀掉
+ * 远端进程，那就等于每次抖动都让用户重付一遍冷启动。
+ * 不主动 dispose 也不留孤儿：`launch.ts` 的 `wsl.exe` 句柄是宿主进程的子进程，
+ * 宿主一死 OS 就把它带走，distro 侧随之回收（`children.ts` 头注释的 A7 实测）。
  */
 
 import { TeleportError } from '../backend/errors.ts'
@@ -23,13 +33,20 @@ import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../sha
 import type { AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
 import type { ProbeOptions, ProbeResult } from './probe.ts'
-import { runSessionProbe } from './probe.ts'
+import { preheatProbe, runSessionProbe } from './probe.ts'
 import type { ProjectionRpc } from './remote.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
 
-/** 一条已建立的远端连接；`dispose` 之后不可再用。 */
+/**
+ * 一条已建立的远端连接；`dispose` 之后不可再用。
+ *
+ * `rehandshake` 是**只换传输、不动进程**的那条路：远端进程还活着时，重开一条
+ * cookie + WS 只要 5ms，而重新拉起进程要 9.2s 冷启动（真机实测，见 P3.5.2 实验）。
+ * 它是可选的：单测的假连接不需要它，没有就当「做不到」，直接回落到重新 `connect`。
+ */
 export interface RemoteConnection {
   readonly rpc: ProjectionRpc
+  rehandshake?(): Promise<void>
   dispose(): void
 }
 
@@ -74,6 +91,14 @@ export class ProjectionService {
    */
   #lastTarget: ConnectTarget | undefined
   #driver: { readonly target: ConnectTarget; readonly driver: ReconnectDriver } | undefined
+  /**
+   * 传输层已断、但远端进程可能还活着的连接。
+   *
+   * 与 `#live` 互斥：它在的时候「连不上」（面板显示 offline），但进程还占着端口，
+   * 所以重连时先试 `rehandshake()` 而不是重新拉起进程。dispose 掉就等于放弃了
+   * 那 52ms 的便宜路径，回到 9–20s 冷启动。
+   */
+  #detached: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
 
   constructor(options: ProjectionServiceOptions) {
     this.#store = options.store
@@ -113,10 +138,35 @@ export class ProjectionService {
     )
   }
 
-  /** 在已投影的工作区里建会话；没连着就明确报错，不静默回落。 */
+  /**
+   * 在已投影的工作区里建会话；没连着就明确报错，不静默回落。
+   *
+   * 会话建好后**顺手把取证终端也建出来**（`preheatProbe`）：建终端要走一次远端往返
+   * （真机实测 33–254ms），提前建好就能把这段从用户等待里拿掉。走慢 shell（远端默认
+   * bash + ble.sh）时它还顺带把 1.4–1.8s 的启动开销提前付掉（会话首命令 1776ms →
+   * 364ms）；走快 shell（fish）时那笔开销不存在，首命令本身只要 150ms。
+   *
+   * 预热失败**不拖垮建会话**：会话是用户要的东西，终端只是加速手段。失败信息挂在
+   * `preheatError` 上交给面板显示（铁律 4 允许「局部失败」，禁止的是静默）。
+   */
   async createSession(workspaceId: string, options: { signal?: AbortSignal; agentPreset?: string } = {}): Promise<CreatedSession> {
     const connection = this.#requireLive()
-    return this.#guardTransport(() => createRemoteSession({ rpc: connection.rpc, store: this.#store }, workspaceId, options))
+    return this.#guardTransport(async () => {
+      const deps = { rpc: connection.rpc, store: this.#store }
+      let preheatError: TeleportError | undefined
+      const created = await createRemoteSession(deps, workspaceId, {
+        ...options,
+        preheat: async (sessionId) => {
+          try {
+            return await preheatProbe(deps, sessionId, options.signal === undefined ? {} : { signal: options.signal })
+          } catch (error) {
+            preheatError = asTeleportError(error)
+            return undefined
+          }
+        },
+      })
+      return preheatError === undefined ? created : { ...created, preheatError }
+    })
   }
 
   /** 在远端会话的终端里跑取证命令。 */
@@ -150,7 +200,11 @@ export class ProjectionService {
     this.#live = undefined
     this.#stopDriver()
     this.#store.markAllOffline()
-    live?.connection.dispose()
+    // **只断传输，不杀远端进程**（architecture.md §8.5：回收归退出/cleanup，
+    // 不归断开）。这就让「断开 → 重连」变成 52ms 的重握手，而不是 9–20s 冷启动。
+    // 远端进程不会因此变孤儿：它是宿主 `wsl.exe` 句柄的子进程，宿主一退
+    // OS 就把它带走（children.ts 的 A7 实测）。
+    if (live !== undefined) this.#detatch(live)
   }
 
   /**
@@ -177,12 +231,27 @@ export class ProjectionService {
     }
   }
 
+  /**
+   * 真回收：把还活着的远端连接（含留存的）全部收掉，连远端进程一起。
+   *
+   * 只在「用户真的不打算再用这台远端」时调（进程退出、切 target）。
+   * 日常的「断开」走 `disconnect()` —— 那条只断传输，进程留着温热。
+   */
+  recycle(): void {
+    const live = this.#live
+    this.#live = undefined
+    this.#stopDriver()
+    live?.connection.dispose()
+    this.#dropDetached()
+  }
+
   /** 进程退出：释放连接（不标 offline，因为没人会再看这份内存表）。 */
   dispose(): void {
     const live = this.#live
     this.#live = undefined
     this.#stopDriver()
     live?.connection.dispose()
+    this.#dropDetached()
   }
 
   /**
@@ -200,14 +269,35 @@ export class ProjectionService {
     }
   }
 
+  /**
+   * 传输层断了：**保住连接对象**，只把它挪进 `#detached`。
+   *
+   * 为什么不 dispose：`dispose()` 会连远端进程一起收（那是它的契约）。
+   * 断线时远端进程通常还活着，收掉它等于把「52ms 重握手」换成「9–20s 冷启动 +
+   * 进程内首次建会话的整库扫描」。只有目标变了或用户显式断开才该真收。
+   */
   #onTransportLost(): void {
     const live = this.#live
     this.#live = undefined
     this.#store.markAllOffline()
-    live?.connection.dispose()
-    const target = live?.target ?? this.#lastTarget
+    if (live !== undefined) this.#detatch(live)
+    const target = live?.target ?? this.#detached?.target ?? this.#lastTarget
     if (target === undefined) return
     this.#startDriver(target)
+  }
+
+  /** 保存一条「传输断了、进程可能还活着」的连接；同一 target 只留一条。 */
+  #detatch(entry: { readonly target: ConnectTarget; readonly connection: RemoteConnection }): void {
+    const previous = this.#detached
+    if (previous !== undefined && previous.connection !== entry.connection) previous.connection.dispose()
+    this.#detached = entry
+  }
+
+  /** 真收掉留存连接（目标变了、用户断开、进程退出时才调）。 */
+  #dropDetached(): void {
+    const entry = this.#detached
+    this.#detached = undefined
+    entry?.connection.dispose()
   }
 
   #startDriver(target: ConnectTarget): void {
@@ -237,9 +327,10 @@ export class ProjectionService {
    */
   async #attemptReconnect(target: ConnectTarget): Promise<void> {
     if (this.#live === undefined) {
-      const connection = await this.#connect(target)
+      const connection = await this.#reacquire(target)
       this.#live = { target, connection }
       this.#lastTarget = target
+      this.#detached = undefined
     }
     const live = this.#live
     if (live === undefined) return
@@ -251,9 +342,58 @@ export class ProjectionService {
     }
   }
 
+  /**
+   * 拿回一条可用连接：**先试只换传输，不行才重新起进程**。
+   *
+   * 顺序不能反。`rehandshake` 失败说明远端进程真的没了（fetch refused / 握手超时），
+   * 这时才付冷启动；反过来先重启的话，每次网络抖动都会让用户白等 9–20s。
+   * 换了 target 就不该走这条路 —— 那是另一次接入，不是重连。
+   */
+  async #reacquire(target: ConnectTarget): Promise<RemoteConnection> {
+    const detached = this.#detached
+    if (detached !== undefined && sameTarget(detached.target, target)) {
+      const rehandshake = detached.connection.rehandshake
+      if (typeof rehandshake === 'function') {
+        try {
+          await rehandshake.call(detached.connection)
+          return detached.connection
+        } catch {
+          // 进程真的没了：把这条残连接收干净，下面重新起一个。
+        }
+      } else {
+        // 没有这条能力（假连接 / 别家实现）：老实回收，别占着端口。
+        detached.connection.dispose()
+      }
+      this.#detached = undefined
+    } else if (detached !== undefined) {
+      // 留着一条别的 target 的残连接没有意义。
+      this.#dropDetached()
+    }
+    return this.#connect(target)
+  }
+
   async #ensure(target: ConnectTarget): Promise<RemoteConnection> {
     const live = this.#live
     if (live !== undefined && sameTarget(live.target, target)) return live.connection
+    const detached = this.#detached
+    // 同 target 的留存连接可以直接救回来 —— 这正是「再点一次接入」不该重付冷启动的原因。
+    if (detached !== undefined && sameTarget(detached.target, target)) {
+      const rehandshake = detached.connection.rehandshake
+      if (typeof rehandshake === 'function') {
+        try {
+          await rehandshake.call(detached.connection)
+          this.#detached = undefined
+          this.#live = { target, connection: detached.connection }
+          this.#lastTarget = target
+          this.#stopDriver()
+          return detached.connection
+        } catch {
+          this.#dropDetached()
+        }
+      } else {
+        this.#dropDetached()
+      }
+    }
     if (live !== undefined) this.disconnect()
     const connection = await this.#connect(target)
     this.#live = { target, connection }
@@ -278,6 +418,16 @@ export class ProjectionService {
 /** 传输层失败：隧道断了 / 握手超时。业务拒绝不算。 */
 function isTransportLoss(error: unknown): boolean {
   return error instanceof TeleportError && error.code === 'remote/tunnel-unavailable'
+}
+
+/** 把任意抛出物归一成 `TeleportError`：面板要能显示 code，而不是一句 `[object Object]`。 */
+function asTeleportError(error: unknown): TeleportError {
+  if (error instanceof TeleportError) return error
+  return new TeleportError({
+    code: 'remote/unknown',
+    detail: error instanceof Error ? error.message : String(error),
+    nextActions: ['重试', '查看远端日志'],
+  })
 }
 
 function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {

@@ -113,23 +113,55 @@ interface Rig {
   readonly timers: ReturnType<typeof fakeTimers>
   /** 每次 `connect` 被调用都记一笔，便于断言「重连确实重新握手了」。 */
   readonly connects: ConnectTarget[]
+  /** 每次 `rehandshake` 被调用都记一笔。 */
+  readonly handshakes: ConnectTarget[]
+  /** 每次 `dispose` 被调用都记一笔（留存连接是否真被回收）。 */
+  readonly disposals: number[]
   /** 让后续 `connect` 失败。 */
   failConnect(error: unknown): void
+  /** 让后续 `rehandshake` 失败（模拟远端进程真的没了）。 */
+  failRehandshake(error: unknown): void
+  /** 关掉 `rehandshake` 能力（模拟别家实现的连接）。 */
+  withoutRehandshake(): void
 }
 
+/**
+ * 假连接的工厂。`withRehandshake` 默认开 —— 真实实现（`live.ts`）就有这条能力，
+ * 只有显式关掉时才模拟「只能重启」的老路径。
+ */
 function rig(): Rig {
   const store = new ProjectionStore()
   const rpc = fakeRpc()
   const timers = fakeTimers()
   const connects: ConnectTarget[] = []
+  const handshakes: ConnectTarget[] = []
+  const disposals: number[] = []
   let connectError: unknown = undefined
+  let handshakeError: unknown = undefined
+  let supportRehandshake = true
+  let seq = 0
   const service = new ProjectionService({
     store,
     timers,
     async connect(target) {
       connects.push(target)
       if (connectError !== undefined) throw connectError
-      return { rpc, dispose() {} }
+      seq += 1
+      const id = seq
+      const connection = {
+        rpc,
+        dispose() {
+          disposals.push(id)
+        },
+      }
+      if (!supportRehandshake) return connection
+      return {
+        ...connection,
+        async rehandshake() {
+          handshakes.push(target)
+          if (handshakeError !== undefined) throw handshakeError
+        },
+      }
     },
   })
   return {
@@ -138,8 +170,16 @@ function rig(): Rig {
     rpc,
     timers,
     connects,
+    handshakes,
+    disposals,
     failConnect(error) {
       connectError = error
+    },
+    failRehandshake(error) {
+      handshakeError = error
+    },
+    withoutRehandshake() {
+      supportRehandshake = false
     },
   }
 }
@@ -174,8 +214,8 @@ test('传输层失败：标 offline、清连接、相位转 retrying，并按 2s
   assert.deepEqual(timers.pending(), [2000])
 })
 
-test('定时器到点后连回来：重新握手 + 按远端重建投影表，相位回到 connected', async () => {
-  const { service, store, rpc, timers, connects } = rig()
+test('定时器到点后连回来：先只换传输（不重启进程）+ 按远端重建投影表，相位回到 connected', async () => {
+  const { service, store, rpc, timers, connects, handshakes, disposals } = rig()
   await service.attach(TARGET, ATTACH)
   const before = connects.length
 
@@ -185,20 +225,92 @@ test('定时器到点后连回来：重新握手 + 按远端重建投影表，�
 
   await timers.flush()
 
-  assert.equal(connects.length, before + 1, '重连必须重新 connect，不能复用已废的连接')
+  // 这是 P3.5.2 的核心取舍：远端进程大概率还活着，重开传输 52ms ≪ 重启 9–20s。
+  assert.equal(handshakes.length, 1, '断线后必须优先只换传输')
+  assert.equal(connects.length, before, '进程没死就不该重新拉进程')
+  assert.deepEqual(disposals, [], '也不能把还活着的连接 dispose 掉（那会连带杀远端进程）')
   assert.equal(service.connected, true)
   assert.equal(service.link, 'connected')
   assert.equal(store.workspaces()[0]?.availability, 'online', '重连后投影要重新标 online')
   assert.ok(rpc.calls.filter((endpoint) => endpoint === 'workspace/create').length >= 2, '重连要重放 workspace/create')
 })
 
-test('重连失败会继续按下一档退避（2s → 4s），而不是放弃', async () => {
-  const { service, rpc, timers, failConnect } = rig()
+test('rehandshake 失败说明进程真没了：这时才重新 connect，并把残连接收干净', async () => {
+  const { service, connects, handshakes, timers, rpc, failRehandshake } = rig()
   await service.attach(TARGET, ATTACH)
+  const before = connects.length
 
-  // 断线，并且远端确实还没起来：之后每次 connect 都失败。
   rpc.failNext(transportLoss())
   await assert.rejects(() => service.attach(TARGET, ATTACH))
+  failRehandshake(transportLoss())
+  await timers.flush()
+
+  assert.equal(handshakes.length, 1, '先试换传输')
+  assert.equal(connects.length, before + 1, '换传输失败才该重启进程')
+  assert.equal(service.connected, true)
+})
+
+test('连接没有 rehandshake 能力时老实重启：不假装能省掉冷启动', async () => {
+  const { service, connects, handshakes, timers, rpc, withoutRehandshake } = rig()
+  withoutRehandshake()
+  await service.attach(TARGET, ATTACH)
+  const before = connects.length
+
+  rpc.failNext(transportLoss())
+  await assert.rejects(() => service.attach(TARGET, ATTACH))
+  await timers.flush()
+
+  assert.equal(handshakes.length, 0, '没有这条能力就不该记成用过')
+  assert.equal(connects.length, before + 1)
+  assert.equal(service.connected, true)
+})
+
+test('手动断开只断传输：不 dispose，远端进程留着温热', async () => {
+  const { service, rpc, disposals } = rig()
+  await service.attach(TARGET, ATTACH)
+  rpc.failNext(transportLoss())
+  await assert.rejects(() => service.attach(TARGET, ATTACH))
+  // 断线时连接被留存，不该已经 dispose。
+  assert.deepEqual(disposals, [], '断线不能 dispose —— 那会连带杀掉远端进程')
+  service.disconnect()
+  // 断开同样只断传输（architecture.md §8.5：回收归退出/cleanup，不归断开）。
+  // 这样「断开 → 重连」是 52ms 的重握手，而不是 9–20s 冷启动。
+  assert.deepEqual(disposals, [], '断开也不该 dispose —— 远端进程留着，下次重连才快')
+})
+
+test('recycle 才真收：进程退出/换 target 时才把远端进程收掉', async () => {
+  const { service, rpc, disposals } = rig()
+  await service.attach(TARGET, ATTACH)
+  rpc.failNext(transportLoss())
+  await assert.rejects(() => service.attach(TARGET, ATTACH))
+  assert.deepEqual(disposals, [], '断线不能 dispose')
+  service.recycle()
+  assert.deepEqual(disposals, [1], 'recycle 才真收')
+})
+
+test('断开后再接入同一 target：救回留存连接重握手，不重付冷启动', async () => {
+  const { service, connects, handshakes, rpc } = rig()
+  await service.attach(TARGET, ATTACH)
+  const before = connects.length
+  rpc.failNext(transportLoss())
+  await assert.rejects(() => service.attach(TARGET, ATTACH))
+  service.disconnect()
+
+  // 断开只是断传输，连接还在 #detached 里 —— 再接入应该重握手，不该重新起进程。
+  await service.attach(TARGET, ATTACH)
+  assert.equal(connects.length, before, '重握手成功就不该重新 connect')
+  assert.equal(handshakes.length, 1, '走的是重握手这条路')
+})
+
+test('重连失败会继续按下一档退避（2s → 4s），而不是放弃', async () => {
+  const { service, rpc, timers, failConnect, failRehandshake } = rig()
+  await service.attach(TARGET, ATTACH)
+
+  // 断线，并且远端确实还没起来：换传输失败、重新 connect 也失败。
+  // 两条都要打掉 —— 只要 rehandshake 还能成功，这一轮就真的连回来了（那才是常态）。
+  rpc.failNext(transportLoss())
+  await assert.rejects(() => service.attach(TARGET, ATTACH))
+  failRehandshake(transportLoss())
   failConnect(transportLoss())
   assert.deepEqual(timers.pending(), [2000])
 
@@ -243,21 +355,26 @@ test('从没连过就点重连：抛 remote/disconnected，不静默成功', asy
   })
 })
 
-test('手动重连成功：连回来并回到 connected', async () => {
-  const { service, connects } = rig()
+test('手动重连成功：只换传输、不重启进程，连回来并回到 connected', async () => {
+  const { service, connects, handshakes } = rig()
   await service.attach(TARGET, ATTACH)
   service.disconnect()
   const before = connects.length
   await service.reconnectNow()
-  assert.equal(connects.length, before + 1)
+  // 这是 §7 那条「手动重连 ≤5s」能不能达标的产品侧根因：
+  // 重启远端实测 9–20s，重握手实测 52ms。
+  assert.equal(connects.length, before, '进程还活着就不该重启')
+  assert.equal(handshakes.length, 1)
   assert.equal(service.connected, true)
   assert.equal(service.link, 'connected')
 })
 
 test('手动重连失败：如实抛错，并把自动重连挂起来', async () => {
-  const { service, timers, failConnect } = rig()
+  const { service, timers, failConnect, failRehandshake } = rig()
   await service.attach(TARGET, ATTACH)
   service.disconnect()
+  // 远端进程真没了：重握手和重启都得失败，才轮得到「挂上自动重连」。
+  failRehandshake(transportLoss())
   failConnect(transportLoss())
   await assert.rejects(() => service.reconnectNow(), /tunnel-unavailable/)
   assert.equal(service.connected, false)

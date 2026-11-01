@@ -16,6 +16,7 @@
  *    绝不把 `undefined` 当空数组塞进投影表（那会显示成「远端什么都没有」）。
  */
 
+import type { TeleportError } from '../backend/errors.ts'
 import type { ProjectionRpc } from './remote.ts'
 import { asNumber, asRecord, asString, asStringArray, badShape } from './shape.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
@@ -175,6 +176,13 @@ export async function attachWorkspace(deps: AttachDeps, request: AttachRequest):
 export interface CreatedSession {
   readonly sessionId: string
   readonly agentPreset: string | undefined
+  /**
+   * 取证终端预热失败的原因（会话本身是好的）。
+   *
+   * 单独一个字段而不是抛异常：会话已经建成了，把它丢掉等于让用户白等一次
+   * `session/create`；但也不能不说 —— 那会让「取证很慢」变成一个查不出来的谜。
+   */
+  readonly preheatError?: TeleportError
 }
 
 /**
@@ -182,12 +190,19 @@ export interface CreatedSession {
  *
  * `workspaceId` 与 `cwd` 互斥（`commands.ts:112-114`），这里只走 `workspaceId`：
  * 传 cwd 会绕过工作区归属，等于让本地替远端决定会话挂在哪。
+ *
+ * `options.preheat` 是**取证终端的预热接缝**：会话一建好就把终端建出来，把
+ * 「建终端」那次远端往返挪出用户等待窗口（真机实测建终端 33–254ms，而用户点
+ * 「取证」时它已经在了）。走慢 shell 时它还顺带把 ble.sh 的启动开销提前付掉
+ * （1776ms → 364ms），走快 shell 时那笔开销根本不存在。见 `probe.ts` 的
+ * `preheatProbe` 与 `TERMINAL_WARMUP_MS`。传进来的返回值原样交回调用方，
+ * 编排层不必知道它是终端 id。
  */
-export async function createSession(
+export async function createSession<T>(
   deps: Pick<AttachDeps, 'rpc' | 'store'>,
   workspaceId: string,
-  options: { signal?: AbortSignal; agentPreset?: string } = {},
-): Promise<CreatedSession> {
+  options: { signal?: AbortSignal; agentPreset?: string; preheat?: (sessionId: string) => Promise<T> } = {},
+): Promise<CreatedSession & { readonly preheated?: T }> {
   const request: Record<string, unknown> = { workspaceId }
   if (options.agentPreset !== undefined) request['agentPreset'] = options.agentPreset
   const value = await deps.rpc.call<unknown>('session/create', { args: { request } }, options.signal)
@@ -205,5 +220,8 @@ export async function createSession(
     availability: 'online',
   }
   deps.store.upsertSession(projected)
-  return { sessionId, agentPreset }
+  // 预热失败不掩盖「会话已经建好了」这个事实：会话是用户要的东西，终端只是加速手段。
+  // 但也不静默吞掉 —— 由调用方决定要不要把这条失败报给用户。
+  const preheated = options.preheat === undefined ? undefined : await options.preheat(sessionId)
+  return preheated === undefined ? { sessionId, agentPreset } : { sessionId, agentPreset, preheated }
 }

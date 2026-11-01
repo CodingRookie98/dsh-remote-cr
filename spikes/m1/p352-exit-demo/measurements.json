@@ -1,0 +1,268 @@
+{
+  "generatedAt": "2026-11-01T10:23:25.435Z",
+  "negativeControl": false,
+  "samples": 5,
+  "machine": {
+    "distro": "ubuntu_dev",
+    "remoteRoot": "/home/hui/workspace/tools/deepseek-harness",
+    "hostPort": 3121,
+    "remotePort": 8907,
+    "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "node": "v24.22.1",
+    "baselineNote": "§7.1 要求基线机 i5-9300H / 15.8GB / NVMe WDC PC SN720 / WSL 网络模式 mirrored；换机必须重跑，不得混算。"
+  },
+  "limits": {
+    "attachHotMs": 5000,
+    "manualReconnectMs": 5000,
+    "firstCommandEchoMs": 3000
+  },
+  "cold": {
+    "firstConnect": {
+      "n": 1,
+      "p50": 10851,
+      "p90": 10851,
+      "values": [
+        10851
+      ]
+    },
+    "newSession": {
+      "n": 1,
+      "p50": 132184,
+      "p90": 132184,
+      "values": [
+        132184
+      ]
+    },
+    "firstCommandEcho": {
+      "n": 1,
+      "p50": 53,
+      "p90": 53,
+      "values": [
+        53
+      ]
+    },
+    "excluded": "远端 dsh 冷启动（probing → provisioning → starting）与会话库首次扫描",
+    "gated": false
+  },
+  "hot": {
+    "attach": {
+      "n": 5,
+      "p50": 1156,
+      "p90": 1203,
+      "values": [
+        1203,
+        1123,
+        1132,
+        1182,
+        1156
+      ],
+      "limitMs": 5000,
+      "pass": true
+    },
+    "manualReconnect": {
+      "n": 5,
+      "p50": 1196,
+      "p90": 1375,
+      "values": [
+        1375,
+        1278,
+        1189,
+        1189,
+        1196
+      ],
+      "limitMs": 5000,
+      "pass": true
+    },
+    "firstCommandEcho": {
+      "n": 5,
+      "p50": 116,
+      "p90": 131,
+      "values": [
+        113,
+        116,
+        118,
+        131,
+        31
+      ],
+      "limitMs": 3000,
+      "pass": true
+    },
+    "newSession": {
+      "n": 5,
+      "p50": 101,
+      "p90": 105,
+      "values": [
+        102,
+        99,
+        101,
+        96,
+        105
+      ],
+      "limitMs": null,
+      "pass": null
+    }
+  },
+  "raw": [
+    {
+      "key": "cold-attach",
+      "label": "首连（冷）",
+      "ms": 10851,
+      "source": "rAF",
+      "at": "2026-11-01T10:20:53.914Z"
+    },
+    {
+      "key": "cold-session",
+      "label": "首次新建会话（冷）",
+      "ms": 132184,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:06.164Z"
+    },
+    {
+      "key": "cold-probe",
+      "label": "首次命令回显（冷）",
+      "ms": 53,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:06.300Z"
+    },
+    {
+      "key": "reconnect-1",
+      "label": "手动重连第 1 次",
+      "ms": 1375,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:07.843Z"
+    },
+    {
+      "key": "attach-hot-1",
+      "label": "二次连接第 1 次（热）",
+      "ms": 1203,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:09.198Z"
+    },
+    {
+      "key": "session-1",
+      "label": "新建会话第 1 次",
+      "ms": 102,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:09.318Z"
+    },
+    {
+      "key": "probe-1",
+      "label": "首个命令回显第 1 次",
+      "ms": 113,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:09.507Z"
+    },
+    {
+      "key": "reconnect-2",
+      "label": "手动重连第 2 次",
+      "ms": 1278,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:10.956Z"
+    },
+    {
+      "key": "attach-hot-2",
+      "label": "二次连接第 2 次（热）",
+      "ms": 1123,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:12.434Z"
+    },
+    {
+      "key": "session-2",
+      "label": "新建会话第 2 次",
+      "ms": 99,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:12.549Z"
+    },
+    {
+      "key": "probe-2",
+      "label": "首个命令回显第 2 次",
+      "ms": 116,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:12.745Z"
+    },
+    {
+      "key": "reconnect-3",
+      "label": "手动重连第 3 次",
+      "ms": 1189,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:14.101Z"
+    },
+    {
+      "key": "attach-hot-3",
+      "label": "二次连接第 3 次（热）",
+      "ms": 1132,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:15.447Z"
+    },
+    {
+      "key": "session-3",
+      "label": "新建会话第 3 次",
+      "ms": 101,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:15.564Z"
+    },
+    {
+      "key": "probe-3",
+      "label": "首个命令回显第 3 次",
+      "ms": 118,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:15.757Z"
+    },
+    {
+      "key": "reconnect-4",
+      "label": "手动重连第 4 次",
+      "ms": 1189,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:17.113Z"
+    },
+    {
+      "key": "attach-hot-4",
+      "label": "二次连接第 4 次（热）",
+      "ms": 1182,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:18.472Z"
+    },
+    {
+      "key": "session-4",
+      "label": "新建会话第 4 次",
+      "ms": 96,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:18.584Z"
+    },
+    {
+      "key": "probe-4",
+      "label": "首个命令回显第 4 次",
+      "ms": 131,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:18.782Z"
+    },
+    {
+      "key": "reconnect-5",
+      "label": "手动重连第 5 次",
+      "ms": 1196,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:20.139Z"
+    },
+    {
+      "key": "attach-hot-5",
+      "label": "二次连接第 5 次（热）",
+      "ms": 1156,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:21.493Z"
+    },
+    {
+      "key": "session-5",
+      "label": "新建会话第 5 次",
+      "ms": 105,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:21.803Z"
+    },
+    {
+      "key": "probe-5",
+      "label": "首个命令回显第 5 次",
+      "ms": 31,
+      "source": "rAF",
+      "at": "2026-11-01T10:23:21.896Z"
+    }
+  ]
+}

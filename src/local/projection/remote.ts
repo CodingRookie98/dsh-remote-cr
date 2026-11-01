@@ -17,8 +17,14 @@
  * 走同一套线上字节，只是不带那一层 UI 语义。
  *
  * 准入：`/connect` 换 v2 签名 Cookie，之后每个 HTTP 请求与 WS 握手都要带它。
- * 一条 cookie 只能拥有一条 WS（ADR-0003 硬结论 4），所以 `openStream` 每次
- * 重新握手——重连本来就该换 cookie。
+ *
+ * **一条 WS 只能配一张自己的 cookie**（P3.5.2 真机定论，不是保守写法）：
+ * 官方 `REMOTE_STREAM_MUX_PATH` 的 upgrade handler 在 socket `close` 时调
+ * `admission.release()`（`packages/api/gateway/src/index.ts:264-301`），而 release 会
+ * **同步 `peers.delete(peer.id)`**（`packages/client/connection/src/rpc-host.ts:145-162`）；
+ * `admit()`（同文件 :129-137）查不到 peer 就回 `{rejection:401}`。
+ * 后果是**关一条流，就把同一 cookie 之后所有调用打成 401**。
+ * 所以 `openStream` 为每条流单独握手换 cookie（实测 5ms），而不是复用一条。
  */
 
 import { randomUUID } from 'node:crypto'
@@ -160,12 +166,15 @@ export async function handshakeRemote(
  */
 export class RemoteRpc {
   readonly #endpoint: RemoteEndpoint
+  /** 这条远端进程的启动 token：每条流都要拿它再换一张**只属于自己**的 cookie。 */
+  readonly #token: string
   readonly #cookie: string
   readonly #options: RemoteRpcOptions
   readonly #sockets = new Set<CookieSocket>()
 
-  private constructor(endpoint: RemoteEndpoint, cookie: string, options: RemoteRpcOptions) {
+  private constructor(endpoint: RemoteEndpoint, token: string, cookie: string, options: RemoteRpcOptions) {
     this.#endpoint = endpoint
+    this.#token = token
     this.#cookie = cookie
     this.#options = options
   }
@@ -177,7 +186,7 @@ export class RemoteRpc {
     options: RemoteRpcOptions = {},
   ): Promise<RemoteRpc> {
     const handshake = await handshakeRemote(endpoint, token, options)
-    return new RemoteRpc(endpoint, handshake.cookie, options)
+    return new RemoteRpc(endpoint, token, handshake.cookie, options)
   }
 
   get cookie(): string {
@@ -264,18 +273,13 @@ export class RemoteRpc {
    * `cancel()` 直接往收件箱塞一个 `end` 把等待者唤醒，再把 socket 关掉。
    */
   openStream(endpoint: string, payload: unknown, uplink?: AsyncIterable<unknown>): StreamHandle {
-    const socket = createCookieSocket({
-      host: this.#endpoint.host,
-      port: this.#endpoint.port,
-      path: '/api/remote.mux',
-      cookie: this.#cookie,
-    })
-    this.#sockets.add(socket)
     const streamId = 'teleport-' + randomUUID()
     const inbox: StreamEvent[] = []
     let wake: (() => void) | undefined
     let ended = false
     let cancelled = false
+    /** 这条流**自己的** socket：握手完成前是 undefined。 */
+    let socket: CookieSocket | undefined
 
     const push = (event: StreamEvent): void => {
       if (ended) return
@@ -294,50 +298,31 @@ export class RemoteRpc {
     const startUplink = (): void => {
       if (uplinkStarted || uplink === undefined || cancelled) return
       uplinkStarted = true
+      const live = socket
+      if (live === undefined) return
       void (async () => {
         for await (const value of uplink) {
           if (cancelled) return
-          socket.send(JSON.stringify({ type: 'item', streamId, value }))
+          live.send(JSON.stringify({ type: 'item', streamId, value }))
         }
       })().catch(() => undefined)
     }
 
-    socket.addEventListener('message', ((event: { data: unknown }) => {
-      const parsed = parseStreamFrame(event.data, streamId)
-      if (parsed === undefined) return
-      push(parsed)
-      startUplink()
-    }) as never)
-    socket.addEventListener('error', (() => {
-      push({ type: 'error', code: 'remote/tunnel-unavailable', message: 'WS 握手或连接失败' })
-    }) as never)
-    socket.addEventListener('close', (() => {
-      push({ type: 'end' })
-    }) as never)
-
-    const openGate = new Promise<void>((resolve, reject) => {
-      socket.addEventListener('open', (() => resolve()) as never, { once: true })
-      const timer = setTimeout(() => reject(new TeleportError({
-        code: 'remote/tunnel-unavailable',
-        detail: '逻辑流 ' + endpoint + ' 的 WS 在 10s 内没建立',
-        nextActions: ['重连', '查看远端日志'],
-      })), 10_000)
-      timer.unref?.()
-    })
-    // 没人消费就没人 await 这个 promise；不挂一个空 catch 会变成 unhandled rejection。
-    void openGate.catch(() => undefined)
-
     const release = (): void => {
-      this.#sockets.delete(socket)
-      socket.dispose()
+      const live = socket
+      if (live === undefined) return
+      socket = undefined
+      this.#sockets.delete(live)
+      live.dispose()
     }
 
     const cancel = (): void => {
       if (cancelled) return
       cancelled = true
-      if (socket.readyState === 1) {
+      const live = socket
+      if (live !== undefined && live.readyState === 1) {
         try {
-          socket.send(JSON.stringify({ type: 'cancel', streamId }))
+          live.send(JSON.stringify({ type: 'cancel', streamId }))
         } catch {
           // 对端已经走了：取消是尽力而为，不需要再把错误放大一层。
         }
@@ -346,13 +331,70 @@ export class RemoteRpc {
       release()
     }
 
+    /**
+     * 为**这一条流**单独握手，拿到只属于它的 cookie，然后建 WS。
+     *
+     * 为什么不能复用构造时那条 cookie（这里踩过，代价是整条产品路径 401）：
+     * 官方 gateway 的 `REMOTE_STREAM_MUX_PATH` upgrade handler 在 socket `close` 时调
+     * `admission.release()`（`packages/api/gateway/src/index.ts:264-301`），而 release
+     * 会**同步 `this.peers.delete(record.peer.id)`**（`packages/client/connection/src/rpc-host.ts:145-162`）；
+     * `admit()`（同文件 :129-137）查不到 peer 就回 `{rejection:401}`。
+     * 也就是说：**一条 cookie 的 WS 一关，同一 cookie 之后所有 HTTP 调用一律 401**。
+     * 而 `/connect?token=` 下发的是 API 凭据（不是浏览器 cookie），必须靠 peer 记录存活。
+     *
+     * 握手只花几毫秒（真机实测 5ms），换来的是「关流不影响任何其它调用」。
+     */
+    const connect = async (): Promise<void> => {
+      const handshake = await handshakeRemote(this.#endpoint, this.#token, this.#options)
+      if (cancelled) return
+      const created = createCookieSocket({
+        host: this.#endpoint.host,
+        port: this.#endpoint.port,
+        path: '/api/remote.mux',
+        cookie: handshake.cookie,
+      })
+      socket = created
+      this.#sockets.add(created)
+
+      created.addEventListener('message', ((event: { data: unknown }) => {
+        const parsed = parseStreamFrame(event.data, streamId)
+        if (parsed === undefined) return
+        push(parsed)
+        startUplink()
+      }) as never)
+      created.addEventListener('error', (() => {
+        push({ type: 'error', code: 'remote/tunnel-unavailable', message: 'WS 握手或连接失败' })
+      }) as never)
+      created.addEventListener('close', (() => {
+        push({ type: 'end' })
+      }) as never)
+    }
+
+    /** 等 WS 建立；10s 建不起来就是隧道有问题，不无限等。 */
+    const opened = (live: CookieSocket): Promise<void> => new Promise<void>((resolve, reject) => {
+      if (live.readyState === 1) {
+        resolve()
+        return
+      }
+      live.addEventListener('open', (() => resolve()) as never, { once: true })
+      const timer = setTimeout(() => reject(new TeleportError({
+        code: 'remote/tunnel-unavailable',
+        detail: '逻辑流 ' + endpoint + ' 的 WS 在 10s 内没建立',
+        nextActions: ['重连', '查看远端日志'],
+      })), 10_000)
+      timer.unref?.()
+    })
+
     const handle: StreamHandle = {
       cancel,
       async *[Symbol.asyncIterator](): AsyncGenerator<StreamEvent> {
         try {
-          await openGate
+          await connect()
+          const live = socket
+          if (cancelled || live === undefined) return
+          await opened(live)
           if (cancelled) return
-          socket.send(JSON.stringify({ type: 'open', streamId, endpoint, payload }))
+          live.send(JSON.stringify({ type: 'open', streamId, endpoint, payload }))
 
           for (;;) {
             while (inbox.length === 0) {

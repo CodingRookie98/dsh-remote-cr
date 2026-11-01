@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-11-01T10:25:04.509Z",
+  "negativeControl": true,
+  "samples": 5,
+  "machine": {
+    "distro": "ubuntu_dev",
+    "remoteRoot": "",
+    "hostPort": 3121,
+    "remotePort": 8907,
+    "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "node": "v24.22.1",
+    "baselineNote": "§7.1 要求基线机 i5-9300H / 15.8GB / NVMe WDC PC SN720 / WSL 网络模式 mirrored；换机必须重跑，不得混算。"
+  },
+  "limits": {
+    "attachHotMs": 5000,
+    "manualReconnectMs": 5000,
+    "firstCommandEchoMs": 3000
+  },
+  "cold": {
+    "firstConnect": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": []
+    },
+    "newSession": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": []
+    },
+    "firstCommandEcho": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": []
+    },
+    "excluded": "远端 dsh 冷启动（probing → provisioning → starting）与会话库首次扫描",
+    "gated": false
+  },
+  "hot": {
+    "attach": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": [],
+      "limitMs": 5000,
+      "pass": false
+    },
+    "manualReconnect": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": [],
+      "limitMs": 5000,
+      "pass": false
+    },
+    "firstCommandEcho": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": [],
+      "limitMs": 3000,
+      "pass": false
+    },
+    "newSession": {
+      "n": 0,
+      "p50": null,
+      "p90": null,
+      "values": [],
+      "limitMs": null,
+      "pass": null
+    }
+  },
+  "raw": []
+}

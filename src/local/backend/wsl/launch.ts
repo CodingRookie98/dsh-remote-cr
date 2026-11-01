@@ -76,7 +76,51 @@ export function buildDshArgs(options: {
  * - `--cd` 在 `-d` 前后都能生效，统一写在 `--exec` 之前。
  */
 export function buildLaunchArgs(options: LaunchOptions): string[] {
-  return ['-d', options.distro, '--cd', options.remoteRoot, '--exec', ...buildDshArgs(options)]
+  return ['-d', options.distro, '--cd', options.remoteRoot, '--exec', ...buildWatchdogArgs(options)]
+}
+
+/** 关掉 stdin 之后给看门狗多久去 kill 子进程（实测脚本是毫秒级，留足余量）。 */
+const STDIN_EOF_GRACE_MS = 300
+
+/** 看门狗脚本里那两个标记，回收实证靠它们从日志里确认走的是哪条路。 */
+export const WATCHDOG_PID_MARK = 'TELEPORT_WATCHDOG_PID='
+export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
+
+/**
+ * 把 `dsh web` 包进一个「stdin 一关就自杀」的 bash 看门狗。
+ *
+ * 为什么需要它：宿主崩溃/被强杀时走不到 `dispose()`，而 Windows 不会替我们
+ * 杀掉 `wsl.exe` 的 distro 侧子进程 —— 远端 dsh 就成了孤儿，下次启动撞端口。
+ * 实测（D:/Temp/watchdog-test.cjs）：宿主侧 `child.stdin.destroy()` 之后
+ * `portBusy=false count=0`，日志末尾出现 `TELEPORT_WATCHDOG_KILLED`。
+ *
+ * 这条把「远端生命周期」绑到了「宿主是否还握着管道」上，比事后轮询扫孤儿可靠：
+ * 宿主怎么死的都无所谓，管道一断，`cat` 读到 EOF，脚本就把子进程 kill 掉。
+ *
+ * 整个脚本必须是**单行**：`wsl.exe --exec` 把每个 argv 原样传过去，多行会被
+ * bash 当成后续命令的输入。
+ */
+export function buildWatchdogScript(options: {
+  port: number
+  host?: string
+  nodeCommand?: string
+  extraArgs?: readonly string[]
+}): string {
+  const argv = buildDshArgs({ remoteRoot: '.', ...options }).slice(1)
+  const quoted = argv.map((part) => (/^[A-Za-z0-9_./-]+$/.test(part) ? part : "'" + part.replace(/'/g, "'\\''") + "'"))
+  return [
+    quoted.join(' ') + ' &',
+    'child=$!;',
+    "printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$child";',
+    'cat > /dev/null;',
+    'kill $child 2>/dev/null;',
+    "printf '%s\\n' " + JSON.stringify(WATCHDOG_KILLED_MARK),
+  ].join(' ')
+}
+
+/** `bash -lc <看门狗脚本>` —— 与 `buildDshArgs` 一一对应，只是多了一层壳。 */
+export function buildWatchdogArgs(options: LaunchOptions): string[] {
+  return ['bash', '-lc', buildWatchdogScript(options)]
 }
 
 /**
@@ -173,6 +217,15 @@ export async function launchRemoteDsh(options: LaunchOptions): Promise<RemoteDsh
     endpoint,
     log: () => buffer,
     async dispose() {
+      // 先关 stdin：看门狗读到 EOF 会自己 kill 掉 `dsh web`，这是**唯一**能
+      // 确保 distro 侧子进程一起退出的路（只 kill `wsl.exe` 会留下 bash 的孙子进程）。
+      // 给看门狗一点时间跑完，再按句柄兜底（它可能已经自己退了）。
+      try {
+        child.stdin?.end()
+      } catch {
+        // 管道已经断了
+      }
+      await new Promise((resolve) => setTimeout(resolve, STDIN_EOF_GRACE_MS))
       const report = await owned.dispose()
       return report.survivors.length === 0
     },

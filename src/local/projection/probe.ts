@@ -21,26 +21,113 @@ import type { ProjectionRpc, StreamHandle } from './remote.ts'
 import { asRecord, asString, badShape } from './shape.ts'
 
 /** 探针命令的完成标记：独占一行出现，且不会出现在输入回显里。 */
-export const PROBE_DONE = 'TELEPORT_PROBE_DONE'
+export const PROBE_DONE = 'TPDONE'
 /** 两个结果行的前缀；取值时**取完成标记之前最后一次出现的**，避免抓到输入回显。 */
-export const PROBE_PWD = 'TELEPORT_PROBE_PWD='
-export const PROBE_UNAME = 'TELEPORT_PROBE_UNAME='
+export const PROBE_PWD = 'TPPWD='
+export const PROBE_UNAME = 'TPUNAME='
 
 /**
  * 取证命令。
  *
- * 刻意用 `printf` 加前缀而不是裸 `pwd`/`uname`：终端里回显会把整条命令行
- * 打一遍，裸输出无法与回显区分；带前缀 + 取最后一次匹配就能稳定解析。
+ * 刻意带前缀而不是裸 `pwd`/`uname`：终端里回显会把整条命令行打一遍，裸输出
+ * 无法与回显区分；带前缀 + 取最后一次匹配就能稳定解析。
+ *
+ * **必须跨 shell 通用**：取证终端的 shell 由远端可用列表决定（见 `PROBE_SHELLS`），
+ * 可能是 fish 也可能是 bash。所以只用两边都认的写法：`$PWD` 变量、`echo -n`、
+ * 分号分隔，**不用**带命令替换的 `printf '...' "$(uname -a)"` —— fish 3.7 虽然
+ * 支持 `$(...)`，但它的重绘会把带引号的长命令行拆成好几段，回显行跟着裂开
+ * （实测该形态在 fish 下 6/6 解析失败，而这条 6/6 通过）。
+ *
+ * **命令长度不是这里的杠杆**（2026-11-01 真机对照，WSL `ubuntu_dev`，n=5/档，
+ * 严格判据「某行 trim 后 === 完成标记」）：24 字符 p50 1675 / p90 1787，
+ * 32 字符 1445 / 1719，66 字符 1481 / 1560 —— 全在噪声内。早先观察到「110 字符
+ * 比 12 字符慢 6 倍」是**冷终端排队**造成的，不是行编辑器在给命令行上色。
  */
 export const PROBE_COMMAND =
-  "printf '" + PROBE_PWD + "%s\\n' \"$PWD\"; printf '" + PROBE_UNAME
-  + "%s\\n' \"$(uname -a)\"; printf '" + PROBE_DONE + "\\n'\r"
+  'echo ' + PROBE_PWD + '$PWD;echo -n ' + PROBE_UNAME + ';uname -a;echo ' + PROBE_DONE + '\r'
 
 /** 终端尺寸给足，避免长命令行被折行拆成两行。 */
 export const PROBE_COLS = 200
 export const PROBE_ROWS = 50
 export const PROBE_TERMINAL_ID = 'teleport-probe'
 export const DEFAULT_PROBE_TIMEOUT_MS = 20_000
+
+/**
+ * 取证终端优先用的 shell —— 按顺序取**远端真的装了的**第一个。
+ *
+ * 为什么值得换 shell：远端 bash 的 `~/.bashrc` 里有 `ble.sh`（行编辑器），它启动时
+ * 要做整屏重绘、还要发 `ESC[>c`/`ESC[6n` 问终端能力并**等应答**。我们的 RPC 客户端
+ * 不是真终端，不应答，于是它只能等到超时 —— 真机逐帧时间线（2026-11-01）：
+ *
+ * `+234ms 回显命令 → +1003ms 输出含 ESC[>c ESC[6n → +1778ms ble.sh 重绘 → +2183ms 才出现命令结果`
+ *
+ * 这 1.4–1.8s 与命令内容、命令长度、PTY 尺寸都无关（都做过对照），纯粹是 bash 启动。
+ * 而 fish 不跑 ble.sh：同一台机器、同一条命令、同一套测量代码，
+ *
+ * | shell | 首命令 p50 / p90（冷终端，n=6）| n=12 复核 |
+ * | --- | --- | --- |
+ * | bash（默认）| 1789 / 2015 | — |
+ * | fish | **204 / 406** | **150 / 161** |
+ *
+ * 取证是**只读的事实采集**（`$PWD` + `uname -a`），不依赖用户的交互式 shell 偏好，
+ * 所以这里换 shell 不改变取证语义，只绕开远端 rc 的启动开销。
+ *
+ * 远端没装 fish 时回落到默认 shell，此时仍要靠下面的 `TERMINAL_WARMUP_MS` 兜底。
+ */
+export const PROBE_SHELL_PREFERENCE: readonly string[] = ['fish']
+
+/**
+ * 走「启动慢的 shell」（远端默认 bash + ble.sh）时，一个终端从**建立**到
+ * 「能秒回命令」需要的时间。
+ *
+ * 这个数字不是猜的，是真机对照实测（2026-10-31 / 11-01，WSL `ubuntu_dev`，
+ * 每次新会话 + 新终端，量「发命令 → 完成标记到达」）：
+ *
+ * | create 后已过 | 命令往返 |
+ * | --- | --- |
+ * | 0 ms | **1776 ms** |
+ * | 500 ms | 1248 ms |
+ * | 1500 ms | **364 ms** |
+ * | 已跑过一条命令的终端 | **24 ms** |
+ *
+ * 也就是说：新建终端那一刻，远端 bash 还在跑 `~/.bashrc`（含 `ble.sh`），此时送进去
+ * 的输入要排在初始化之后才被处理；**等它初始化完**再发，命令本身只要几百毫秒。
+ *
+ * 还试过「等首帧输出出现再发」（自适应）：首帧 705 ms 就到了，但那时初始化并未结束，
+ * 命令仍要再等 818 ms。**首帧输出不是「终端就绪」的信号**。
+ *
+ * 注意：`PROBE_SHELL_PREFERENCE` 命中时（fish）**不需要**这段等待 —— 它没有 ble.sh，
+ * 冷终端首命令只要 150 ms。等待只对回落路径生效，见 `remainingWarmup`。
+ */
+export const TERMINAL_WARMUP_MS = 1500
+
+/**
+ * 每个终端「什么时候建的、用的是不是快 shell」——预热窗口从这一刻起算。
+ *
+ * 为什么要记在这里而不是每次现等 1500ms：终端可以在**会话建立时**就建好
+ * （`preheatProbe`），等用户真去点「取证」时预热窗口早就走完了，那 1500ms
+ * 不必再等一遍。实测：会话建立后 1500ms 再取证，命令往返 364ms；若每次都
+ * 固定睡 1500ms，则用户要多等整整一秒半。
+ *
+ * 键是 `sessionId:terminalId`：同一会话可以有多个终端，各算各的。
+ */
+const warmedAt = new Map<string, { readonly at: number; readonly warmup: boolean }>()
+
+function warmKey(sessionId: string, terminalId: string): string {
+  return sessionId + ':' + terminalId
+}
+
+/**
+ * 每个会话该用哪个 shell —— 查一次就记住。
+ *
+ * 查一次是因为 `terminal/shells` 要走一次远端往返，而会话的 shell 集合在会话生命周期里
+ * 不会变；记住还能保证「预热建的终端」和「取证复用的终端」用的是同一个 shell
+ * （`terminal/create` 对同 id 幂等，选错就会拿到另一个 shell 的终端）。
+ *
+ * 查不到（老版本远端没这个端点、或远端报错）就**回落到默认 shell**：换 shell 是加速手段，
+ * 不是取证前提，不能因为它坏了就让取证失败 —— 只是要退回去付 `TERMINAL_WARMUP_MS` 的等待。
+ */
+const shellChoices = new Map<string, { readonly path?: string }>()
 /** 终端回滚缓冲上限：远端异常刷屏时不能把本地内存吃光。 */
 export const MAX_TRANSCRIPT_CHARS = 64 * 1024
 
@@ -49,11 +136,118 @@ export interface ProbeDeps {
   readonly rpc: ProjectionRpc
 }
 
+/** 记住这个终端是什么时候建的；`terminal/create` 对同 id 幂等，已记过就不重置。 */
+function markTerminalCreated(sessionId: string, terminalId: string, warmup: boolean): void {
+  const key = warmKey(sessionId, terminalId)
+  if (!warmedAt.has(key)) warmedAt.set(key, { at: Date.now(), warmup })
+}
+
+/**
+ * 这个终端还剩多少预热窗口没走完。
+ *
+ * - 记过且用的是快 shell（fish）：0 —— 它没有 ble.sh，冷终端首命令 150ms。
+ * - 记过且用的是默认 shell：按「建了多久」扣。
+ * - 没记过（终端可能是别人建的）：按 `fallbackWarmup` 决定，即「这次会不会用默认 shell」。
+ */
+function remainingWarmup(sessionId: string, terminalId: string, fallbackWarmup: boolean): number {
+  const created = warmedAt.get(warmKey(sessionId, terminalId))
+  if (created === undefined) return fallbackWarmup ? TERMINAL_WARMUP_MS : 0
+  if (!created.warmup) return 0
+  const elapsed = Date.now() - created.at
+  return elapsed >= TERMINAL_WARMUP_MS ? 0 : TERMINAL_WARMUP_MS - elapsed
+}
+
+/** 一次 `terminal/shells` 的结果：挑中的 shell 路径；空对象表示用远端默认。 */
+interface ShellChoice {
+  readonly path?: string
+}
+
+/**
+ * 挑一个**远端真的装了**的快 shell（见 `PROBE_SHELL_PREFERENCE`）。
+ *
+ * 查一次就按会话记住：`terminal/shells` 要走一次远端往返，而可用 shell 集合在会话
+ * 生命周期里不会变；更重要的是「预热建的终端」与「取证复用的终端」必须选到同一个
+ * shell —— `terminal/create` 对同 id 幂等，选不一样就会拿到另一个 shell 的终端。
+ *
+ * 查失败（老版本远端没有这个端点、或远端报错）就**回落到默认 shell**，并且**不缓存**
+ * 失败结果：换 shell 是加速手段，不是取证前提，不能让一次抖动把整个会话钉在慢路径上。
+ * 只有「查成功、但确实没有偏好里的 shell」才缓存回落 —— 那个结论在会话内是稳定的。
+ */
+async function chooseShell(deps: ProbeDeps, sessionId: string, signal?: AbortSignal): Promise<ShellChoice> {
+  const known = shellChoices.get(sessionId)
+  if (known !== undefined) return known
+  let listed: unknown
+  try {
+    listed = await deps.rpc.call<unknown>('terminal/shells', { args: { agentId: sessionId } }, signal)
+  } catch {
+    return {}
+  }
+  // 形状不对也当「这次没查到」：不缓存，下次再试。
+  if (!Array.isArray(listed)) return {}
+  for (const wanted of PROBE_SHELL_PREFERENCE) {
+    for (const entry of listed) {
+      const record = asRecord(entry)
+      if (record === undefined) continue
+      const path = asString(record['path'])
+      if (path === undefined) continue
+      // 远端给的是绝对路径（`/usr/bin/fish`），比较文件名而不是整条路径：
+      // 不同发行版装在不同前缀下，整串比较会漏。
+      const name = path.slice(path.lastIndexOf('/') + 1)
+      if (name !== wanted) continue
+      const choice: ShellChoice = { path }
+      shellChoices.set(sessionId, choice)
+      return choice
+    }
+  }
+  const fallback: ShellChoice = {}
+  shellChoices.set(sessionId, fallback)
+  return fallback
+}
+
+/** 建终端时的公共请求体：shell 选择只影响速度，不影响取证语义。 */
+function createRequest(terminalId: string, choice: ShellChoice): Record<string, unknown> {
+  const request: Record<string, unknown> = { id: terminalId, cols: PROBE_COLS, rows: PROBE_ROWS }
+  if (choice.path !== undefined) request['shellPath'] = choice.path
+  return request
+}
+
+/**
+ * 提前把取证终端建出来，让预热窗口在**用户还没点取证**的时候就开始走。
+ *
+ * 为什么值得单独一步：终端初始化的代价是「每个终端一次」的（实测同一终端第二条
+ * 命令 24ms），而它一旦开始就不需要我们再做什么 —— 只要时间过去。会话一建好就
+ * 建终端，等用户真去点「取证」时窗口早已走完，量到的就是 364ms 而不是 1776ms。
+ *
+ * 换成 fish 之后这段等待本身也不需要了（冷终端 150ms），但**先建终端**仍然值得：
+ * 它把「建终端」的那次远端往返（实测 33–254ms）挪出用户等待窗口。
+ *
+ * 失败会**抛出去**，不吞：终端是取证的唯一通道，建不出终端等于取证必然失败，
+ * 在会话建立时就说清楚，比让用户在取证按钮上等 20s 超时好（铁律 4「失败要响」）。
+ */
+export async function preheatProbe(
+  deps: ProbeDeps,
+  sessionId: string,
+  options: { readonly terminalId?: string; readonly signal?: AbortSignal } = {},
+): Promise<string> {
+  const terminalId = options.terminalId ?? PROBE_TERMINAL_ID
+  const choice = await chooseShell(deps, sessionId, options.signal)
+  const created = await deps.rpc.call<unknown>(
+    'terminal/create',
+    { args: { agentId: sessionId, request: createRequest(terminalId, choice) } },
+    options.signal,
+  )
+  readTerminalInfo(created, 'terminal/create')
+  markTerminalCreated(sessionId, terminalId, choice.path === undefined)
+  return terminalId
+}
+
 export interface ProbeOptions {
   readonly signal?: AbortSignal
   readonly timeoutMs?: number
   /** 终端 id；同一会话重复取证会幂等命中（`terminal/create` 对同 id 幂等）。 */
   readonly terminalId?: string
+  /** 覆盖预热等待；单测与对照实验用，产品路径走 `TERMINAL_WARMUP_MS`。 */
+  readonly warmupMs?: number
 }
 
 export interface ProbeResult {
@@ -118,8 +312,10 @@ export function parseProbeTranscript(transcript: string): { cwd: string; uname: 
     if (cwd !== undefined && uname !== undefined) break
   }
   if (cwd === undefined || uname === undefined) return undefined
-  // 回显行里的值是 %s（printf 的格式串），不是真实输出；宁可报错也不交假证据。
-  if (cwd.includes('%s') || uname.includes('%s')) return undefined
+  // 回显行里留着的是**字面量**（`$PWD`、`%s` 这类），不是真实输出；
+  // 宁可报错也不交假证据 —— 一旦把它们当成结果，断言会「通过」得毫无意义。
+  if (cwd.includes('$PWD') || cwd.includes('%s')) return undefined
+  if (uname.includes('$(') || uname.includes('%s')) return undefined
   return { cwd, uname }
 }
 
@@ -145,6 +341,26 @@ function frameText(value: unknown): string {
     return data ?? ''
   }
   return ''
+}
+
+/** 可被 signal 打断的等待；取消时立刻返回，不留下悬空定时器。 */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted === true) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }, ms)
+    timer.unref?.()
+    const done = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal?.addEventListener('abort', done, { once: true })
+  })
 }
 
 /** 超时哨兵：与 `iterator.next()` 赛跑，谁先到谁说了算。 */
@@ -206,17 +422,22 @@ export async function runSessionProbe(
   options: ProbeOptions = {},
 ): Promise<ProbeResult> {
   const terminalId = options.terminalId ?? PROBE_TERMINAL_ID
+  const choice = await chooseShell(deps, sessionId, options.signal)
+  // 先查预热余量**再**建终端：`terminal/create` 幂等，已经建过的终端
+  // （`preheatProbe` 建过）不该在这里把计时重置回 0。
+  const pendingWarmup = options.warmupMs ?? remainingWarmup(sessionId, terminalId, choice.path === undefined)
   const created = await deps.rpc.call<unknown>(
     'terminal/create',
-    {
-      args: {
-        agentId: sessionId,
-        request: { id: terminalId, cols: PROBE_COLS, rows: PROBE_ROWS },
-      },
-    },
+    { args: { agentId: sessionId, request: createRequest(terminalId, choice) } },
     options.signal,
   )
   readTerminalInfo(created, 'terminal/create')
+  markTerminalCreated(sessionId, terminalId, choice.path === undefined)
+
+  // 预热：等远端 shell 把 `~/.bashrc`（含 ble.sh）跑完再发命令。
+  // 数字的依据与对照实验见 `TERMINAL_WARMUP_MS` 的注释。走 fish 时这里是 0
+  // （它没有 ble.sh，冷终端首命令 150ms）；只有回落到默认 shell 才真要等。
+  if (pendingWarmup > 0) await pause(pendingWarmup, options.signal)
 
   const gate = stopper(options.signal, options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS)
   // 上行：先发一条命令，然后**保持打开**。提前 return 会让远端认为输入结束，
