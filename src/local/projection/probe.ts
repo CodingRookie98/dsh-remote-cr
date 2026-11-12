@@ -17,11 +17,25 @@
  * 3. 回车必须是 `\r`（PTY 的行规程只认 CR），发 `\n` 会卡在提示符上。
  */
 
+import { randomBytes } from 'node:crypto'
+
 import type { ProjectionRpc, StreamHandle } from './remote.ts'
 import { asRecord, asString, badShape } from './shape.ts'
 
-/** 探针命令的完成标记：独占一行出现，且不会出现在输入回显里。 */
-export const PROBE_DONE = 'TPDONE'
+/**
+ * 探针命令的完成标记前缀。**真正的标记每轮带一个随机后缀**（见 `newDoneToken`）。
+ *
+ * 为什么必须是每轮唯一的：终端是**复用**的（`terminal/create` 对同 id 幂等，见
+ * `PROBE_TERMINAL_ID`），而 `terminal/attach` 的首帧 `snapshot` 会带上这个终端
+ * **上一轮的整屏 scrollback**。若完成标记是固定字面量，第二次取证时首帧里就已有
+ * 上一轮的 `TPDONE`，解析器当场命中，**一条命令都没发**就"成功"返回上一轮的 cwd。
+ * 这不是理论推演：2026-11-01 用最小假 rpc（首帧只给含旧结果的 snapshot、此后不再
+ * 产出任何 output 帧）复现，`runSessionProbe` **2ms** 就返回了旧会话的 cwd。
+ *
+ * 带上每轮随机后缀之后，历史 scrollback 永远不含本轮标记，假命中在结构上不可能；
+ * 而"输出里出现本轮标记"仍然只能由**本轮真实执行**产生，判据强度不降反升。
+ */
+export const PROBE_DONE_PREFIX = 'TPDONE-'
 /** 两个结果行的前缀；取值时**取完成标记之前最后一次出现的**，避免抓到输入回显。 */
 export const PROBE_PWD = 'TPPWD='
 export const PROBE_UNAME = 'TPUNAME='
@@ -43,8 +57,20 @@ export const PROBE_UNAME = 'TPUNAME='
  * 32 字符 1445 / 1719，66 字符 1481 / 1560 —— 全在噪声内。早先观察到「110 字符
  * 比 12 字符慢 6 倍」是**冷终端排队**造成的，不是行编辑器在给命令行上色。
  */
-export const PROBE_COMMAND =
-  'echo ' + PROBE_PWD + '$PWD;echo -n ' + PROBE_UNAME + ';uname -a;echo ' + PROBE_DONE + '\r'
+export function buildProbeCommand(doneToken: string): string {
+  return 'echo ' + PROBE_PWD + '$PWD;echo -n ' + PROBE_UNAME + ';uname -a;echo ' + doneToken + '\r'
+}
+
+/**
+ * 生成本轮唯一的完成标记。
+ *
+ * 只用小写十六进制：它要原样进 shell 命令，不能有任何需要转义或会被 shell 解释的字符
+ * （`$` / 反引号 / 空格 / 引号一个都不能有），否则 fish 与 bash 的解释就会分叉。
+ * 8 字节够用：一轮一次，碰撞概率可忽略，同时命令行只长 17 个字符。
+ */
+export function newDoneToken(): string {
+  return PROBE_DONE_PREFIX + randomBytes(8).toString('hex')
+}
 
 /** 终端尺寸给足，避免长命令行被折行拆成两行。 */
 export const PROBE_COLS = 200
@@ -290,14 +316,20 @@ export function stripAnsi(text: string): string {
  *
  * 解析方向是**从后往前**：先找最后一处独占一行的完成标记，再在它之前找两个前缀
  * 最后一次出现的位置。这样输入回显（命令行本身也含前缀字面量）永远被真正的输出覆盖。
+ *
+ * `doneToken` 必须是**本轮**生成的（`newDoneToken`），不能是固定字面量：终端复用 +
+ * snapshot 带历史 scrollback 时，固定标记会让上一轮的结论冒充本轮结论。
  */
-export function parseProbeTranscript(transcript: string): { cwd: string; uname: string } | undefined {
+export function parseProbeTranscript(
+  transcript: string,
+  doneToken: string,
+): { cwd: string; uname: string } | undefined {
   // 先剥控制序列，再按 \r 与 \n 一起切行：PTY 的行规程把 \r 也当换行，
   // 远端回来的文本里两种都有。
   const lines = stripAnsi(transcript).split(/\r\n|\r|\n/)
   let done = -1
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if ((lines[index] ?? '').trim() === PROBE_DONE) {
+    if ((lines[index] ?? '').trim() === doneToken) {
       done = index
       break
     }
@@ -439,6 +471,11 @@ export async function runSessionProbe(
   // （它没有 ble.sh，冷终端首命令 150ms）；只有回落到默认 shell 才真要等。
   if (pendingWarmup > 0) await pause(pendingWarmup, options.signal)
 
+  // 完成标记**每轮新生成**：终端是复用的，首帧 snapshot 会带回上一轮的整屏文本，
+  // 固定标记会让上一轮的结论冒充本轮（见 `PROBE_DONE_PREFIX` 的注释）。
+  const doneToken = newDoneToken()
+  const command = buildProbeCommand(doneToken)
+
   const gate = stopper(options.signal, options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS)
   // 上行：先发一条命令，然后**保持打开**。提前 return 会让远端认为输入结束，
   // 而 attach 的下行流要等我们主动取消才会停。
@@ -447,12 +484,18 @@ export async function runSessionProbe(
     release = resolve
   })
   const uplink = (async function* input(): AsyncGenerator<unknown> {
-    yield { type: 'write', sequence: 1, data: PROBE_COMMAND }
+    yield { type: 'write', sequence: 1, data: command }
     await held
   })()
 
   let transcript = ''
   let failure: { code: string; message: string } | undefined
+  /**
+   * 为什么停下来。三者对用户的含义完全不同，不能都报成「超时」：
+   * `timeout` 是远端没吭声，`closed` 是流提前没了（隧道掉了／终端被关），
+   * `error` 是远端明确报错。混成一句会让排障从「看远端」变成「等更久」。
+   */
+  let stopped: 'timeout' | 'closed' | 'error' = 'closed'
   const stream: StreamHandle = deps.rpc.openStream(
     'terminal/attach',
     { args: { agentId: sessionId, id: terminalId } },
@@ -463,17 +506,24 @@ export async function runSessionProbe(
     for (;;) {
       const step = await raceGate(iterator.next(), gate)
       if (step === TIMEOUT) {
+        stopped = 'timeout'
         failure = { code: 'remote/tunnel-unavailable', message: '取证命令在超时前没有回显完成标记' }
         break
       }
-      if (step.done === true) break
+      if (step.done === true) {
+        stopped = 'closed'
+        break
+      }
       const event = step.value
       if (event.type === 'item') {
         transcript = clipped(transcript + frameText(event.value))
-        if (parseProbeTranscript(transcript) !== undefined) break
+        if (parseProbeTranscript(transcript, doneToken) !== undefined) break
         continue
       }
-      if (event.type === 'error') failure = { code: event.code, message: event.message }
+      if (event.type === 'error') {
+        stopped = 'error'
+        failure = { code: event.code, message: event.message }
+      }
       break
     }
   } finally {
@@ -485,10 +535,16 @@ export async function runSessionProbe(
     gate.dispose()
   }
 
-  const parsed = parseProbeTranscript(transcript)
+  const parsed = parseProbeTranscript(transcript, doneToken)
   if (parsed === undefined) {
-    const suffix = failure === undefined ? '' : '（远端报错 ' + failure.code + '：' + failure.message + '）'
-    throw new Error('远端会话终端没有在超时前给出取证结果' + suffix + '；终端文本末尾：' + transcript.slice(-400))
+    const because =
+      stopped === 'timeout'
+        ? '没有在超时前给出本轮取证结果'
+        : stopped === 'closed'
+          ? '的输出流在本轮完成标记出现前就结束了'
+          : '报错后没有给出本轮取证结果'
+    const suffix = failure === undefined ? '' : '（远端 ' + failure.code + '：' + failure.message + '）'
+    throw new Error('远端会话终端' + because + suffix + '；终端文本末尾：' + transcript.slice(-400))
   }
   return { sessionId, terminalId, cwd: parsed.cwd, uname: parsed.uname, transcript }
 }

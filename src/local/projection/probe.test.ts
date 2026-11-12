@@ -3,13 +3,14 @@ import { test } from 'node:test'
 
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
 import {
-  PROBE_COMMAND,
-  PROBE_DONE,
+  PROBE_DONE_PREFIX,
   PROBE_PWD,
   PROBE_SHELL_PREFERENCE,
   PROBE_UNAME,
   TERMINAL_WARMUP_MS,
   assertRemoteExecution,
+  buildProbeCommand,
+  newDoneToken,
   parseProbeTranscript,
   runSessionProbe,
 } from './probe.ts'
@@ -25,23 +26,27 @@ const NEG = process.env.NEGATIVE_CONTROL === '1'
  */
 const NO_WARMUP = { warmupMs: 0 }
 
-/** 造一段终端文本：先是 shell 回显（含 %s 字面量），再是真实输出。 */
-function transcriptOf(cwd: string, uname: string, options: { echo?: boolean; done?: boolean } = {}): string {
+/** 一轮固定的完成标记：解析器的单测要能自己指定 token。 */
+const TOKEN = PROBE_DONE_PREFIX + 'abc123abc123'
+
+/** 造一段终端文本：先是 shell 回显（含字面量），再是真实输出。 */
+function transcriptOf(cwd: string, uname: string, options: { echo?: boolean; done?: boolean; token?: string } = {}): string {
+  const token = options.token ?? TOKEN
   const echo = options.echo ?? true
   const lines: string[] = []
-  if (echo) lines.push('hui@CodingRookie:~$ ' + PROBE_COMMAND.replace('\r', ''))
+  if (echo) lines.push('hui@CodingRookie:~$ ' + buildProbeCommand(token).replace('\r', ''))
   lines.push(PROBE_PWD + cwd)
   lines.push(PROBE_UNAME + uname)
-  if (options.done ?? true) lines.push(PROBE_DONE)
+  if (options.done ?? true) lines.push(token)
   return lines.join('\r\n') + '\r\n'
 }
 
 const LINUX_UNAME = 'Linux CodingRookie 6.18.54.1-microsoft-standard-WSL2 x86_64 GNU/Linux'
 
-test('解析取完成标记之前的最后一次出现：回显行里的 %s 不会被当成结果', () => {
+test('解析取完成标记之前的最后一次出现：回显行里的字面量不会被当成结果', () => {
   const text = transcriptOf('/home/hui/workspace', LINUX_UNAME)
-  // NEGATIVE_CONTROL: 变异成「从头往后取第一次出现」，就会抓到回显里的 printf 格式串。
-  const parsed = NEG ? firstMatch(text) : parseProbeTranscript(text)
+  // NEGATIVE_CONTROL: 变异成「从头往后取第一次出现」，就会抓到回显里的格式串。
+  const parsed = NEG ? firstMatch(text) : parseProbeTranscript(text, TOKEN)
   assert.notEqual(parsed, undefined)
   assert.equal(parsed?.cwd, '/home/hui/workspace')
   assert.equal(parsed?.uname, LINUX_UNAME)
@@ -61,16 +66,31 @@ function firstMatch(text: string): { cwd: string; uname: string } | undefined {
 }
 
 test('没有完成标记就不给结论：宁可报错也不交半截证据', () => {
-  assert.equal(parseProbeTranscript(transcriptOf('/home/hui', LINUX_UNAME, { done: false })), undefined)
-  assert.equal(parseProbeTranscript(''), undefined)
+  assert.equal(parseProbeTranscript(transcriptOf('/home/hui', LINUX_UNAME, { done: false }), TOKEN), undefined)
+  assert.equal(parseProbeTranscript('', TOKEN), undefined)
 })
 
-test('只有回显、没有真实输出时解析失败（回显里是 $PWD 字面量，不是值）', () => {
+test('只有回显、没有真实输出时解析失败（回显里是字面量，不是值）', () => {
   // 回显行会原样打出命令行，其中 `$PWD` 没有被展开；把它当成结果就是假证据。
-  const echoOnly = 'hui@CodingRookie:~$ ' + PROBE_COMMAND.replace('\r', '') + '\r\n' + PROBE_DONE + '\r\n'
-  assert.equal(parseProbeTranscript(echoOnly), undefined)
+  const echoOnly = 'hui@CodingRookie:~$ ' + buildProbeCommand(TOKEN).replace('\r', '') + '\r\n' + TOKEN + '\r\n'
+  assert.equal(parseProbeTranscript(echoOnly, TOKEN), undefined)
   // 就算回显被折行、前缀单独落在某一行，也不能认。
-  assert.equal(parseProbeTranscript(PROBE_PWD + '$PWD\r\n' + PROBE_UNAME + '$(uname -a)\r\n' + PROBE_DONE), undefined)
+  assert.equal(parseProbeTranscript(PROBE_PWD + '$PWD\r\n' + PROBE_UNAME + '$(uname -a)\r\n' + TOKEN, TOKEN), undefined)
+})
+
+test('别的轮次的完成标记不算数：终端复用带回来的历史证据必须被无视', () => {
+  // 上一轮的文本（含上一轮自己的标记）原样出现，但本轮 token 从未出现 ⇒ 不给结论。
+  const stale = transcriptOf('/home/hui/old-cwd', 'Linux STALE 1.0 x86_64', { token: PROBE_DONE_PREFIX + 'deadbeefdeadbeef' })
+  assert.equal(parseProbeTranscript(stale, TOKEN), undefined)
+})
+
+test('每轮生成的完成标记都不同，且只含 shell 安全字符', () => {
+  const a = newDoneToken()
+  const b = newDoneToken()
+  assert.notEqual(a, b)
+  assert.match(a, /^TPDONE-[0-9a-f]{16}$/)
+  // 标记要原样进命令行，不能带任何需要转义或会被 shell 解释的字符。
+  assert.equal(a, a.replace(/[^A-Za-z0-9-]/g, ''))
 })
 
 test('断言：POSIX 绝对路径 + Linux 内核才算跑在远端', () => {
@@ -85,14 +105,27 @@ test('断言：POSIX 绝对路径 + Linux 内核才算跑在远端', () => {
 interface Recorded {
   readonly calls: { endpoint: string; payload: unknown }[]
   readonly streams: { endpoint: string; payload: unknown; uplink: boolean }[]
+  /** 上行真的发出去的字节：命令没发出去就不该有任何结论。 */
+  readonly sent: string[]
 }
 
-/** 假 RPC：把「远端回了什么」变成测试入参，而不是去连真远端。 */
+/**
+ * 假 RPC：把「远端回了什么」变成测试入参，而不是去连真远端。
+ *
+ * `frames` 可以是固定数组，也可以是 `(command) => frames`：后者会先**真的从 uplink
+ * 读出本轮命令**，再据此造帧 —— 于是「远端回显的标记是不是本轮标记」这件事在单测里
+ * 也是真的在联动，而不是两边各写一份字面量。
+ */
 function fakeRpc(
-  frames: readonly unknown[],
-  options: { readonly failWith?: { code: string; message: string }; readonly shells?: readonly unknown[] | Error } = {},
+  frames: readonly unknown[] | ((command: string) => readonly unknown[]),
+  options: {
+    readonly failWith?: { code: string; message: string }
+    readonly shells?: readonly unknown[] | Error
+    /** 造完帧后**不结束流**，一直挂到被取消：模拟「远端不吭声」，用来验证真的会等到超时。 */
+    readonly endless?: boolean
+  } = {},
 ): { rpc: ProjectionRpc; seen: Recorded } {
-  const seen: Recorded = { calls: [], streams: [] }
+  const seen: Recorded = { calls: [], streams: [], sent: [] }
   const rpc: ProjectionRpc = {
     async call<T>(endpoint: string, payload: unknown): Promise<T> {
       seen.calls.push({ endpoint, payload })
@@ -105,14 +138,34 @@ function fakeRpc(
     openStream(endpoint: string, payload: unknown, uplink?: AsyncIterable<unknown>): StreamHandle {
       seen.streams.push({ endpoint, payload, uplink: uplink !== undefined })
       let cancelled = false
+      let unhold: (() => void) | undefined
       return {
         cancel() {
           cancelled = true
+          unhold?.()
         },
         async *[Symbol.asyncIterator](): AsyncGenerator<StreamEvent> {
-          for (const frame of frames) {
+          let resolved: readonly unknown[] = []
+          if (typeof frames === 'function') {
+            const iterator = uplink?.[Symbol.asyncIterator]()
+            const first = await iterator?.next()
+            const command = typeof first?.value === 'object' && first.value !== null
+              ? String((first.value as { data?: unknown }).data ?? '')
+              : ''
+            if (command !== '') seen.sent.push(command)
+            resolved = frames(command)
+          } else {
+            resolved = frames
+          }
+          for (const frame of resolved) {
             if (cancelled) return
             yield { type: 'item', value: frame }
+          }
+          if (options.endless === true) {
+            await new Promise<void>((resolve) => {
+              unhold = resolve
+            })
+            return
           }
           if (options.failWith !== undefined) yield { type: 'error', ...options.failWith }
           else yield { type: 'end' }
@@ -123,11 +176,21 @@ function fakeRpc(
   return { rpc, seen }
 }
 
+/** 从一条已经发出去的命令里取出本轮完成标记。 */
+function tokenOf(command: string): string {
+  const found = /TPDONE-[0-9a-f]+/.exec(command)
+  assert.notEqual(found, null, '命令里必须带本轮完成标记：' + command)
+  return found === null ? '' : found[0]
+}
+
 test('runSessionProbe 走 terminal/create + terminal/attach，agentId 用 sessionId 且带 request', async () => {
-  const { rpc, seen } = fakeRpc([
-    { type: 'snapshot', sequence: 1, screen: '', info: { id: 'teleport-probe' }, writable: true },
-    { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-  ])
+  const { rpc, seen } = fakeRpc((command) => {
+    const token = tokenOf(command)
+    return [
+      { type: 'snapshot', sequence: 1, screen: '', info: { id: 'teleport-probe' }, writable: true },
+      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+    ]
+  })
   const result = await runSessionProbe({ rpc }, 'sess-1', NO_WARMUP)
   assert.equal(result.cwd, '/home/hui/workspace')
   assert.equal(result.uname, LINUX_UNAME)
@@ -139,13 +202,59 @@ test('runSessionProbe 走 terminal/create + terminal/attach，agentId 用 sessio
 
   assert.deepEqual(seen.streams.map((entry) => entry.endpoint), ['terminal/attach'])
   assert.equal(seen.streams[0]?.uplink, true, '不带上行就发不出命令')
+  assert.equal(seen.sent.length, 1, '本轮命令必须真的发出去一次')
+})
+
+test('终端复用时的历史 scrollback 不能冒充本轮证据（回归：曾经 2ms 返回上一轮结果）', async () => {
+  // 首帧 snapshot 带着上一轮的整屏文本（旧 cwd / 旧 uname / **旧标记**），此后远端再不吭声。
+  // 修好之前：解析器命中旧标记，2ms 就"成功"返回 /home/hui/old-cwd，命令一条都没发。
+  // 修好之后：旧标记 ≠ 本轮标记 ⇒ 一路等到超时才认输，且命令确实发出去了。
+  const stale = transcriptOf('/home/hui/old-cwd', 'Linux STALE 1.0 x86_64', { token: PROBE_DONE_PREFIX + 'deadbeefdeadbeef' })
+  const { rpc, seen } = fakeRpc(() => [{ type: 'snapshot', sequence: 1, screen: stale, writable: true }], { endless: true })
+  const startedAt = Date.now()
+  await assert.rejects(
+    runSessionProbe({ rpc }, 'sess-reuse', { warmupMs: 0, timeoutMs: 250 }),
+    /没有在超时前给出本轮取证结果/,
+  )
+  const elapsed = Date.now() - startedAt
+  assert.ok(elapsed >= 200, '必须真的等到超时，实际只用了 ' + String(elapsed) + 'ms')
+  assert.equal(seen.sent.length, 1, '本轮命令仍然要发出去，只是没等到本轮输出')
+})
+
+test('流提前关掉要报「流结束了」，不能一律说成超时', async () => {
+  // 同样是「没拿到本轮证据」，但流是被远端关掉的：用户该去查隧道，不是继续傻等。
+  const stale = transcriptOf('/home/hui/old-cwd', 'Linux STALE 1.0 x86_64', { token: PROBE_DONE_PREFIX + 'deadbeefdeadbeef' })
+  const { rpc } = fakeRpc(() => [{ type: 'snapshot', sequence: 1, screen: stale, writable: true }])
+  const startedAt = Date.now()
+  await assert.rejects(
+    runSessionProbe({ rpc }, 'sess-reuse', { warmupMs: 0, timeoutMs: 30_000 }),
+    /输出流在本轮完成标记出现前就结束了/,
+  )
+  assert.ok(Date.now() - startedAt < 2000, '流已经结束就该立刻报错，不该拖到超时')
+})
+
+test('snapshot 历史 + 本轮真实输出同时存在时，只认本轮那一份', async () => {
+  const stale = transcriptOf('/home/hui/old-cwd', 'Linux STALE 1.0 x86_64', { token: PROBE_DONE_PREFIX + 'deadbeefdeadbeef' })
+  const { rpc } = fakeRpc((command) => {
+    const token = tokenOf(command)
+    return [
+      { type: 'snapshot', sequence: 1, screen: stale, writable: true },
+      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+    ]
+  })
+  const result = await runSessionProbe({ rpc }, 'sess-reuse-2', NO_WARMUP)
+  assert.equal(result.cwd, '/home/hui/workspace', '必须取本轮结果，不是 snapshot 里的旧结果')
+  assert.equal(result.uname, LINUX_UNAME)
 })
 
 test('预热必须真的等：warmupMs 到点之前不发命令，到点之后才发', async () => {
-  const { rpc, seen } = fakeRpc([
-    { type: 'snapshot', sequence: 1, screen: '' },
-    { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-  ])
+  const { rpc, seen } = fakeRpc((command) => {
+    const token = tokenOf(command)
+    return [
+      { type: 'snapshot', sequence: 1, screen: '' },
+      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+    ]
+  })
   const startedAt = Date.now()
   await runSessionProbe({ rpc }, 'sess-1', { warmupMs: 120 })
   const waited = Date.now() - startedAt
@@ -170,10 +279,13 @@ test('预热常量必须是正数：它承载的是「远端 shell 初始化没�
 
 test('远端装了 fish 就用 fish 建取证终端：快 shell 比等 1500ms 更省', async () => {
   const { rpc, seen } = fakeRpc(
-    [
-      { type: 'snapshot', sequence: 1, screen: '' },
-      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-    ],
+    (command) => {
+      const token = tokenOf(command)
+      return [
+        { type: 'snapshot', sequence: 1, screen: '' },
+        { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+      ]
+    },
     { shells: [{ path: '/bin/bash', name: 'bash', args: ['-i'] }, { path: '/usr/bin/fish', name: 'fish', args: ['-i'] }] },
   )
   await runSessionProbe({ rpc }, 'sess-fish', NO_WARMUP)
@@ -183,10 +295,13 @@ test('远端装了 fish 就用 fish 建取证终端：快 shell 比等 1500ms �
 
 test('远端没装偏好 shell 就不指定 shellPath，交给远端默认', async () => {
   const { rpc, seen } = fakeRpc(
-    [
-      { type: 'snapshot', sequence: 1, screen: '' },
-      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-    ],
+    (command) => {
+      const token = tokenOf(command)
+      return [
+        { type: 'snapshot', sequence: 1, screen: '' },
+        { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+      ]
+    },
     { shells: [{ path: '/bin/bash', name: 'bash', args: ['-i'] }] },
   )
   await runSessionProbe({ rpc }, 'sess-bashonly', NO_WARMUP)
@@ -196,10 +311,13 @@ test('远端没装偏好 shell 就不指定 shellPath，交给远端默认', asy
 
 test('查 shell 列表失败要回落默认 shell，不能让取证跟着挂', async () => {
   const { rpc, seen } = fakeRpc(
-    [
-      { type: 'snapshot', sequence: 1, screen: '' },
-      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-    ],
+    (command) => {
+      const token = tokenOf(command)
+      return [
+        { type: 'snapshot', sequence: 1, screen: '' },
+        { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+      ]
+    },
     { shells: new Error('老版本远端没有 terminal/shells') },
   )
   const result = await runSessionProbe({ rpc }, 'sess-old', NO_WARMUP)
@@ -209,10 +327,13 @@ test('查 shell 列表失败要回落默认 shell，不能让取证跟着挂', a
 })
 
 test('回落到默认 shell 时才等预热；用快 shell 不等', async () => {
-  const frames = [
-    { type: 'snapshot', sequence: 1, screen: '' },
-    { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME) },
-  ]
+  const frames = (command: string): readonly unknown[] => {
+    const token = tokenOf(command)
+    return [
+      { type: 'snapshot', sequence: 1, screen: '' },
+      { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
+    ]
+  }
   const slow = fakeRpc(frames, { shells: [] })
   const slowStart = Date.now()
   await runSessionProbe({ rpc: slow.rpc }, 'sess-slow')
