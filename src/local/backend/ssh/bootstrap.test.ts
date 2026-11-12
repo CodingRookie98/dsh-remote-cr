@@ -211,6 +211,29 @@ test('dsh 安装脚本：源写进 NPM_CONFIG_REGISTRY，缺 npm 退出 5', () =
   assert.match(bare, /npm install --global --no-audit --no-fund 'dsh'/)
 })
 
+test('dsh 装进 staging 前缀：非 root 也能装，且 PATH 指过去', () => {
+  const script = buildDshPackageScript({
+    registry: 'https://registry.npmjs.org/',
+    dshHome: '/home/hui/.dsh',
+    version: '0.2.1-rc.5',
+    prefix: '/home/hui/.dsh-teleport/staging/abc/npm',
+  })
+  assert.match(script, /mkdir -p '\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
+  assert.match(script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
+  assert.match(script, /export PATH='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm\/bin':\$PATH/)
+  assert.ok(
+    script.indexOf('mkdir -p') < script.indexOf('npm install'),
+    '前缀目录必须先建出来，否则 npm 会因为父目录不存在而自己猜路径',
+  )
+  assert.ok(
+    script.indexOf('npm install') < script.indexOf('export PATH'),
+    'PATH 必须在装完之后才生效——否则 command -v dsh 看到的是系统里那份',
+  )
+  // 没给 prefix 时不能凭空写 NPM_CONFIG_PREFIX（会污染用户的全局 npm 配置）
+  const noPrefix = buildDshPackageScript({ registry: 'https://registry.npmjs.org/', dshHome: '/home/hui/.dsh' })
+  assert.ok(!noPrefix.includes('NPM_CONFIG_PREFIX'))
+})
+
 test('计划：staging 与 tar 永远排在最前，node 满足就不排', () => {
   const plan = planBootstrap({
     facts: { node: 'v24.22.1', dsh: '0.2.1-rc.5' },
@@ -233,6 +256,8 @@ test('计划：缺 dsh 就排安装，且账本记过也要重装（这次仍然
   assert.ok(dsh)
   assert.match(dsh.reuseReason ?? '', /dsh 0\.2\.1-rc\.2 曾装过/)
   assert.match(dsh.script, /registry\.npmmirror\.com/)
+  // 计划层必须把前缀钉到 staging 里，否则远端非 root 装不动
+  assert.match(dsh.script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
 })
 
 test('执行：任一步失败就停，后续步骤不跑，失败尾巴带出来', async () => {

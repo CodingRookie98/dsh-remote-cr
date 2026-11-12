@@ -335,19 +335,36 @@ export interface DshPackageRequest {
   readonly registry: string
   readonly dshHome: string
   readonly version?: string
+  /** npm 前缀：装进 staging 而不是系统目录（普通用户身份也能装）。 */
+  readonly prefix?: string
 }
 
-/** 装 dsh：npm 前缀写进 staging，DSH_HOME 指到用户 home 下的固定位置（不塞 /tmp）。 */
+/**
+ * 装 dsh：npm 前缀写进 staging，DSH_HOME 指到固定的 home 路径（不塞 /tmp）。
+ *
+ * 必须带 `--prefix`：远端通常不是以 root 登录，`--global` 会去写 /usr/local 然后 EACCES；
+ * 写进 staging 之后这份安装是可删的、可复现的，也不会污染目标机已有的 node 生态。
+ */
 export function buildDshPackageScript(request: DshPackageRequest): string {
   const spec = request.version === undefined ? 'dsh' : 'dsh@' + request.version
-  return [
+  const lines: string[] = [
     'set -e',
     'command -v npm >/dev/null 2>&1 || { echo TELEPORT_MISSING_NPM; exit 5; }',
-    'NPM_CONFIG_REGISTRY=' + shellQuote(request.registry) + ' npm install --global --no-audit --no-fund ' + shellQuote(spec),
-    'export DSH_HOME=' + shellQuote(request.dshHome),
-    'command -v dsh >/dev/null 2>&1 && dsh --version || echo TELEPORT_DSH_NOT_ON_PATH',
-    'echo TELEPORT_DSH_OK',
-  ].join(String.fromCharCode(10))
+  ]
+  const env: string[] = ['NPM_CONFIG_REGISTRY=' + shellQuote(request.registry)]
+  if (request.prefix !== undefined && request.prefix !== '') {
+    const prefix = shellQuote(request.prefix)
+    env.push('NPM_CONFIG_PREFIX=' + prefix)
+    lines.push('mkdir -p ' + prefix)
+  }
+  lines.push(env.join(' ') + ' npm install --global --no-audit --no-fund ' + shellQuote(spec))
+  if (request.prefix !== undefined && request.prefix !== '') {
+    lines.push('export PATH=' + shellQuote(request.prefix + '/bin') + ':$PATH')
+  }
+  lines.push('export DSH_HOME=' + shellQuote(request.dshHome))
+  lines.push('command -v dsh >/dev/null 2>&1 && dsh --version || echo TELEPORT_DSH_NOT_ON_PATH')
+  lines.push('echo TELEPORT_DSH_OK')
+  return lines.join(String.fromCharCode(10))
 }
 
 /** exactOptionalPropertyTypes 下可选字段不能显式给 undefined，所以这里按需拼。 */
@@ -369,9 +386,10 @@ function nodeRequestOf(request: PlanBootstrapRequest, version: string): NodeRunt
 }
 
 function dshRequestOf(request: PlanBootstrapRequest): DshPackageRequest {
-  const built: { registry: string; dshHome: string; version?: string } = {
+  const built: { registry: string; dshHome: string; version?: string; prefix?: string } = {
     registry: request.mirror ?? DEFAULT_MIRRORS[0]?.registry ?? 'https://registry.npmjs.org/',
     dshHome: request.dshHome ?? '',
+    prefix: request.stagingDir + '/npm',
   }
   if (request.dshVersion !== undefined) built.version = request.dshVersion
   return built
