@@ -18,11 +18,11 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: S5 启动 + 隧道（`-L` + `-R` 同连接）
-- **当前活跃子任务**: Task S5
+- **当前活跃阶段**: S6 锚点工作区 + 虚拟根映射
+- **当前活跃子任务**: Task S6
 - **当前子任务重试计数**: 0/3
-- **最后一次验证状态**: 2026-11-12 — S4 已完成并验证：`npm run typecheck` Exit 0（双 tsconfig）、`npm test` **395/395**（新增 `ssh/probe.test.ts` **12**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S3 的 383 条无回归。
-- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 = `4289c91`；S3 = `cba6966`；S4 见下一条）
+- **最后一次验证状态**: 2026-11-12 — S5 已完成：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **413/413**（新增 `ssh/launch.test.ts` **18**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S4 的 395 条无回归。**未做**：SSH 真机端到端（要等 S9 探针，S5 目前只有假 spawn 单测与「本机真实 `sh` 跑脚本」两条证据）。
+- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 = `4289c91`；S3 = `cba6966`；`dsh-output` 搬家 = `244e98f`；S4 = `72587d0`；S5 见下一条）
 - **阻断原因**: 无
 
 ---
@@ -81,7 +81,7 @@
 | **S2** | 连接与认证 | `ssh/transport.ts` + `ssh/errors.ts` + `ssh/keyfile.ts` | 私钥 / agent / 密码三种都能连；认证错误**四分类**（认证失败 / 握手超时 / 私钥需口令 / 口令错误）各有文案；密码登录时禁用隐式 agent（`-o PubkeyAuthentication=no -o IdentitiesOnly=yes`）；`dispose` 后迟到 ready/error 双检 | [x] |
 | **S3** | 主机密钥 TOFU | `ssh/known-hosts.ts` + `ssh/connect.ts` | 首次接受并入库指纹；变更被拦并给两条动作；用户 `~/.ssh/known_hosts` 不被改动 | [x] 21 + 11 条全绿；指纹变更时**账本字节不动**（有断言）；加密私钥不发起握手（`calls===0`）；口令不进 argv；`hostKeyObserved=false` 如实上报不记账 |
 | **S4** | 单 channel probe | `ssh/probe.ts` | 一条命令拿全 platform/arch/kernel/node/dsh（`__MARKER__` 分隔）；只发一条命令（用假 transport 断言 argv 数量） | [x] 12 条全绿；真实 `sh` 实跑脚本七字段 + `end` 全中；缺 `end` 判**不完整**而不是「字段缺失」；同字段两值记 `conflicts` 并拒绝；`mirroredNetwork` 给 `undefined` 不冒充 `false` |
-| **S5** | 启动 + 隧道（`-L` + `-R` 同连接） | `ssh/launch.ts` | 远端 dsh 起来且本地端口可达；`-R` 动态端口解析成功；代理侧日志证明远端请求到达；`AllowTcpForwarding no` 给可操作错误 | [ ] |
+| **S5** | 启动 + 隧道（`-L` + `-R` 同连接） | `ssh/launch.ts` | 远端 dsh 起来且本地端口可达；`-R` 动态端口解析成功；代理侧日志证明远端请求到达；`AllowTcpForwarding no` 给可操作错误 | [x] |
 | **S6** | 锚点工作区 + 虚拟根映射 | `ssh/anchors.ts` | 锚点目录创建、`map.json` 落盘、提示词投影与工具层共用同一张表、`doctor` 可打印 | [ ] |
 | **S7** | 上行文件（SFTP → `cat >` 回退） | `ssh/upload.ts` | 失败瞬间 `unpipe + destroy`；无虚假进度日志 | [ ] |
 | **S8** | 引导器（远端 Node/dsh 安装） | `installer/` 扩展 | 镜像测速、缓存、断点、`tar` 预检、私有 staging 不放 `/tmp` | [ ] |
@@ -93,6 +93,7 @@
 
 ## 4. Context Log
 
+- 2026-11-12：**S5 完成（单元层）**。`ssh/launch.ts` 用**一条 ssh 连接同时挂 `-L` 与 `-R`**：`-L 127.0.0.1:<local>:127.0.0.1:<remote>` 让 GUI 连到本地口，`-R 127.0.0.1:0:127.0.0.1:<本地代理口>` 让远端调模型时回到本机（满足「凭据不出本机」）。三条硬决定：① `ExitOnForwardFailure=yes` 显式置 true——OpenSSH 默认转发失败只打 warning 继续跑，在启动路径上就是静默降级；② 远端脚本里后台起 dsh **必须 `< /dev/null`**，否则 dsh 与看门狗抢同一个 stdin，`cat` 永远读不到 EOF，回收就失效；③ 动态分配的远端端口号只有本地这侧知道，所以本地解析到 `Allocated port <n>` 后往 `child.stdin` 写一行 `<n>\n`，远端脚本 `IFS= read -r` 读它再 `export TELEPORT_PROXY_URL`——这是同一条连接里唯一方向正确的免费通道。端点必须改写成 `{host:'127.0.0.1', port: localPort, token}`，因为远端 dsh 打印的 `127.0.0.1:8899` 只在远端成立。`dispose` 先关 stdin 等看门狗回收（上限 3 s），判「干净」要求**见过 KILLED 标记**或**压根没见到 PID 标记**：只见 PID 不见 KILLED 说明远端子进程可能还活着，不能报干净（有两条对照测试）。修掉一个真缺陷：`finish` 原本摘掉 stdout/stderr 的 data 监听，导致启动之后的 KILLED 标记永远收不到、`log()` 停在启动那一刻——改为**不摘监听**，只置 `settled` 让判定逻辑短路、buffer 继续累积。另有 `classifyTunnelFailure`：`AllowTcpForwarding` 被拒映射成 `remote/forward-unavailable` 并点名服务端配置（`ERROR_PHASE` 已登记），`Address already in use` 归 `remote/startup-failed`。**未验证**：真实 SSH 主机的隧道（`-L` 可达、`-R` 上行、代理侧日志）要等 S9 探针；本片只有 18 条假 spawn 单测。
 - 2026-11-12：**S4 完成**。`ssh/probe.ts` 一条 `sh -c` 脚本把七个字段一次拿全（`uname -s/-m/-r`、`$HOME`、`node -v`、`dsh --version`、`~/.dsh` 是否存在），走 `connectRemote` 而不是裸 `runSsh`：**探测就是首次接触，指纹 TOFU 就发生在这里**，拆开等于留一条「探测成功但没验证过主机」的路。脚本末尾必打 `end=1`，**没有这一行判不完整**——远端 `.bashrc` 打横幅时，「没读到字段」分不清「远端没装 node」和「流被截断」，这是 M1 P0 假通过教训的直接移植。同字段出现两个不同值记进 `conflicts` 并拒绝（`bash -lc` 重跑 `.profile`、或两台机器共用一个别名都会这样）。`mirroredNetwork` 对 SSH 给 `undefined` 而非 `false`：SSH 没有 WSL2 mirrored 那套概念，编一个 `false` 会让上层误以为「已探测且不是 mirrored」。脚本用本机真实 `sh` 实跑过一遍（七字段 + `end` 全中），不是只靠假 transport。
 - 2026-11-12：**S3 完成**。`ssh/known-hosts.ts` + `ssh/connect.ts`。私有账本落在 `~/.dsh-teleport/hostkeys.json`（JSON 坏了备份成 `.corrupt-<ts>` 后当空账本，不覆盖用户数据），私有 `known_hosts` 与用户的 `~/.ssh/known_hosts` 完全分家。**变更时绝不写盘**（`written=false`）——写回新指纹等于把「拒绝」改成「接受」，测试直接断言账本字节不动。`compareHostKeys` 里**变更优先于新增**：同一台机器既报了新算法又报了变更指纹，必须按变更处理。`connectRemote` 把「私钥静态体检 → 握手 → 抓 `Server host key:` → 记账」焊成一个入口，顺序是硬的：能静态判定的先判（加密私钥缺口令时**一次 ssh 都不启动**，有 `calls===0` 断言），避免让用户被 `Permission denied (publickey)` 引去改 `authorized_keys`。`trustNewFingerprint` 只能由「信任新指纹」按钮传 true，走的是先 `forget` 再 `remember` 的覆盖路径。
 - 2026-11-12：**S2 完成**。三个文件：`ssh/transport.ts`（纯函数 `buildSshInvocation` 拼 argv/env + `runSsh` 收输出 + `askpassScript`）、`ssh/errors.ts`（`SSH_FAILURE_TABLE` 七条规则 + 兜底）、`ssh/keyfile.ts`（`inspectPrivateKey` 静态体检 OPENSSH/PEM 与加密标记）。**四分类之外的第五条**：密码认证只收到 `Permission denied (publickey).` 时判定为新增码 `remote/password-unavailable`（服务端没开密码），不能谎报「口令错」。`ERROR_PHASE` 同步登记 `password-rejected / password-unavailable / key-passphrase / host-key-changed / host-unreachable / auth-timeout / ssh-missing` 七个码，并有测试断言「规则表里每个码都有阶段」——`TeleportError` 查不到会静默回落 `probe`，这条测试防的就是再次漏登。机密只经 `TELEPORT_SSH_SECRET` 进 helper 的环境，测试断言 argv 里搜不到机密子串。`runSsh` 用 `settled` 闸门吞掉 kill 之后迟到的 `exit`/`error`（有回归测试），`detachAbort` 用 `let` 先声明避免同步 `error` 触发的 TDZ。
