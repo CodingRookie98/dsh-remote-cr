@@ -1,7 +1,8 @@
 # M1 spike 交接单
 
-> **结论先行**：M1（WSL 流畅闭环）的**地基五条**已实测成立，可以进实现期——三条来自 WSL 闭环（UNC 读写、反向通路定档、两级 dispose），另外两条是 **ADR-0003 第二层阈值**：**T5 跨机字节**（官方 Remote 内核 + 自定义 transport 真的能把远端事实带回来）与 **T6 跨机失败可见**（版本不匹配 / 远端无 Node / 断线三条失败路径都响，不静默降级）。**C 型至此两层阈值全满足，ADR-0003 的降级分支不触发。**M1 的产品行为（瞬移面板、插件注册、凭据替换、断线重连）**尚未开始**——本目录只有技术前提验证，没有产品代码。
-> 记录时间：2026-10-30 初版 / 2026-10-31 补 T5 + T6（Asia/Shanghai）。
+> **结论先行**：M1（WSL 流畅闭环）的**地基五条**已实测成立，可以进实现期——三条来自 WSL 闭环（UNC 读写、反向通路定档、两级 dispose），另外两条是 **ADR-0003 第二层阈值**：**T5 跨机字节**（官方 Remote 内核 + 自定义 transport 真的能把远端事实带回来）与 **T6 跨机失败可见**（版本不匹配 / 远端无 Node / 断线三条失败路径都响，不静默降级）。**C 型至此两层阈值全满足，ADR-0003 的降级分支不触发。**
+> **产品代码已开工（2026-11-12 更正）**：本目录早期版本写「M1 的产品行为尚未开始」，该句自 P3.0 起已失效——`src/` 里已有瞬移面板、四选一向导、凭据代理 + 同步屏障、断线重连、退出回收的实现与真机探针（`p32`/`p33`/`p35`/`p351`/`p352`/`p36`/`p37`），实现进度以 `docs/project/plans/2026-10-31-m1-wsl-closed-loop.md` 的检查点为准。
+> 记录时间：2026-10-30 初版 / 2026-10-31 补 T5 + T6 / 2026-11-12 补产品实现期探针与过期结论更正（Asia/Shanghai）。
 
 ## 目录
 
@@ -10,6 +11,13 @@
 | `wsl-closed-loop/` | WSL 闭环技术验证：A1–A11 十一条断言 + distro 侧 stdio 桥中继 | [`wsl-closed-loop/README.md`](./wsl-closed-loop/README.md) |
 | `cross-machine-t5/` | ADR-0003 T5：官方 Remote 内核跨机字节取证（12 条断言 + 负控），自管远端 dsh 起停 | [`cross-machine-t5/README.md`](./cross-machine-t5/README.md) |
 | `cross-machine-t6/` | ADR-0003 T6：跨机失败可见取证（9 条断言 + 负控），三条失败路径各自的实跑日志与错误码 | [`cross-machine-t6/README.md`](./cross-machine-t6/README.md) |
+| `p32-launch/` | P3.2 实施期探针：`wsl.exe` 启动远端 dsh + 看门狗回收 | [`p32-launch/README.md`](./p32-launch/README.md) |
+| `p33-wsl-exec/` | P3.3 实施期探针：远端执行与错误分类 | [`p33-wsl-exec/README.md`](./p33-wsl-exec/README.md) |
+| `p35-projection/` | P3.5 实施期探针：投射远端工作区与会话，首个命令在远端执行（7/7 + 负控） | [`p35-projection/README.md`](./p35-projection/README.md) |
+| `p351-reconnect/` | P3.5.1 实施期探针：断隧道后自动重连（6/6 + 负控，负控失败集恰为 `[P351-3,P351-4]`） | [`p351-reconnect/README.md`](./p351-reconnect/README.md) |
+| `p352-exit-demo/` | P3.5.2 实施期探针：M1 出口演示全链路（7/7 + 负控，含 §7 门禁测量） | [`p352-exit-demo/README.md`](./p352-exit-demo/README.md) |
+| `p36-proxy/` | P3.6 实施期探针：凭据代理占位令牌替换与同步屏障 | [`p36-proxy/README.md`](./p36-proxy/README.md) |
+| `p37-env/` | P3.7 实施期探针：环境策略（`reuse` / `isolated`） | [`p37-env/README.md`](./p37-env/README.md) |
 | `harness.cjs` | T5/T6 共用的零依赖线缆与远端 dsh 生命周期原语（258 行） | 见各 probe 头部注释 |
 
 ## 已证与未证
