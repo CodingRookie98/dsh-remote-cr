@@ -35,6 +35,7 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/key-passphrase': 'launch',
   'remote/key-unusable': 'launch',
   'remote/forward-unavailable': 'launch',
+  'remote/upload-failed': 'launch',
   'remote/host-key-changed': 'probe',
   'remote/host-unreachable': 'probe',
   'remote/probe-incomplete': 'probe',

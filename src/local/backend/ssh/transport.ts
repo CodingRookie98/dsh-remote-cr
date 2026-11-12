@@ -41,6 +41,8 @@ export interface SshConnectOptions {
   readonly target: SshTarget
   readonly auth: SshAuth
   readonly sshExecutable?: string
+  /** `sftp` 可执行文件；缺省按 ssh 同名替换（`ssh.exe` → `sftp.exe`）。 */
+  readonly sftpExecutable?: string
   /** 私有 known_hosts 路径；缺省不写死，由调用方按 home 拼。 */
   readonly knownHostsFile?: string
   /** `ConnectTimeout`（秒）；默认 10。 */
@@ -63,6 +65,16 @@ export interface SshConnectOptions {
   readonly exitOnForwardFailure?: boolean
 }
 
+export interface BuiltSftpInvocation {
+  readonly executable: string
+  readonly args: readonly string[]
+  /** 批处理正文，由调用方写到 sftp 的 stdin。 */
+  readonly batch: string
+  /** 需要叠加到子进程环境上的变量（**含机密**，不要打进日志）。 */
+  readonly env: Readonly<Record<string, string>>
+  readonly needsAskpass: boolean
+}
+
 export interface BuiltSshInvocation {
   readonly executable: string
   readonly args: readonly string[]
@@ -78,13 +90,16 @@ export interface BuiltSshInvocation {
  * `remoteCommand` 是远端要执行的命令（`['true']` 表示只验证能否认证）。
  * 顺序：全局选项 → 认证选项 → 身份/端口 → `-J` → 目标 → 命令（`--` 之后）。
  */
-export function buildSshInvocation(
-  options: SshConnectOptions,
-  remoteCommand: readonly string[] = ['true'],
-): BuiltSshInvocation {
+/**
+ * ssh / sftp 共用的连接选项（主机密钥、认证方式、端口、用户、跳板）。
+ *
+ * 两条命令的传输语义不同（ssh 传命令、sftp 传批处理），但「怎么认这台机器、用哪把钥匙」
+ * 必须逐字一致——所以抽出来共享，避免两处各写一份后认证行为悄悄分叉。
+ */
+function buildSharedArgs(options: SshConnectOptions): string[] {
   const target = options.target
   const auth = options.auth
-  const args: string[] = ['-T', '-o', 'BatchMode=' + (needsSecret(auth) ? 'no' : 'yes'), '-o', 'ConnectTimeout=' + String(Math.max(1, Math.round((options.connectTimeoutMs ?? 10_000) / 1000)))]
+  const args: string[] = []
 
   // 主机密钥：私有库 + 首次接受（变更仍会被 OpenSSH 拦下并报 REMOTE HOST IDENTIFICATION HAS CHANGED）
   args.push('-o', 'StrictHostKeyChecking=accept-new')
@@ -112,33 +127,82 @@ export function buildSshInvocation(
       target.proxyJump.map((hop) => (hop.user === undefined ? hop.host : hop.user + '@' + hop.host) + (hop.port === 22 ? '' : ':' + String(hop.port))).join(','),
     )
   }
+  return args
+}
+
+function authEnv(options: SshConnectOptions): Readonly<Record<string, string>> {
+  const auth = options.auth
+  const env: Record<string, string> = {}
+  if (!needsSecret(auth)) return env
+  if (options.askpassPath === undefined) {
+    throw new TeleportError({
+      code: 'remote/unknown',
+      detail: '口令认证需要 askpass helper 的路径，但调用方没有提供（askpassPath）。',
+      nextActions: ['重试连接', '改用私钥或 agent 认证'],
+    })
+  }
+  env['SSH_ASKPASS'] = options.askpassPath
+  env[ASKPASS_REQUIRE_ENV] = 'force'
+  env[SECRET_ENV] = auth.password ?? auth.passphrase ?? ''
+  return env
+}
+
+export function buildSshInvocation(
+  options: SshConnectOptions,
+  remoteCommand: readonly string[] = ['true'],
+): BuiltSshInvocation {
+  const target = options.target
+  const args: string[] = ['-T', '-o', 'BatchMode=' + (needsSecret(options.auth) ? 'no' : 'yes'), '-o', 'ConnectTimeout=' + String(Math.max(1, Math.round((options.connectTimeoutMs ?? 10_000) / 1000)))]
+  args.push(...buildSharedArgs(options))
   if (options.exitOnForwardFailure === true) args.push('-o', 'ExitOnForwardFailure=yes')
   for (const spec of options.forwardLocal ?? []) args.push('-L', spec)
   for (const spec of options.forwardRemote ?? []) args.push('-R', spec)
 
   args.push(target.hostName, '--', ...remoteCommand)
 
-  const env: Record<string, string> = {}
-  const needsAskpass = needsSecret(auth)
-  if (needsAskpass) {
-    if (options.askpassPath === undefined) {
-      throw new TeleportError({
-        code: 'remote/unknown',
-        detail: '口令认证需要 askpass helper 的路径，但调用方没有提供（askpassPath）。',
-        nextActions: ['重试连接', '改用私钥或 agent 认证'],
-      })
-    }
-    env['SSH_ASKPASS'] = options.askpassPath
-    env[ASKPASS_REQUIRE_ENV] = 'force'
-    env[SECRET_ENV] = auth.password ?? auth.passphrase ?? ''
-  }
-
   return {
     executable: options.sshExecutable ?? 'ssh.exe',
     args,
-    env,
-    needsAskpass,
+    env: authEnv(options),
+    needsAskpass: needsSecret(options.auth),
   }
+}
+
+/**
+ * 拼出一次 `sftp` 调用的 argv 与环境。
+ *
+ * `batch` 是交给 `-b -` 的批处理正文（走 stdin），每行一条命令，例如 put "本地" "远端"。
+ * 与 ssh 的差别：没有 `-T`（sftp 本就不分配 tty），也没有选项终止符 `--`
+ * ——sftp 把批处理读自 stdin，argv 里多一个 `--` 只会被当成远端路径。
+ */
+export function buildSftpInvocation(options: SshConnectOptions, batch: string): BuiltSftpInvocation {
+  const args: string[] = [
+    '-b',
+    '-',
+    '-o',
+    'BatchMode=' + (needsSecret(options.auth) ? 'no' : 'yes'),
+    '-o',
+    'ConnectTimeout=' + String(Math.max(1, Math.round((options.connectTimeoutMs ?? 10_000) / 1000))),
+    ...buildSharedArgs(options),
+    options.target.hostName,
+  ]
+
+  return {
+    executable: sftpExecutableOf(options),
+    args,
+    batch,
+    env: authEnv(options),
+    needsAskpass: needsSecret(options.auth),
+  }
+}
+
+/** `ssh.exe` → `sftp.exe`；显式给了 sftpExecutable 就用它。 */
+function sftpExecutableOf(options: SshConnectOptions): string {
+  if (options.sftpExecutable !== undefined) return options.sftpExecutable
+  const ssh = options.sshExecutable
+  if (ssh === undefined) return 'sftp.exe'
+  const replaced = ssh.replace(/ssh(\.exe)?$/, 'sftp$1')
+  return replaced === ssh ? 'sftp.exe' : replaced
 }
 
 /** 只有口令/口令短语才需要 askpass；agent 与已解锁私钥不需要。 */
