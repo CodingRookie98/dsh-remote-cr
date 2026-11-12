@@ -77,6 +77,16 @@ export interface SshLaunchOptions {
   /** 本地凭据代理端口；给了才挂 `-R`。 */
   readonly proxyPort?: number
   readonly nodeCommand?: string
+  /**
+   * 远端启动命令的前缀（`web --port …` 之前的部分）。
+   *
+   * 缺省是 `[node, 'apps/cli/lib/bin.js']` —— 也就是「远端有一份检出」。
+   * 引导器装的是 npm 包，不是检出，那条路上前缀应该是 `<staging>/npm/bin/dsh`，
+   * 并且不该 `cd` 到任何目录（包内路径与 cwd 无关）。
+   */
+  readonly argvPrefix?: readonly string[]
+  /** 启动前的工作目录；缺省用 `remoteRoot`。给 `undefined` 表示不切目录。 */
+  readonly cwd?: string | null
   readonly extraArgs?: readonly string[]
   /** 等访问 URL 的上限，默认 90s：SSH 握手 + 远端 dsh 冷启动比 WSL 更慢。 */
   readonly timeoutMs?: number
@@ -106,12 +116,13 @@ export function buildRemoteLaunchScript(options: {
   readonly remotePort: number
   readonly host?: string
   readonly nodeCommand?: string
+  readonly argvPrefix?: readonly string[]
+  readonly cwd?: string | null
   readonly extraArgs?: readonly string[]
   readonly waitForProxyPort: boolean
 }): string {
   const argv = [
-    options.nodeCommand ?? 'node',
-    'apps/cli/lib/bin.js',
+    ...(options.argvPrefix ?? [options.nodeCommand ?? 'node', 'apps/cli/lib/bin.js']),
     'web',
     '--no-open',
     '--port',
@@ -120,7 +131,8 @@ export function buildRemoteLaunchScript(options: {
     options.host ?? '127.0.0.1',
     ...(options.extraArgs ?? []),
   ]
-  const lines: string[] = ['cd ' + shellQuote(options.remoteRoot) + ' || exit 1']
+  const cwd = options.cwd === undefined ? options.remoteRoot : options.cwd
+  const lines: string[] = cwd === null || cwd === '' ? [] : ['cd ' + shellQuote(cwd) + ' || exit 1']
   if (options.waitForProxyPort) {
     lines.push('IFS= read -r _teleport_proxy_port || exit 1')
     lines.push('export ' + PROXY_URL_ENV + '="http://127.0.0.1:$_teleport_proxy_port"')
@@ -229,6 +241,8 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     remotePort,
     waitForProxyPort: proxyPort !== undefined,
     ...(options.nodeCommand === undefined ? {} : { nodeCommand: options.nodeCommand }),
+    ...(options.argvPrefix === undefined ? {} : { argvPrefix: options.argvPrefix }),
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(options.extraArgs === undefined ? {} : { extraArgs: options.extraArgs }),
   })
 

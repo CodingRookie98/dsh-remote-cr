@@ -125,6 +125,25 @@ test('远端脚本：路径含空格时被正确转义', () => {
   assert.match(script, /cd '\/srv\/my dsh' \|\| exit 1/)
 })
 
+test('远端脚本：npm 装出来的 dsh 用绝对路径启动，且不切目录', () => {
+  const script = buildRemoteLaunchScript({
+    remoteRoot: '/home/hui/workspace/dsh',
+    remotePort: 8899,
+    waitForProxyPort: false,
+    argvPrefix: ['/home/hui/.dsh-teleport/staging/abc/npm/bin/dsh'],
+    cwd: null,
+  })
+  assert.ok(!script.includes('cd '), '包安装的 dsh 与 cwd 无关，切目录只会多一个失败点')
+  assert.match(script, /'\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm\/bin\/dsh' 'web' '--no-open'/)
+  assert.ok(!script.includes('apps/cli/lib/bin.js'))
+})
+
+test('远端脚本：argvPrefix 缺省仍是检出形态（node + bin.js + cd）', () => {
+  const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: false })
+  assert.match(script, /^cd '\/srv\/dsh' \|\| exit 1/)
+  assert.match(script, /'node' 'apps\/cli\/lib\/bin\.js' 'web'/)
+})
+
 test('转发规格：本地是固定端口，远端监听端口留 0 让服务端分配', () => {
   assert.equal(localForwardSpec(31800, 8899), '127.0.0.1:31800:127.0.0.1:8899')
   assert.equal(remoteForwardSpec(9100), '127.0.0.1:0:127.0.0.1:9100')
