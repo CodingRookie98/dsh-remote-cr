@@ -18,11 +18,11 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: S3 主机密钥 TOFU
-- **当前活跃子任务**: Task S3
+- **当前活跃阶段**: S4 单 channel probe
+- **当前活跃子任务**: Task S4
 - **当前子任务重试计数**: 0/3
-- **最后一次验证状态**: 2026-11-12 — S2 已完成并验证：`npm run typecheck` Exit 0（双 tsconfig）、`npm test` **351/351**（新增 `ssh/errors.test.ts` **12**、`keyfile.test.ts` **11**、`transport.test.ts` **19**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S1 的 309 条无回归。
-- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 见下一条）
+- **最后一次验证状态**: 2026-11-12 — S3 已完成并验证：`npm run typecheck` Exit 0（双 tsconfig）、`npm test` **383/383**（新增 `ssh/known-hosts.test.ts` **21**、`ssh/connect.test.ts` **11**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S2 的 351 条无回归。
+- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 = `4289c91`；S3 / S4 见下一条）
 - **阻断原因**: 无
 
 ---
@@ -79,7 +79,7 @@
 |---|---|---|---|---|
 | **S1** | SSH config 解析与校验 | `src/local/backend/ssh/config.ts` + `.test.ts` | 用本机真实 config 全量通过；`~` 展开、`.pub` 误配、`ProxyJump` 链、重复 `Host`、大小写键名、注释/行内注释、多值 `IdentityFile` 各有断言；错误配置给可操作中文提示 | [x] 26 条全绿；真实 config 11 块 / 14 别名；4 处 `.pub` 误配精确指到第 21/45/51/57 行；`Include` 在原位置展开（优先级有反证） |
 | **S2** | 连接与认证 | `ssh/transport.ts` + `ssh/errors.ts` + `ssh/keyfile.ts` | 私钥 / agent / 密码三种都能连；认证错误**四分类**（认证失败 / 握手超时 / 私钥需口令 / 口令错误）各有文案；密码登录时禁用隐式 agent（`-o PubkeyAuthentication=no -o IdentitiesOnly=yes`）；`dispose` 后迟到 ready/error 双检 | [x] |
-| **S3** | 主机密钥 TOFU | `ssh/known-hosts.ts` | 首次接受并入库指纹；变更被拦并给两条动作；用户 `~/.ssh/known_hosts` 不被改动 | [ ] |
+| **S3** | 主机密钥 TOFU | `ssh/known-hosts.ts` + `ssh/connect.ts` | 首次接受并入库指纹；变更被拦并给两条动作；用户 `~/.ssh/known_hosts` 不被改动 | [x] 21 + 11 条全绿；指纹变更时**账本字节不动**（有断言）；加密私钥不发起握手（`calls===0`）；口令不进 argv；`hostKeyObserved=false` 如实上报不记账 |
 | **S4** | 单 channel probe | `ssh/probe.ts` | 一条命令拿全 platform/arch/kernel/node/dsh（`__MARKER__` 分隔）；只发一条命令（用假 transport 断言 argv 数量） | [ ] |
 | **S5** | 启动 + 隧道（`-L` + `-R` 同连接） | `ssh/launch.ts` | 远端 dsh 起来且本地端口可达；`-R` 动态端口解析成功；代理侧日志证明远端请求到达；`AllowTcpForwarding no` 给可操作错误 | [ ] |
 | **S6** | 锚点工作区 + 虚拟根映射 | `ssh/anchors.ts` | 锚点目录创建、`map.json` 落盘、提示词投影与工具层共用同一张表、`doctor` 可打印 | [ ] |
@@ -93,6 +93,7 @@
 
 ## 4. Context Log
 
+- 2026-11-12：**S3 完成**。`ssh/known-hosts.ts` + `ssh/connect.ts`。私有账本落在 `~/.dsh-teleport/hostkeys.json`（JSON 坏了备份成 `.corrupt-<ts>` 后当空账本，不覆盖用户数据），私有 `known_hosts` 与用户的 `~/.ssh/known_hosts` 完全分家。**变更时绝不写盘**（`written=false`）——写回新指纹等于把「拒绝」改成「接受」，测试直接断言账本字节不动。`compareHostKeys` 里**变更优先于新增**：同一台机器既报了新算法又报了变更指纹，必须按变更处理。`connectRemote` 把「私钥静态体检 → 握手 → 抓 `Server host key:` → 记账」焊成一个入口，顺序是硬的：能静态判定的先判（加密私钥缺口令时**一次 ssh 都不启动**，有 `calls===0` 断言），避免让用户被 `Permission denied (publickey)` 引去改 `authorized_keys`。`trustNewFingerprint` 只能由「信任新指纹」按钮传 true，走的是先 `forget` 再 `remember` 的覆盖路径。
 - 2026-11-12：**S2 完成**。三个文件：`ssh/transport.ts`（纯函数 `buildSshInvocation` 拼 argv/env + `runSsh` 收输出 + `askpassScript`）、`ssh/errors.ts`（`SSH_FAILURE_TABLE` 七条规则 + 兜底）、`ssh/keyfile.ts`（`inspectPrivateKey` 静态体检 OPENSSH/PEM 与加密标记）。**四分类之外的第五条**：密码认证只收到 `Permission denied (publickey).` 时判定为新增码 `remote/password-unavailable`（服务端没开密码），不能谎报「口令错」。`ERROR_PHASE` 同步登记 `password-rejected / password-unavailable / key-passphrase / host-key-changed / host-unreachable / auth-timeout / ssh-missing` 七个码，并有测试断言「规则表里每个码都有阶段」——`TeleportError` 查不到会静默回落 `probe`，这条测试防的就是再次漏登。机密只经 `TELEPORT_SSH_SECRET` 进 helper 的环境，测试断言 argv 里搜不到机密子串。`runSsh` 用 `settled` 闸门吞掉 kill 之后迟到的 `exit`/`error`（有回归测试），`detachAbort` 用 `let` 先声明避免同步 `error` 触发的 TDZ。
 - 2026-11-12：**S1 完成**。`ssh/config.ts` 导出 `parseSshConfig` / `matchHostPattern` / `expandSshPath` / `resolveSshTarget` / `listSshTargets` / `readSshConfig`；`ParsedSshConfig.entries` 保留「块 / Include」的原始顺序，`readSshConfig` 因此能在**原位置**展开 Include（先到先得语义），并有反证测试锁住顺序敏感性。`IdentityFile` 携带**自己那一行**的行号，所以 `.pub` 误配能指到可改的那一行。**S0-7 完成**：`DshEndpoint` 与 `RemoteDshHandle` 搬到 `src/local/backend/handle.ts`，`backend.ts` / `wsl/launch.ts` 改为从中立位置导入；`wsl/remote-dsh.ts` 只 re-export 类型。
 - 2026-11-12：计划落盘。前置事实——本机 npm 不可达（S0-1）、Windows OpenSSH 9.5p2 在位、`spikes/m0/reverse-tunnel/run.sh` 已证 `-L`+`-R` 同连接、M1 侧 P0 取证漏洞已修复（`bb7344f`）、R1 两轮静默死亡且当前 runtime 无子智能体提供方（`docs/project/reviews/2026-11-01-m1-exit-demo/README.md`）。
