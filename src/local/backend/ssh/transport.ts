@@ -49,6 +49,18 @@ export interface SshConnectOptions {
   readonly deadlineMs?: number
   /** askpass helper 的路径（node 脚本）。口令/口令短语必填其一时才需要。 */
   readonly askpassPath?: string
+  /** `-L <spec>`，本地端口转发（本地 → 远端）。 */
+  readonly forwardLocal?: readonly string[]
+  /** `-R <spec>`，远端端口转发（远端 → 本地，凭据代理走这条）。 */
+  readonly forwardRemote?: readonly string[]
+  /**
+   * 转发建不起来就让 ssh 直接失败。
+   *
+   * 默认 **false** 是 OpenSSH 自己的默认：转发失败只打一行 warning，会话照常起来。
+   * 对我们的启动路径来说那是静默降级——远端连不上本地代理，模型请求会在第一次推理时
+   * 神秘失败。所以启动路径必须显式置 true。
+   */
+  readonly exitOnForwardFailure?: boolean
 }
 
 export interface BuiltSshInvocation {
@@ -100,6 +112,10 @@ export function buildSshInvocation(
       target.proxyJump.map((hop) => (hop.user === undefined ? hop.host : hop.user + '@' + hop.host) + (hop.port === 22 ? '' : ':' + String(hop.port))).join(','),
     )
   }
+  if (options.exitOnForwardFailure === true) args.push('-o', 'ExitOnForwardFailure=yes')
+  for (const spec of options.forwardLocal ?? []) args.push('-L', spec)
+  for (const spec of options.forwardRemote ?? []) args.push('-R', spec)
+
   args.push(target.hostName, '--', ...remoteCommand)
 
   const env: Record<string, string> = {}

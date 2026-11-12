@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
-import { classifyStartFailure, parseDshEndpoint, readStartFailure, tailLines } from './remote-dsh.ts'
+import { TeleportError } from './errors.ts'
+import { classifyStartFailure, parseDshEndpoint, readStartFailure, tailLines } from './dsh-output.ts'
 
 const SUCCESS_LOG = [
   'dsh web: prompting for the initial launch token',

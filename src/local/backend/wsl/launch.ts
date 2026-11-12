@@ -10,7 +10,7 @@
  *    子进程就被回收。所以 `dispose()` 只 kill 自己起的句柄，绝不 `wsl --terminate`。
  * 3. **与后续 stdio 桥同构**——凭据反代走的就是这条管道，先在这里把它跑通。
  *
- * 这个文件**只做启动与回收**，日志解析交给 `remote-dsh.ts`（纯函数可单测），
+ * 这个文件**只做启动与回收**，日志解析交给 `../dsh-output.ts`（纯函数可单测），
  * 错误分类也交给它。
  */
 
@@ -19,7 +19,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { TeleportError } from '../errors.ts'
 import { OwnedChildren } from './children.ts'
 import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
-import { classifyStartFailure, parseDshEndpoint } from './remote-dsh.ts'
+import { classifyStartFailure, parseDshEndpoint } from '../dsh-output.ts'
 
 export interface LaunchOptions {
   /** `wsl.exe` 的路径或命令名。 */

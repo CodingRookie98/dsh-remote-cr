@@ -10,8 +10,8 @@
  * - 无 node：`nohup: failed to run command 'node': No such file or directory`
  */
 
-import { TeleportError, portInUseError } from '../errors.ts'
-import type { DshEndpoint } from '../handle.ts'
+import { TeleportError, portInUseError } from './errors.ts'
+import type { DshEndpoint } from './handle.ts'
 
 // 端点的形状是中立的（见 `../handle.ts`），这里只做解析，不再拥有这个类型。
 export type { DshEndpoint }
