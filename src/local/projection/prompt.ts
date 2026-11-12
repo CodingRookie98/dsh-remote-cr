@@ -18,7 +18,7 @@
  * 不受污染（`unc-cwd.ts` 的恒等性质）。
  */
 
-import { projectContexts, type ContextRewrite, type ProjectableContext } from './unc-cwd.ts'
+import { projectContexts, type ContextRewrite, type CwdProjector, type ProjectableContext } from './unc-cwd.ts'
 
 /** 官方事件名（`packages/core/system-prompt/src/index.ts`）。 */
 export const ASSEMBLE_EVENT = 'system-prompt/assemble'
@@ -70,10 +70,10 @@ export class PromptProjectionLog {
  * 逐条调 `projectContexts` 而不是整批：整批返回的记录不带下标，遇到同名 context
  * 就只能靠 `find` 猜是哪一个；逐条走顺序天然对齐，改的一定是刚判定的那一条。
  */
-export function projectAssembly(assembly: ProjectableAssembly): ContextRewrite[] {
+export function projectAssembly(assembly: ProjectableAssembly, projector?: CwdProjector): ContextRewrite[] {
   const rewrites: ContextRewrite[] = []
   for (const entry of assembly.contexts) {
-    const found = projectContexts([entry])
+    const found = projectContexts([entry], projector)
     const rewrite = found[0]
     if (rewrite === undefined) continue
     entry.text = rewrite.after
@@ -107,10 +107,11 @@ export const PROMPT_PROJECTION_LABEL = 'dsh-teleport: prompt cwd projection'
 export function installPromptProjection(
   ctx: PromptProjectionHost,
   log: PromptProjectionLog = new PromptProjectionLog(),
+  projector?: CwdProjector,
 ): PromptProjectionLog {
   const listener: PromptAssembleListener = async (_assembly, _context, next) => {
     const result = await next()
-    const rewrites = projectAssembly(result)
+    const rewrites = projectAssembly(result, projector)
     if (rewrites.length > 0) log.record(rewrites)
     return result
   }

@@ -62,21 +62,29 @@ export function linuxPathOf(value: string): string | undefined {
   return tail === '' ? '/' : '/' + tail.split('\\').join('/')
 }
 
-/** 改写 `working-directory:current` 的正文；不是 UNC 就原样返回。 */
-export function projectWorkingDirectory(text: string): string {
+/**
+ * 本地 cwd 路径 → 模型该看到的路径。认不出就返回 undefined（投影器据此退化成恒等）。
+ *
+ * 默认实现是 WSL UNC 的折法；SSH 锚点后端传自己的映射（锚点路径 → 远端绝对路径），
+ * 这样 UNC 与锚点共用同一套改写逻辑与本文件的边界处理。
+ */
+export type CwdProjector = (value: string) => string | undefined
+
+/** 改写 `working-directory:current` 的正文；认不出 cwd 就原样返回。 */
+export function projectWorkingDirectory(text: string, projector: CwdProjector = linuxPathOf): string {
   const match = WORKING_DIRECTORY_PATTERN.exec(text)
   if (match === null) return text
   const quoted = match[1]
   if (quoted === undefined) return text
   const cwd = parseQuoted(quoted)
   if (cwd === undefined) return text
-  const linux = linuxPathOf(cwd)
+  const linux = projector(cwd)
   if (linux === undefined) return text
   return 'Current working directory: ' + JSON.stringify(linux) + '.'
 }
 
-/** 改写 `sandbox:policy` 里 `the session workspace: <json>` 那一段；不是 UNC 就原样返回。 */
-export function projectSandboxPolicy(text: string): string {
+/** 改写 `sandbox:policy` 里 `the session workspace: <json>` 那一段；认不出 cwd 就原样返回。 */
+export function projectSandboxPolicy(text: string, projector: CwdProjector = linuxPathOf): string {
   const at = text.indexOf(SANDBOX_WORKSPACE_MARKER)
   if (at < 0) return text
   const start = at + SANDBOX_WORKSPACE_MARKER.length
@@ -86,7 +94,7 @@ export function projectSandboxPolicy(text: string): string {
   if (literal === undefined) return text
   const cwd = parseQuoted(literal)
   if (cwd === undefined) return text
-  const linux = linuxPathOf(cwd)
+  const linux = projector(cwd)
   if (linux === undefined) return text
   return text.slice(0, start) + JSON.stringify(linux) + text.slice(start + literal.length)
 }
@@ -110,14 +118,17 @@ export interface ProjectableContext {
  * 返回值而不是就地改写：调用方（cordis 监听器）需要知道到底改没改、改了哪几条，
  * 才能把事实记录下来；而「改了几条」正是负控要断言的量。
  */
-export function projectContexts(contexts: readonly ProjectableContext[]): ContextRewrite[] {
+export function projectContexts(
+  contexts: readonly ProjectableContext[],
+  projector: CwdProjector = linuxPathOf,
+): ContextRewrite[] {
   const rewrites: ContextRewrite[] = []
   for (const entry of contexts) {
     if (entry.name === WORKING_DIRECTORY_CONTEXT) {
-      const after = projectWorkingDirectory(entry.text)
+      const after = projectWorkingDirectory(entry.text, projector)
       if (after !== entry.text) rewrites.push({ context: WORKING_DIRECTORY_CONTEXT, before: entry.text, after })
     } else if (entry.name === SANDBOX_POLICY_CONTEXT) {
-      const after = projectSandboxPolicy(entry.text)
+      const after = projectSandboxPolicy(entry.text, projector)
       if (after !== entry.text) rewrites.push({ context: SANDBOX_POLICY_CONTEXT, before: entry.text, after })
     }
   }
