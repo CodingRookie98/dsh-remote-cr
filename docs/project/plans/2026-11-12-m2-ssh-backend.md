@@ -18,11 +18,11 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: S1 SSH config 解析与目标发现
-- **当前活跃子任务**: Task S1
+- **当前活跃阶段**: S2 SSH 连接与认证
+- **当前活跃子任务**: Task S2
 - **当前子任务重试计数**: 0/3
-- **最后一次验证状态**: 尚未开始（本计划落盘时 SSH 侧零代码）
-- **最新有效提交**: （开工后填）
+- **最后一次验证状态**: 2026-11-12 — S1 与 S0-7 已完成并验证：`npm run typecheck` Exit 0（双 tsconfig）、`npm test` **309/309**（其中新增 `ssh/config.test.ts` **26** 条）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S0-7 搬家后同一套 309 条仍全绿（WSL 侧零行为变化）。
+- **最新有效提交**: 见下方 Context Log（本次提交记录 S1 + S0-7）
 - **阻断原因**: 无
 
 ---
@@ -77,7 +77,7 @@
 
 | # | 任务 | 交付物 | 验收 | 状态 |
 |---|---|---|---|---|
-| **S1** | SSH config 解析与校验 | `src/local/backend/ssh/config.ts` + `.test.ts` | 用本机真实 config 全量通过；`~` 展开、`.pub` 误配、`ProxyJump` 链、重复 `Host`、大小写键名、注释/行内注释、多值 `IdentityFile` 各有断言；错误配置给可操作中文提示 | [ ] |
+| **S1** | SSH config 解析与校验 | `src/local/backend/ssh/config.ts` + `.test.ts` | 用本机真实 config 全量通过；`~` 展开、`.pub` 误配、`ProxyJump` 链、重复 `Host`、大小写键名、注释/行内注释、多值 `IdentityFile` 各有断言；错误配置给可操作中文提示 | [x] 26 条全绿；真实 config 11 块 / 14 别名；4 处 `.pub` 误配精确指到第 21/45/51/57 行；`Include` 在原位置展开（优先级有反证） |
 | **S2** | 连接与认证 | `ssh/transport.ts` + `ssh/errors.ts` | 私钥 / agent / 密码三种都能连；认证错误**四分类**（认证失败 / 握手超时 / 私钥需口令 / 口令错误）各有文案；密码登录时禁用隐式 agent（`-o PubkeyAuthentication=no -o IdentitiesOnly=yes`）；`dispose` 后迟到 ready/error 双检 | [ ] |
 | **S3** | 主机密钥 TOFU | `ssh/known-hosts.ts` | 首次接受并入库指纹；变更被拦并给两条动作；用户 `~/.ssh/known_hosts` 不被改动 | [ ] |
 | **S4** | 单 channel probe | `ssh/probe.ts` | 一条命令拿全 platform/arch/kernel/node/dsh（`__MARKER__` 分隔）；只发一条命令（用假 transport 断言 argv 数量） | [ ] |
@@ -93,4 +93,5 @@
 
 ## 4. Context Log
 
+- 2026-11-12：**S1 完成**。`ssh/config.ts` 导出 `parseSshConfig` / `matchHostPattern` / `expandSshPath` / `resolveSshTarget` / `listSshTargets` / `readSshConfig`；`ParsedSshConfig.entries` 保留「块 / Include」的原始顺序，`readSshConfig` 因此能在**原位置**展开 Include（先到先得语义），并有反证测试锁住顺序敏感性。`IdentityFile` 携带**自己那一行**的行号，所以 `.pub` 误配能指到可改的那一行。**S0-7 完成**：`DshEndpoint` 与 `RemoteDshHandle` 搬到 `src/local/backend/handle.ts`，`backend.ts` / `wsl/launch.ts` 改为从中立位置导入；`wsl/remote-dsh.ts` 只 re-export 类型。
 - 2026-11-12：计划落盘。前置事实——本机 npm 不可达（S0-1）、Windows OpenSSH 9.5p2 在位、`spikes/m0/reverse-tunnel/run.sh` 已证 `-L`+`-R` 同连接、M1 侧 P0 取证漏洞已修复（`bb7344f`）、R1 两轮静默死亡且当前 runtime 无子智能体提供方（`docs/project/reviews/2026-11-01-m1-exit-demo/README.md`）。

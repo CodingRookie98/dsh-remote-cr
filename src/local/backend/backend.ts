@@ -8,7 +8,7 @@
  */
 
 import type { TeleportError } from './errors.ts'
-import type { RemoteDshHandle } from './wsl/launch.ts'
+import type { RemoteDshHandle } from './handle.ts'
 
 export type BackendKind = 'wsl' | 'ssh' | 'docker'
 

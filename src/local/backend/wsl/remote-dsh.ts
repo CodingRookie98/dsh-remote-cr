@@ -11,12 +11,10 @@
  */
 
 import { TeleportError, portInUseError } from '../errors.ts'
+import type { DshEndpoint } from '../handle.ts'
 
-export interface DshEndpoint {
-  readonly host: string
-  readonly port: number
-  readonly token: string
-}
+// 端点的形状是中立的（见 `../handle.ts`），这里只做解析，不再拥有这个类型。
+export type { DshEndpoint }
 
 const URL_LINE = /dsh web:\s+(https?:\/\/[^\s]+)/
 const EADDRINUSE = /EADDRINUSE: address already in use (\S+):(\d+)/

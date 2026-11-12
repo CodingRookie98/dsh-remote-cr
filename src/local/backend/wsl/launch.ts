@@ -18,7 +18,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 
 import { TeleportError } from '../errors.ts'
 import { OwnedChildren } from './children.ts'
-import { classifyStartFailure, parseDshEndpoint, type DshEndpoint } from './remote-dsh.ts'
+import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
+import { classifyStartFailure, parseDshEndpoint } from './remote-dsh.ts'
 
 export interface LaunchOptions {
   /** `wsl.exe` 的路径或命令名。 */
@@ -35,14 +36,6 @@ export interface LaunchOptions {
   /** 等 URL 的上限，默认 60000ms（真机 12–18s 起，留足冷启动余量）。 */
   readonly timeoutMs?: number
   readonly signal?: AbortSignal
-}
-
-export interface RemoteDshHandle {
-  readonly endpoint: DshEndpoint
-  /** 已捕获的全部 stdout+stderr 文本，供「复制日志」。 */
-  log(): string
-  /** 回收：kill 自己起的 `wsl.exe` 句柄。返回是否干净（有 survivor 即 false）。 */
-  dispose(): Promise<boolean>
 }
 
 /** `dsh web` 的 argv（不含 wsl 前缀）。抽出来是为了能在单测里断言，不用真起进程。 */
