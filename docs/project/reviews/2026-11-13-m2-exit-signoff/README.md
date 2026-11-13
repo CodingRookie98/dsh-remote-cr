@@ -107,6 +107,20 @@ R1 #4 判「不是 Zero Blockers」：2 BLOCKER + 4 MAJOR + 5 MINOR。基线漂�
 
 **门禁**：双 tsc Exit 0、`pnpm test` **560/560**、R1 #4 夹具 10 条里 D1/D2/D3 转红 + D6 转红、P1–P6 全绿；D4/D5 仍绿（记账）。
 
+### 4.4 R1 #5 处置（2026-11-13，第五轮复审）
+
+R1 #5 判「不是 Zero Blockers」：2 BLOCKER + 3 MAJOR + 7 MINOR。
+
+| 条目 | 处置 | 取证 |
+|---|---|---|
+| **B1（续）** 回滚用值快照把已 dispose 的连接写回 | 新增 `#discarded` + `#takeDiscarded()`：`#dropDetached()` 记录被丢弃对象，回滚时跳过它。**D8/D9 已修**；**D7 未闭合**（救援失败 + 取消落在 `#connect` 的边角仍会写回死对象） | 夹具 D8/D9 转红、P7/P8 绿；D7 仍绿（记账） |
+| **E1** 回收测量有两个错（采样在 `await` 之后、起算点含探针往返） | 先确认端口在监听再取消、释放耗时从 `abort` 起算、只在「确实忙过」时成立 | 新落盘 `measurements.cancel.json`：`busyBefore:true`、`observedBusyThenFreed:true`、`freedAfterMs:4012` |
+| **M1** 取消回滚后 `connected=true` 但投影全 offline | 换 target 不再走 `disconnect()`（那条会 `markAllOffline`），改内部搁置；取消回滚后旧工作区不再显示离线 | 单测全绿 |
+| **M2** 负控从未在最终代码上重跑 | 最终代码重跑 | `2/8`，失败集 6 条逐项相等，`NEGATIVE CONTROL OK`（新落盘） |
+| **M3** 两条新分支零覆盖（`created=false`、`recycle-incomplete`） | **记账未补** | — |
+
+**结论（Lead 建议）**：五轮 R1 的缺陷可达性在递减（从「取消完全无效」→「判据用错布尔值/槽位」→「回滚遇到已 dispose 的留存连接」）。剩下的 D7、M3 与 m1–m7 都集中在「取消 × 连接复用 × 留存连接」这一个状态机的边角，**继续逐轮修需要把该状态机形式化（穷举测试）**，成本已超过 M2 出口的收益。建议：**停止逐轮修，按 §3 的已知限制 + 未验证清单签出口声明**；把 D7/M3 与 D4/D5 作为 M3 的输入。
+
 ## 5. R1 台账
 
 | 轮次 | 基线 | 派发 | 结果 |
@@ -117,7 +131,9 @@ R1 #4 判「不是 Zero Blockers」：2 BLOCKER + 4 MAJOR + 5 MINOR。基线漂�
 | R1 #3 | `23f5671` | `subagent r1-reviewer-3` | **报告已落盘**：1 BLOCKER + 5 MAJOR，非 Zero Blockers；夹具 `round3-probes.test.ts` 当时 3/3 绿。Lead 已处置（§4.2；M-D 记账未做），复跑后 D1/D2 转红、P1 仍绿 |
 | R1 #4 | `d557a91`（中途漂到 `64fc7ee`） | `subagent r1-reviewer-4` | **报告已落盘**：2 BLOCKER + 4 MAJOR + 5 MINOR，非 Zero Blockers；夹具 `round4-probes.test.ts`（10 条）+ `drift-64fc7ee.test.ts`（D6/P6）。Lead 已处置（§4.3）：D1/D2/D3/D6 转红、P1–P6 绿；D4/D5 记账 |
 | R1 #5（待派） | 本提交 | — | 复审 B1/B2 与 D4/D5/M2 |
-| R2（待派） | R1 #5 之后 | — | 元架构师终审 |
+| R1 #5 | `a8dad38` | `subagent r1-reviewer-5` | **报告已落盘**：2 BLOCKER + 3 MAJOR + 7 MINOR；B1 半闭（D8/D9 修、D7 记账）、E1/M1/M2 已修、M3 记账 |
+| 出口建议 | — | Lead | 停止逐轮修：剩余缺陷集中在同一状态机边角，需形式化才收敛；建议按 §3 已知限制 + 未验证清单签出口，D7/M3/D4/D5 转 M3 输入 |
+| R2（待派） | 出口声明之后 | — | 元架构师终审（若用户要求继续 R1，则先 R1 #6） |
 
 ## 6. Lead 代位自查（不替代 R1）
 
