@@ -100,6 +100,21 @@ function fakeRpc(): FakeRpc {
   }
 }
 
+
+test('导入：连接没有 anchorFor 时抛 remote/not-attached（WSL 后端不支持导入）', async () => {
+  // WSL 的连接不提供 anchorFor：导入必须**明确拒绝**，而不是把远端路径硬塞进 create。
+  const service = new ProjectionService({
+    store: new ProjectionStore(),
+    timers: fakeTimers(),
+    connect: async () => ({ rpc: fakeRpc(), dispose: async () => true }),
+  })
+  await service.attach(TARGET, { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/x' })
+  await assert.rejects(
+    () => service.importWorkspaces([TARGET.remoteRoot]),
+    (error: unknown) => (error as { code?: string }).code === 'remote/not-attached',
+  )
+})
+
 function transportLoss(): TeleportError {
   return new TeleportError({
     code: 'remote/tunnel-unavailable',
