@@ -1,4 +1,4 @@
-# DSH 生态、同类项目与 dsh-teleport 的价值评估
+# DSH 生态、同类项目与 dsh-remote-cr 的价值评估
 
 > **结论先行（2026-11-13）**
 > 1. **技术价值高**：B 型（宿主远端）+ 凭据不出本机 + 会话持久/断线恢复，这四条在 DSH 插件生态里**没有第二个实现**；560 条单测、10+ 套真机探针（带负控）的工程深度也远超同类插件。
@@ -23,7 +23,7 @@
 | [CrazyShout/dsh-ssh-remote](https://github.com/CrazyShout/dsh-ssh-remote) | **A 型** | v0.13.5；原生文件面板 + 终端、`@` 引用、端口转发、文件传输、可恢复传输；**明确写"无需在服务器运行完整 DSH"** | 零安装 |
 | [ZhangFengshun/dsh-remote-ssh](https://github.com/ZhangFengshun/dsh-remote-ssh) | **A 型** | 13 个 `remote_ssh_*` 模型工具；超算/SLURM 场景；`@` 补全走远端 `git ls-files`（0.1s） | 零安装（依赖 dsh-better-sidebar） |
 | [techflag/dsh-plugin-ssh](https://github.com/techflag/dsh-plugin-ssh) / [Hakunm/dsh-workspace](https://github.com/Hakunm/dsh-workspace/blob/main/README.md) / [ya-b/dsh-ssh-workspace](https://dsh-plugin.org/zh/plugins/ya-b/dsh-ssh-workspace) | **A 型** | SSH/SFTP 工作区、文件与终端 | 零安装 |
-| **dsh-teleport（本项目）** | **B 型** | agent loop / 插件 / 会话 / 模型调用**都在远端**；本地只做单一原生 GUI 投影与凭据代理 | 远端需要 dsh 宿主（首次引导 ~1.4 GB / ~3 min） |
+| **dsh-remote-cr（本项目）** | **B 型** | agent loop / 插件 / 会话 / 模型调用**都在远端**；本地只做单一原生 GUI 投影与凭据代理 | 远端需要 dsh 宿主（首次引导 ~1.4 GB / ~3 min） |
 
 **读法**：A 型的共同点是「本地 GUI + 本地模型，远端只当文件与命令的执行端」。它们赢在零安装、上手快；输在**没有远端宿主**——因此拿不到：远端会话持久、远端插件原生注册、断线后自动恢复、凭据不出本机。
 
@@ -100,4 +100,4 @@
 
 ## 10. 一句话
 
-**dsh-teleport 的价值不在"又一个远程开发插件"，而在它是 DSH 生态里唯一把"agent 宿主搬到远端、钥匙留在本地"做完整并留下证据链的实现。** 这个价值真实但窄——它值得开源，不值得按主流方案去争。
+**dsh-remote-cr 的价值不在"又一个远程开发插件"，而在它是 DSH 生态里唯一把"agent 宿主搬到远端、钥匙留在本地"做完整并留下证据链的实现。** 这个价值真实但窄——它值得开源，不值得按主流方案去争。

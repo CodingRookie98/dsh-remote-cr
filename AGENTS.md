@@ -7,6 +7,7 @@
 `dsh-remote-cr`（曾用名 `dsh-teleport`）是 DeepSeek Harness（DSH）的**远程开发插件**：把 DSH 宿主（agent runtime、插件、会话存储）跑在远端（WSL2 / SSH），本地 GUI 只做呈现、工作区/会话投影与凭据代理。
 
 **命名分层铁律**：包名与插件 id 用 `dsh-remote-cr`；运行时标识一律保留 `teleport`（`~/.dsh-teleport`、`DSH_TELEPORT_*`、`/teleport` API 前缀、`data-teleport` DOM）。改运行时标识 = 作废用户的锚点、staging 与既有配置，必须当作破坏性变更走 ADR。
+
 对标 VS Code Remote-SSH / Zed Remote / ZCode Remote，但要求「单一原生 GUI、远端环境原生、断线可恢复」。
 
 ## 2. 铁律（不可违背）

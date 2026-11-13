@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-13T11:42:00.413Z",
+  "at": "2026-11-13T12:14:33.137Z",
   "negative": false,
   "measurements": [],
   "results": [
@@ -17,22 +17,22 @@
       "detail": {
         "cancelClicked": true,
         "cancelCalls": "[{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"},{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"}]",
-        "cancelPhase": "bootstrap",
+        "cancelPhase": "launch",
         "sawBusy": false,
         "progressGone": true,
         "errorAfterCancel": false,
         "portFreed": false,
-        "portFreeMs": 46513,
+        "portFreeMs": 49466,
         "portReclaim": null,
         "attachOutcome": "cancelled",
         "timeline": [
           {
             "phase": "probe",
-            "at": 362
+            "at": 316
           },
           {
-            "phase": "bootstrap",
-            "at": 3976
+            "phase": "launch",
+            "at": 7559
           }
         ]
       }
@@ -43,7 +43,6 @@
       "detail": {
         "phases": [
           "probe",
-          "bootstrap",
           "launch",
           "tunnel",
           "attach"
@@ -54,23 +53,19 @@
         "timeline": [
           {
             "phase": "probe",
-            "at": 420
-          },
-          {
-            "phase": "bootstrap",
-            "at": 3969
+            "at": 431
           },
           {
             "phase": "launch",
-            "at": 6669
+            "at": 7663
           },
           {
             "phase": "tunnel",
-            "at": 15470
+            "at": 15083
           },
           {
             "phase": "attach",
-            "at": 16322
+            "at": 15714
           }
         ]
       }
@@ -88,7 +83,7 @@
       "ok": true,
       "detail": {
         "code": "remote/workspace-invalid-path",
-        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794570110807\": ENOENT: no such file or direc",
+        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794572062998\": ENOENT: no such file or direc",
         "next": [
           "查看远端日志",
           "重试"
