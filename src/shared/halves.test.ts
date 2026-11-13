@@ -56,8 +56,8 @@ test('engines.dsh 必须写全三段式 prerelease 区间（丢 patch 段会让 
 })
 
 test('describeHalf 带上侧信息，客户端半是 browser、其余是 node', () => {
-  assert.equal(describeHalf('client'), 'dsh-teleport half client (browser)')
-  assert.equal(describeHalf('local'), 'dsh-teleport half local (node)')
+  assert.equal(describeHalf('client'), 'dsh-remote-cr half client (browser)')
+  assert.equal(describeHalf('local'), 'dsh-remote-cr half local (node)')
   assert.equal(Object.keys(HALF_SIDES).length, PLUGIN_HALVES.length)
 })
 

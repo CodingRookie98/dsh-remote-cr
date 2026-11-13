@@ -32,7 +32,7 @@ import { ProjectionService } from './local/projection/service.ts'
 import { ProjectionStore } from './local/projection/store.ts'
 
 /** Loader 行里的插件名（与 \`cordis.patch.yml\` 的 \`id\` 无关，那个是行 id）。 */
-export const name = 'dsh-teleport'
+export const name = 'dsh-remote-cr'
 
 /** 依赖的宿主服务：\`webServer\` 挂路由，\`connection\` 提供越权围栏，\`systemPrompt\` 挂投影。 */
 export const inject = ['webServer', 'connection', 'systemPrompt'] as const
@@ -132,7 +132,7 @@ export function apply(ctx: TeleportPluginContext): TeleportMount {
     projection.dispose()
     // 代理要显式停：它持着一个 listening socket，不停就留在进程里占端口。
     void proxy?.stop()
-  }, 'dsh-teleport: projection lifetime')
+  }, 'dsh-remote-cr: projection lifetime')
 
   const routes = registerTeleportRoutes(ctx, {
     projection,

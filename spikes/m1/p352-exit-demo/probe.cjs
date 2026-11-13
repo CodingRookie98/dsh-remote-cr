@@ -190,7 +190,7 @@ function startHost() {
  * `.tmp-spike/`，它就从「跑不过」变成「跑不起来」，两种失败还长得一样。
  *
  * 两个坑（都真机踩过）：
- * 1. 包名必须是 `dsh-teleport`。仓库目录叫 `dsh-remote-cr`，而 `dsh plugin add link:<dir>`
+ * 1. 包名必须是 `dsh-remote-cr`（2026-11-13 项目改名，包名与插件 id 一致）。`dsh plugin add link:<dir>`
  *    会拿**目录名**当依赖名，于是 profile 里写进 `dsh-remote-cr`，boot 阶段
  *    `cannot resolve profile bundle "dsh-remote-cr"`。所以这里显式写
  *    `dsh-teleport@link:<dir>`。
@@ -203,7 +203,7 @@ function ensureProfile() {
   fs.mkdirSync(DSH_HOME, { recursive: true })
   const result = spawnSync(
     process.execPath,
-    [DSH_BIN, 'plugin', '--profile', 'web', 'add', 'dsh-teleport@link:' + ROOT],
+    [DSH_BIN, 'plugin', '--profile', 'web', 'add', 'dsh-remote-cr@link:' + ROOT],
     { cwd: DSH_ROOT, encoding: 'utf8', timeout: 240_000, env: { ...process.env, DSH_HOME } },
   )
   if (result.status !== 0 || !fs.existsSync(manifest)) {

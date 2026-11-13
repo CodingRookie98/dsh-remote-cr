@@ -358,7 +358,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
             }
           },
         }),
-      `dsh-teleport: ${path}`,
+      `dsh-remote-cr: ${path}`,
     )
     mounted.push({ path: API_PREFIX + path, allowed })
   }

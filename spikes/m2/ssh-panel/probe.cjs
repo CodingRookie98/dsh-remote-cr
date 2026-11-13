@@ -143,18 +143,28 @@ function startHost() {
 /**
  * 备好隔离档（幂等）。
  *
- * 1. 包名必须显式写 `dsh-teleport`：`plugin add link:<dir>` 会拿**目录名**当依赖名，
- *    而仓库目录叫 `dsh-remote-cr`，于是 profile 里写进 dsh-remote-cr，
- *    boot 阶段报 `cannot resolve profile bundle "dsh-remote-cr"`。
+ * 1. 包名必须显式写 `dsh-remote-cr`（2026-11-13 起项目改名，包名与插件 id 一致）：
+ *    `plugin add link:<dir>` 会拿目录名当依赖名，显式写包名才能保证 profile 里登记的是
+ *    插件真正导出的 id（`src/index.ts` 的 `export const name`）。
+ *    旧 profile 里可能还装着改名前那份 —— 所以下面要校验 manifest 的 name，不匹配就重装。
  * 2. `DSH_HOME` 必须隔离：用真实 ~/.dsh 会让首次 session/create 付整库扫描的代价。
  */
 function ensureProfile() {
   const manifest = path.join(DSH_HOME, 'profiles/web/package.json')
-  if (fs.existsSync(manifest)) return
+  if (fs.existsSync(manifest)) {
+    // 改名之后旧 profile 仍能通过 existsSync，但里面登记的是 dsh-teleport —— 必须重装。
+    try {
+      const installed = JSON.parse(fs.readFileSync(manifest, 'utf8'))
+      const deps = installed.dependencies ?? {}
+      if (deps['dsh-remote-cr'] !== undefined) return
+    } catch {
+      /* 坏 manifest 按未安装处理 */
+    }
+  }
   fs.mkdirSync(DSH_HOME, { recursive: true })
   const out = spawnSync(
     process.execPath,
-    [DSH_BIN, 'plugin', '--profile', 'web', 'add', 'dsh-teleport@link:' + ROOT],
+    [DSH_BIN, 'plugin', '--profile', 'web', 'add', 'dsh-remote-cr@link:' + ROOT],
     { cwd: DSH_ROOT, encoding: 'utf8', timeout: 240_000, env: { ...process.env, DSH_HOME } },
   )
   if (out.status !== 0 || !fs.existsSync(manifest)) {

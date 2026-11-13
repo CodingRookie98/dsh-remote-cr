@@ -1,10 +1,11 @@
-# dsh-teleport · 瞬移
+# dsh-remote-cr · 瞬移
 
 > **把整个 DeepSeek Harness 宿主「瞬移」到远端（WSL2 / SSH），而 GUI 仍然只有一个原生 DSH。**
 >
 > 对标 VS Code Remote-SSH / Zed Remote / ZCode 远程开发：远端跑完整 agent 运行时（宿主、插件、会话、文件），本地只做呈现与凭据代理。
 
-- 项目名：**dsh-teleport**（中文：**瞬移**）
+- 项目名：**dsh-remote-cr**（曾用名 `dsh-teleport` / 中文代号「瞬移」；2026-11-13 改名）
+- **命名分层**：包名与插件 id 是 `dsh-remote-cr`；**运行时标识保留 `teleport`**（`~/.dsh-teleport` 锚点与 staging、`DSH_TELEPORT_*` 环境变量、`/teleport` API 前缀、`data-teleport` DOM 属性）—— 改名不该作废既有锚点、staging 与已部署的环境变量
 - 状态：**调研完成，UI/功能设计完成，M0 已关闭**（2026-10-31）；**M1 进行中**——ADR-0003 两层阈值（T5 跨机字节 / T6 跨机失败可见）已运行时取证通过，产品代码尚未开始（计划：[`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](./docs/project/plans/2026-10-31-m1-wsl-closed-loop.md)）
 - 目标平台：Windows 上的 DSH Desktop / dsh web + 本机 WSL2 发行版 / 任意 POSIX SSH 主机
 - 后端交付顺序：**WSL2（M1）→ SSH（M2）→ Docker（M5）**

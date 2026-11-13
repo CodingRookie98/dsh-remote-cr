@@ -21,5 +21,5 @@ export const HALF_SIDES: Readonly<Record<PluginHalf, 'node' | 'browser'>> = {
 
 /** 供诊断输出的一行描述，稳定便于 grep。 */
 export function describeHalf(half: PluginHalf): string {
-  return `dsh-teleport half ${half} (${HALF_SIDES[half]})`
+  return `dsh-remote-cr half ${half} (${HALF_SIDES[half]})`
 }

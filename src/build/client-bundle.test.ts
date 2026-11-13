@@ -96,7 +96,7 @@ test('渲染结果真的能执行：包内 require 闭合、裸 require 落到�
   // 用 Function 而不是 eval：产物里的 var module 必须留在函数作用域内。
   new Function('window', bundle)(sandbox)
   assert.deepEqual(seedCalls, ['react'])
-  assert.deepEqual(seen, { id: 'dsh-teleport', value: 42 })
+  assert.deepEqual(seen, { id: 'dsh-remote-cr', value: 42 })
 })
 
 test('NEGATIVE_CONTROL 可假性：把 footer 挪走必须让「信封逐字一致」断言失败', () => {

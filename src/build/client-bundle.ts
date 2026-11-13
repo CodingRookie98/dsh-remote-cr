@@ -28,7 +28,7 @@ export interface BundleModule {
 }
 
 /** 官方信封的 banner（`packages/client/tsdown.client.ts:664`）。 */
-export const BUNDLE_BANNER = 'window.__ModuleLoader__.load({ id: "dsh-teleport", factory: (require) => {'
+export const BUNDLE_BANNER = 'window.__ModuleLoader__.load({ id: "dsh-remote-cr", factory: (require) => {'
 
 /** 官方信封的 intro（`packages/client/tsdown.client.ts:668`）。 */
 export const BUNDLE_INTRO = 'var module = { exports: {} }; var exports = module.exports;'
@@ -122,7 +122,7 @@ const REGISTRY = [
   '  var cached = __cache[id];',
   '  if (cached !== undefined) return cached.exports;',
   '  var def = __defs[id];',
-  "  if (def === undefined) throw new Error('dsh-teleport client bundle: missing module \"' + id + '\"');",
+  "  if (def === undefined) throw new Error('dsh-remote-cr client bundle: missing module \"' + id + '\"');",
   '  var mod = { exports: {} };',
   '  __cache[id] = mod;',
   '  def.call(mod.exports, mod, mod.exports, function (specifier) {',
@@ -143,17 +143,17 @@ const REGISTRY = [
 export function renderBundle(entryId: ModuleId, modules: readonly BundleModule[]): string {
   const byId = new Map<ModuleId, BundleModule>()
   for (const module of modules) {
-    if (byId.has(module.id)) throw new Error('dsh-teleport client bundle: duplicate module "' + module.id + '"')
+    if (byId.has(module.id)) throw new Error('dsh-remote-cr client bundle: duplicate module "' + module.id + '"')
     byId.set(module.id, module)
   }
-  if (!byId.has(entryId)) throw new Error('dsh-teleport client bundle: entry module "' + entryId + '" is missing')
+  if (!byId.has(entryId)) throw new Error('dsh-remote-cr client bundle: entry module "' + entryId + '" is missing')
   for (const module of modules) {
     for (const specifier of relativeRequires(module.code)) {
       const target = resolveSpecifier(module.id, specifier)
       if (target === undefined) continue
       if (!byId.has(target)) {
         throw new Error(
-          'dsh-teleport client bundle: "' + module.id + '" requires "' + specifier + '" which resolves to "' + target + '", but that module is not in the bundle',
+          'dsh-remote-cr client bundle: "' + module.id + '" requires "' + specifier + '" which resolves to "' + target + '", but that module is not in the bundle',
         )
       }
     }

@@ -87,7 +87,7 @@ export function registerSlots(ctx: RegistrationContext, components: TeleportComp
           ),
         ),
       ),
-    'dsh-teleport: main panel',
+    'dsh-remote-cr: main panel',
   )
 
   ctx.effect(
@@ -103,7 +103,7 @@ export function registerSlots(ctx: RegistrationContext, components: TeleportComp
           ),
         ),
       ),
-    'dsh-teleport: panellist icon',
+    'dsh-remote-cr: panellist icon',
   )
 
   const [hero, sidebar] = DIRECTORY_FLOW_SLOTS
@@ -121,7 +121,7 @@ export function registerSlots(ctx: RegistrationContext, components: TeleportComp
           ),
         ),
       ),
-    'dsh-teleport: directory flow takeover',
+    'dsh-remote-cr: directory flow takeover',
   )
 
   return mounted

@@ -16,5 +16,5 @@ export const SHARED_PROTOCOL_VERSION = 1
 
 /** 供日志/诊断展示的一行标识，稳定便于 grep。 */
 export function describeShared(): string {
-  return `dsh-teleport shared protocol v${SHARED_PROTOCOL_VERSION}`
+  return `dsh-remote-cr shared protocol v${SHARED_PROTOCOL_VERSION}`
 }

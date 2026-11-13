@@ -85,6 +85,19 @@
 4. **与 A 型互补**：明确"可以在同一 DSH 里共存"，不要求用户二选一。
 5. **设一个止损点**：若 6 个月内没有真实用户（企业内网 / 超算 / 长任务），把项目转为**官方参考实现**或内部工程样板，停止 M3–M5 的功能投入，只保留证据链与文档。
 
-## 9. 一句话
+## 9. 命名与品牌（2026-11-13 改名）
+
+| 层 | 现值 | 说明 |
+|---|---|---|
+| 项目 / 仓库 / 包名 | `dsh-remote-cr` | 与插件 id 一致（`src/index.ts` 的 `export const name`） |
+| 插件 id / client bundle id | `dsh-remote-cr` | 探针安装串同步改为 `dsh-remote-cr@link:`，并校验旧 profile 的 name（不匹配就重装） |
+| 运行时标识 | **保留 `teleport`** | `~/.dsh-teleport`（锚点 / staging / 引导账本）、`DSH_TELEPORT_*`、`/teleport` API 前缀、`data-teleport` DOM |
+| 历史文档 | 仍出现 `dsh-teleport` | 历史证据不改写；新文档用新名 |
+
+**为什么保留运行时标识**：改名会作废所有既有锚点（`~/.dsh-teleport/anchors/<id>`）、远端 staging、隔离档 `DSH_HOME`，也会让已部署的环境变量失效。品牌层与运行时层分开是这次改名的核心原则（已写进 `AGENTS.md` 的命名分层铁律）。
+
+**对品牌的影响**：`dsh-remote-cr` 比 `dsh-teleport` 更直白（remote），但丢掉了「瞬移」的记忆点——建议 README 首屏保留「瞬移」作中文副标题，文档里继续用「瞬移面板」指 UI。
+
+## 10. 一句话
 
 **dsh-teleport 的价值不在"又一个远程开发插件"，而在它是 DSH 生态里唯一把"agent 宿主搬到远端、钥匙留在本地"做完整并留下证据链的实现。** 这个价值真实但窄——它值得开源，不值得按主流方案去争。

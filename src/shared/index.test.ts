@@ -10,8 +10,8 @@ test('协议版本是正整数（改契约必须显式改它，不允许悄悄�
 
 test('describeShared 把版本拼进稳定前缀，便于日志 grep', () => {
   const line = describeShared()
-  assert.equal(line, `dsh-teleport shared protocol v${SHARED_PROTOCOL_VERSION}`)
-  assert.match(line, /^dsh-teleport shared protocol v\d+$/)
+  assert.equal(line, `dsh-remote-cr shared protocol v${SHARED_PROTOCOL_VERSION}`)
+  assert.match(line, /^dsh-remote-cr shared protocol v\d+$/)
 })
 
 test('NEGATIVE_CONTROL 可假性：故意改一个字符必须让上面的断言失败', () => {
