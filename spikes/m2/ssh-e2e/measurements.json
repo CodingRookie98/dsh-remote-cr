@@ -1,0 +1,250 @@
+{
+  "at": "2026-11-13T04:26:56.670Z",
+  "negative": false,
+  "summary": {
+    "alias": "gcp",
+    "remoteRoot": "/home/hui/workspace",
+    "localPath": "C:/Users/hui/.dsh-teleport/anchors/65369107ab8acbd8/home/hui/workspace",
+    "samples": 5,
+    "cold": {
+      "p50": 16292,
+      "p90": 17192
+    },
+    "open": {
+      "p50": 731,
+      "p90": 1158
+    },
+    "session": {
+      "p50": 1535,
+      "p90": 1573
+    },
+    "command": {
+      "p50": 2179,
+      "p90": 2812
+    },
+    "reconnect": {
+      "p50": 1664,
+      "p90": 2094
+    }
+  },
+  "gates": [
+    {
+      "label": "打开工作区 ≤2s",
+      "p50": 731,
+      "p90": 1158,
+      "limit": 2000,
+      "ok": true
+    },
+    {
+      "label": "会话首个命令 ≤3s",
+      "p50": 2179,
+      "p90": 2812,
+      "limit": 3000,
+      "ok": true
+    },
+    {
+      "label": "手动重连 ≤5s（热组，即二次连接）",
+      "p50": 1664,
+      "p90": 2094,
+      "limit": 5000,
+      "ok": true
+    }
+  ],
+  "results": [
+    {
+      "name": "S96-cold-1",
+      "ok": true,
+      "detail": "起远端+接入 a5650020-af32-4add-8724-e75dfc2fb275（单列，不做门禁）",
+      "ms": 17192
+    },
+    {
+      "name": "S96-open-1",
+      "ok": true,
+      "detail": "同一工作区幂等命中（打开工作区）",
+      "ms": 708
+    },
+    {
+      "name": "S96-session-1",
+      "ok": true,
+      "detail": "session session-493c1af5-00f8-4c71-91fa-68613ede8f9d",
+      "ms": 1535
+    },
+    {
+      "name": "S96-command-1",
+      "ok": true,
+      "detail": "cwd=/home/hui/workspace / Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed Oct 28 19:54:07 UTC 2026 x86_64 GNU/Linux",
+      "ms": 2078
+    },
+    {
+      "name": "S96-reconnect-1",
+      "ok": true,
+      "detail": "link=connected",
+      "ms": 1379
+    },
+    {
+      "name": "S96-recycle-1",
+      "ok": true,
+      "detail": "dispose 调用 1 次",
+      "ms": 611
+    },
+    {
+      "name": "S96-cold-2",
+      "ok": true,
+      "detail": "起远端+接入 a5650020-af32-4add-8724-e75dfc2fb275（单列，不做门禁）",
+      "ms": 16292
+    },
+    {
+      "name": "S96-open-2",
+      "ok": true,
+      "detail": "同一工作区幂等命中（打开工作区）",
+      "ms": 990
+    },
+    {
+      "name": "S96-session-2",
+      "ok": true,
+      "detail": "session session-c12efe61-345b-4af5-a58c-2ee4de546cdb",
+      "ms": 1331
+    },
+    {
+      "name": "S96-command-2",
+      "ok": true,
+      "detail": "cwd=/home/hui/workspace / Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed Oct 28 19:54:07 UTC 2026 x86_64 GNU/Linux",
+      "ms": 2812
+    },
+    {
+      "name": "S96-reconnect-2",
+      "ok": true,
+      "detail": "link=connected",
+      "ms": 1664
+    },
+    {
+      "name": "S96-recycle-2",
+      "ok": true,
+      "detail": "dispose 调用 2 次",
+      "ms": 608
+    },
+    {
+      "name": "S96-cold-3",
+      "ok": true,
+      "detail": "起远端+接入 a5650020-af32-4add-8724-e75dfc2fb275（单列，不做门禁）",
+      "ms": 16898
+    },
+    {
+      "name": "S96-open-3",
+      "ok": true,
+      "detail": "同一工作区幂等命中（打开工作区）",
+      "ms": 1158
+    },
+    {
+      "name": "S96-session-3",
+      "ok": true,
+      "detail": "session session-1c2bbc1b-3389-4cbe-8089-f71dfa6ef652",
+      "ms": 1550
+    },
+    {
+      "name": "S96-command-3",
+      "ok": true,
+      "detail": "cwd=/home/hui/workspace / Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed Oct 28 19:54:07 UTC 2026 x86_64 GNU/Linux",
+      "ms": 2179
+    },
+    {
+      "name": "S96-reconnect-3",
+      "ok": true,
+      "detail": "link=connected",
+      "ms": 1895
+    },
+    {
+      "name": "S96-recycle-3",
+      "ok": true,
+      "detail": "dispose 调用 3 次",
+      "ms": 604
+    },
+    {
+      "name": "S96-cold-4",
+      "ok": true,
+      "detail": "起远端+接入 a5650020-af32-4add-8724-e75dfc2fb275（单列，不做门禁）",
+      "ms": 15767
+    },
+    {
+      "name": "S96-open-4",
+      "ok": true,
+      "detail": "同一工作区幂等命中（打开工作区）",
+      "ms": 731
+    },
+    {
+      "name": "S96-session-4",
+      "ok": true,
+      "detail": "session session-1dc97afd-c6dd-4ed6-b89d-d84a1d66674c",
+      "ms": 1573
+    },
+    {
+      "name": "S96-command-4",
+      "ok": true,
+      "detail": "cwd=/home/hui/workspace / Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed Oct 28 19:54:07 UTC 2026 x86_64 GNU/Linux",
+      "ms": 2341
+    },
+    {
+      "name": "S96-reconnect-4",
+      "ok": true,
+      "detail": "link=connected",
+      "ms": 2094
+    },
+    {
+      "name": "S96-recycle-4",
+      "ok": true,
+      "detail": "dispose 调用 4 次",
+      "ms": 608
+    },
+    {
+      "name": "S96-cold-5",
+      "ok": true,
+      "detail": "起远端+接入 a5650020-af32-4add-8724-e75dfc2fb275（单列，不做门禁）",
+      "ms": 15815
+    },
+    {
+      "name": "S96-open-5",
+      "ok": true,
+      "detail": "同一工作区幂等命中（打开工作区）",
+      "ms": 729
+    },
+    {
+      "name": "S96-session-5",
+      "ok": true,
+      "detail": "session session-0928430e-00c3-495e-ae20-1b6c5f0a0c61",
+      "ms": 1310
+    },
+    {
+      "name": "S96-command-5",
+      "ok": true,
+      "detail": "cwd=/home/hui/workspace / Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed Oct 28 19:54:07 UTC 2026 x86_64 GNU/Linux",
+      "ms": 2128
+    },
+    {
+      "name": "S96-reconnect-5",
+      "ok": true,
+      "detail": "link=connected",
+      "ms": 1644
+    },
+    {
+      "name": "S96-recycle-5",
+      "ok": true,
+      "detail": "dispose 调用 5 次",
+      "ms": 600
+    },
+    {
+      "name": "gate-openMs",
+      "ok": true,
+      "detail": "打开工作区 ≤2s：p50=731ms p90=1158ms"
+    },
+    {
+      "name": "gate-commandMs",
+      "ok": true,
+      "detail": "会话首个命令 ≤3s：p50=2179ms p90=2812ms"
+    },
+    {
+      "name": "gate-reconnectMs",
+      "ok": true,
+      "detail": "手动重连 ≤5s（热组，即二次连接）：p50=1664ms p90=2094ms"
+    }
+  ]
+}

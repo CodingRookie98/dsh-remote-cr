@@ -33,7 +33,7 @@ import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../sha
 import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
 import type { ProbeOptions, ProbeResult } from './probe.ts'
-import { preheatProbe, runSessionProbe } from './probe.ts'
+import { TERMINAL_WARMUP_MS, preheatProbe, runSessionProbe } from './probe.ts'
 import type { ProjectionRpc } from './remote.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
 
@@ -186,10 +186,25 @@ export class ProjectionService {
     })
   }
 
-  /** 在远端会话的终端里跑取证命令。 */
+  /**
+   * 在远端会话的终端里跑取证命令。
+   *
+   * **预热窗口按后端给缺省值**（`defaultWarmupMs`）：WSL 的默认 shell 会跑 `ble.sh`，
+   * 新终端要 1.5s 才「能秒回命令」；SSH 目标上这条经验不成立——2026-11-13 在 gcp 上量的
+   * 四组（warmup 0 / 600 / 1200 / 2000 → 2139 / 2714 / 3312 / 5321 ms）是**严格线性**的，
+   * 说明等待纯属叠加、没有任何初始化积压可等。给 SSH 留 1.5s 会把首命令从 2.1s 推过 3s 门禁。
+   *
+   * 反向条件：哪天在 SSH 目标上遇到「rc 很重」的机器（首命令莫名要 2–3s），把它当作
+   * `remote/probe-slow` 的证据，改成「先发一条暖机命令、等它回来再发真命令」，而不是把
+   * 常数调回去——两者的区别是前者有可观测就绪信号，后者是猜。
+   */
   async probe(sessionId: string, options: ProbeOptions = {}): Promise<ProbeResult> {
     const connection = this.#requireLive()
-    return this.#guardTransport(() => runSessionProbe({ rpc: connection.rpc }, sessionId, options))
+    const withDefaults: ProbeOptions =
+      options.warmupMs === undefined
+        ? { ...options, warmupMs: defaultWarmupMs(this.target) }
+        : options
+    return this.#guardTransport(() => runSessionProbe({ rpc: connection.rpc }, sessionId, withDefaults))
   }
 
   /** 面板数据：投影表 + 连接状态。 */
@@ -453,6 +468,15 @@ function asTeleportError(error: unknown): TeleportError {
  * `distro` 对非 WSL 后端必须是 null：`attach.ts` 拿它算本地 UNC 路径，SSH 的本地
  * 路径来自锚点目录（S9.5b-2）；冒充成发行版名会拼出一条不存在的 UNC。
  */
+/**
+ * 取证预热窗口的缺省值：只有「默认 shell 会跑重 rc」的后端才需要等。
+ *
+ * 为什么写在服务层而不是 `probe.ts` 里：这是**后端事实**（WSL 的 bash 装了 ble.sh，
+ * SSH 目标上通常没有），探针层只看得到「要不要换 fish」，看不到连的是哪一种后端。
+ */
+export function defaultWarmupMs(target: ConnectTarget | null): number {
+  return target !== null && target.backend === 'ssh' ? 0 : TERMINAL_WARMUP_MS
+}
 export function attachDeps(
   target: ConnectTarget,
   rpc: ProjectionRpc,

@@ -14,7 +14,8 @@ import test from 'node:test'
 
 import { TeleportError } from '../backend/errors.ts'
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
-import { ProjectionService, type ConnectTarget } from './service.ts'
+import { ProjectionService, defaultWarmupMs, type ConnectTarget } from './service.ts'
+import { TERMINAL_WARMUP_MS } from './probe.ts'
 import { ProjectionStore } from './store.ts'
 import type { ReconnectTimers } from '../../shared/reconnect.ts'
 
@@ -381,4 +382,14 @@ test('手动重连失败：如实抛错，并把自动重连挂起来', async ()
   assert.equal(service.connected, false)
   assert.equal(service.link, 'retrying', '手动重连也失败时，交给自动重连接着试')
   assert.deepEqual(timers.pending(), [2000])
+})
+/**
+ * 预热窗口是**后端事实**，不是全局常数：WSL 的 bash 装了 ble.sh，新终端要等；
+ * SSH 目标上那条经验会把首命令推过 3s 门禁（2026-11-13 在 gcp 上量到预热与耗时严格线性）。
+ */
+test('取证预热窗口按后端给缺省值，SSH 目标不等待', () => {
+  const ssh: ConnectTarget = { backend: 'ssh', alias: 'gcp', port: 8938, remoteRoot: '/home/hui/workspace' }
+  assert.equal(defaultWarmupMs(ssh), 0, 'SSH 目标上不存在可等的初始化积压，等待只会让首命令变慢')
+  assert.equal(defaultWarmupMs(TARGET), TERMINAL_WARMUP_MS, 'WSL 仍然要等 ble.sh')
+  assert.equal(defaultWarmupMs(null), TERMINAL_WARMUP_MS, '还没连上时按保守值，不能因为不知道就清零')
 })
