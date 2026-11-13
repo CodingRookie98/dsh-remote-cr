@@ -244,6 +244,14 @@ export interface SshRunOptions extends SshConnectOptions {
   readonly signal?: AbortSignal
   /** 日志尾的最大行数，默认 40。 */
   readonly logTailLines?: number
+  /**
+   * 允许非零退出码原样返回结果而不抛错。
+   *
+   * 只有「退出码本身就是结论」的场景该打开它：引导器要按 exit 3（缺 tar）/exit 4（缺下载器）
+   * /exit 5（缺 npm）分别给出不同的下一步动作，把它们一律压成 `remote/unknown` 会让用户
+   * 面对一句「ssh 失败」而不知道要装什么。
+   */
+  readonly allowFailure?: boolean
 }
 
 export interface SshRunResult {
@@ -324,8 +332,8 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
     })
     child.on('exit', (code) => {
       if (settled) return
-      if (code === 0) {
-        finish({ result: { code: 0, stdout, stderr } })
+      if (code === 0 || options.allowFailure === true) {
+        finish({ result: { code: code ?? -1, stdout, stderr } })
         return
       }
       finish({ error: classifySshFailure(stderr, { ...context, logTail: tail() }) })

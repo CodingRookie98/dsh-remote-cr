@@ -40,9 +40,35 @@ export const PROXY_URL_ENV = 'TELEPORT_PROXY_URL'
 /** 看门狗标记：回收是否干净靠它们从日志里判，不靠猜。 */
 export const WATCHDOG_PID_MARK = 'TELEPORT_WATCHDOG_PID='
 export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
+/**
+ * 显式回收行。
+ *
+ * 2026-11-12 真机：只靠 `stdin.end()` 让远端 `cat` 读到 EOF 并不可靠——同一条连接上
+ * 挂了 `-R` 之后，ssh 客户端关掉 stdin 也不一定把 EOF 送到远端会话，看门狗要等到
+ * 本地 SIGTERM 才跑，回收判定因此晚 4s 以上、被误报成「远端子进程可能还活着」。
+ * 改成写一行明确的控制行，回收就不再依赖 EOF 的语义。
+ */
+export const WATCHDOG_EXIT_LINE = 'TELEPORT_WATCHDOG_EXIT'
 
 /** 关掉 stdin 之后给远端看门狗多久（含一次远端 kill + 连接拆除）。 */
 const DISPOSE_GRACE_MS = 3_000
+/**
+ * 连接已经走了、却还差 KILLED 标记时的收尾窗口。
+ *
+ * 2026-11-12 真机：`stdin.end()` 之后 ssh 会先断，远端看门狗打出的 KILLED 常常
+ * 晚于 `close` 事件到达（已在缓冲里，只是本地判定先跑了）。这段窗口专门用来接它，
+ * 免得把「回收干净」误报成「远端子进程可能还活着」。
+ */
+const DISPOSE_SETTLE_MS = 4_000
+/**
+ * 只观测到 `exit` 却始终等不到 `close` 时的兜底时长。
+ *
+ * 真实子进程一定会发 `close`（stdio 全关之后），但注入的假 child 未必；
+ * 给 1.5s 是为了不让「收不到 close」变成卡死，又不至于把真机正常退出的 close 抢在前面。
+ */
+const EXIT_SETTLE_MS = 1_500
+/** 跨块拼标记时保留的上游尾巴长度（远大于两个标记的长度）。 */
+const MARK_WINDOW = 64
 
 export interface SshLaunchStream {
   on(event: 'data', listener: (chunk: { toString(encoding?: string): string }) => void): unknown
@@ -55,6 +81,8 @@ export interface SshLaunchChild {
   readonly stderr: SshLaunchStream | null
   on(event: 'error', listener: (error: Error) => void): unknown
   on(event: 'exit', listener: (code: number | null, signal: string | null) => void): unknown
+  /** stdio 全部关闭之后才发；看门狗最后一行标记必须等到这里才算收到。 */
+  on(event: 'close', listener: (code: number | null, signal: string | null) => void): unknown
   kill(signal?: NodeJS.Signals | number): boolean
 }
 
@@ -90,6 +118,10 @@ export interface SshLaunchOptions {
   readonly extraArgs?: readonly string[]
   /** 等访问 URL 的上限，默认 90s：SSH 握手 + 远端 dsh 冷启动比 WSL 更慢。 */
   readonly timeoutMs?: number
+  /** 关 stdin 之后等远端优雅回收的上限；默认 3s，测试可缩短。 */
+  readonly disposeGraceMs?: number
+  /** 连接被强拆之后再等完成标记的窗口；默认 4s，测试可缩短。 */
+  readonly disposeSettleMs?: number
   readonly sshExecutable?: string
   readonly askpassPath?: string
   readonly connectTimeoutMs?: number
@@ -140,7 +172,10 @@ export function buildRemoteLaunchScript(options: {
   lines.push(argv.map((part) => shellQuote(part)).join(' ') + ' < /dev/null &')
   lines.push('_teleport_child=$!')
   lines.push("printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$_teleport_child"')
-  lines.push('cat > /dev/null')
+  // 读到回收行、或读到 EOF（老路径仍然有效）才往下走。
+  lines.push('while IFS= read -r _teleport_line; do')
+  lines.push('  [ "$_teleport_line" = ' + shellQuote(WATCHDOG_EXIT_LINE) + ' ] && break')
+  lines.push('done')
   lines.push('kill "$_teleport_child" 2>/dev/null')
   lines.push("printf '%s\\n' " + JSON.stringify(WATCHDOG_KILLED_MARK))
   return lines.join('\n')
@@ -268,12 +303,28 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   let exited = false
   let killedMarkSeen = false
   let pidMarkSeen = false
+  /** 上一块日志的尾巴，用来拼回被切断的标记。 */
+  let markTail = ''
+  /** dispose 在等 KILLED 时挂在这里：标记一到就不再耗满收尾窗口。 */
+  let notifyKilled: (() => void) | undefined
+
+  // 标记可能被切成两块到达（pty/管道按 4KB 切片），只匹配单块会漏判——
+  // 2026-11-12 真机上 `TELEPORT_WATCHDOG_KILLED` 就被切开过：日志里明明有，
+  // 判定却认为没见到，于是「回收干净」被误报成「远端子进程可能还活着」。
+  const scanMarks = (text: string): void => {
+    const window = markTail + text
+    if (window.includes(WATCHDOG_KILLED_MARK)) {
+      killedMarkSeen = true
+      notifyKilled?.()
+    }
+    if (window.includes(WATCHDOG_PID_MARK)) pidMarkSeen = true
+    markTail = window.slice(-MARK_WINDOW)
+  }
 
   const digest = (chunk: { toString(encoding?: string): string }): void => {
     const text = chunk.toString('utf8')
     buffer += text
-    if (text.includes(WATCHDOG_KILLED_MARK)) killedMarkSeen = true
-    if (text.includes(WATCHDOG_PID_MARK)) pidMarkSeen = true
+    scanMarks(text)
   }
 
   const endpoint = await new Promise<DshEndpoint>((resolve, reject) => {
@@ -384,16 +435,54 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     dispose: async () => {
       if (disposed) return true
       disposed = true
-      // 关 stdin ⇒ 远端 cat 读到 EOF ⇒ 脚本 kill 掉 dsh ⇒ ssh 退出。
+      // 先写回收行（远端的 read 循环据此立刻 kill 掉 dsh），再关 stdin 兜底。
+      // 只关 stdin 不行：真机上带 -R 的连接并不保证把 EOF 送到远端会话。
+      try {
+        child.stdin?.write(WATCHDOG_EXIT_LINE + '\n')
+      } catch {
+        // 管道已断
+      }
       try {
         child.stdin?.end()
       } catch {
         // 管道已断
       }
       const clean = await new Promise<boolean>((resolve) => {
-        if (exited) {
+        // ssh 已经退了不代表证据齐了：真机上连接可能在看门狗的 KILLED 送达之前就关掉，
+        // 直接按「退了就算干净」会漏判——判据仍要等标记，只是不用再等连接。
+        if (exited && (!pidMarkSeen || killedMarkSeen)) {
           resolve(true)
           return
+        }
+        let settled = false
+        let exitFallback: ReturnType<typeof setTimeout> | undefined
+        let settleFallback: ReturnType<typeof setTimeout> | undefined
+        const done = (value: boolean): void => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          if (exitFallback !== undefined) clearTimeout(exitFallback)
+          if (settleFallback !== undefined) clearTimeout(settleFallback)
+          resolve(value)
+        }
+        // 收尾窗口：远端已经在被杀、标记可能还在路上。期间既不提前判干净，也不提前判死。
+        const settleMs = options.disposeSettleMs ?? DISPOSE_SETTLE_MS
+        const scheduleSettle = (): void => {
+          if (settleFallback !== undefined) return
+          settleFallback = setTimeout(() => done(pidMarkSeen ? killedMarkSeen : true), settleMs)
+        }
+        // 连接走了还不够：见过 PID 却还没见过 KILLED 时，多等一个窗口把证据收齐。
+        const finishWhenEvidence = (): void => {
+          if (pidMarkSeen && !killedMarkSeen) {
+            scheduleSettle()
+            return
+          }
+          done(true)
+        }
+        // 标记一到就收工，不耗满窗口。
+        notifyKilled = () => {
+          if (settled) return
+          if (pidMarkSeen) done(true)
         }
         const timer = setTimeout(() => {
           try {
@@ -401,13 +490,19 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
           } catch {
             // 已经退了
           }
-          resolve(false)
-        }, DISPOSE_GRACE_MS)
+          // 强拆之后远端仍会收尾并吐出最后几行（真机上 Transferred / KILLED 都在这一步之后才到）。
+          // 立刻判 false 会把本来干净的回收报成「远端子进程可能还活着」——失败要响，但不能乱响。
+          scheduleSettle()
+        }, options.disposeGraceMs ?? DISPOSE_GRACE_MS)
+        // 必须等 **close** 而不是 exit：exit 只表示进程走了，stdout 里最后一段
+        // （看门狗的 KILLED 标记）可能还没派发完。2026-11-12 真机就是这么丢的标记。
+        child.on('close', finishWhenEvidence)
         child.on('exit', () => {
-          clearTimeout(timer)
-          resolve(true)
+          // 兜底：注入的假 child 未必发 close。
+          exitFallback = setTimeout(finishWhenEvidence, EXIT_SETTLE_MS)
         })
       })
+      notifyKilled = undefined
       // 干净 = ssh 退了 **且** 远端看门狗确实执行过 kill（两个标记都见到）。
       // 只见到 PID 却见不到 KILLED，说明远端子进程可能还活着，不能报 clean。
       return clean && (!pidMarkSeen || killedMarkSeen)

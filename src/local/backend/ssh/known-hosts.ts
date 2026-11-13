@@ -14,6 +14,7 @@
  * 为什么不写用户的 `~/.ssh/known_hosts`：插件无权替用户扩大全局信任库。
  */
 
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -70,6 +71,86 @@ export function parseServerHostKeys(stderr: string): readonly ObservedHostKey[] 
     if (algorithm === undefined || fingerprint === undefined) continue
     if (seen.has(algorithm)) continue
     seen.set(algorithm, { algorithm, fingerprint })
+  }
+  return [...seen.values()]
+}
+
+/**
+ * 从 `ssh-keyscan` 的 stdout 里算出指纹。
+ *
+ * 为什么需要这条路：Windows 自带的 OpenSSH（9.5p2 实测）在 `-o LogLevel=VERBOSE` 下**只打
+ * INFO 级三行**（Authenticated / Transferred / Bytes per second），既没有 `Server host key:`
+ * 也没有 `Host ... is known and matches`。只靠 stderr 抓指纹，在 Windows 客户端上等于永远
+ * 拿不到证据——账本永远空、变更告警永远不响。`ssh-keyscan` 会直接把公钥吐在 stdout，
+ * 指纹由我们自己按 OpenSSH 的算法算（`SHA256:` + base64(sha256(blob)) 去掉 `=` 填充）。
+ */
+export function fingerprintOfKeyBlob(blobBase64: string): string {
+  const raw = Buffer.from(blobBase64, 'base64')
+  return 'SHA256:' + createHash('sha256').update(raw).digest('base64').replace(/=+$/, '')
+}
+
+/**
+ * 解析 `ssh-keyscan` 输出：`<host> <algo> <base64>`，`#` 开头是注释（主机横幅）。
+ *
+ * 同一算法可能被多个主机名命中（`host` 与 `[host]:port` 两种写法），按算法去重保留首次。
+ * 认不出任何一行时返回空数组——和 `parseServerHostKeys` 一样，「空」等于「没证据」。
+ */
+export function parseKeyscanOutput(stdout: string): readonly ObservedHostKey[] {
+  const seen = new Map<string, ObservedHostKey>()
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '' || trimmed.startsWith('#')) continue
+    const parts = trimmed.split(/\s+/)
+    const algorithm = parts[1]
+    const blob = parts[2]
+    if (algorithm === undefined || blob === undefined) continue
+    if (seen.has(algorithm)) continue
+    seen.set(algorithm, { algorithm, fingerprint: fingerprintOfKeyBlob(blob) })
+  }
+  return [...seen.values()]
+}
+
+/** known_hosts 里的一行：主机名（可能多个）+ 算法 + 公钥。 */
+export interface KnownHostsEntry {
+  readonly hosts: readonly string[]
+  readonly algorithm: string
+  readonly blob: string
+}
+
+/**
+ * 解析 known_hosts 的行。
+ *
+ * 为什么这条路是**首选**而不是兜底：`accept-new` 已经把主机密钥写进我们的私有 known_hosts，
+ * 文件里就是明文 `<host> <algo> <base64>`。读文件零网络、零额外进程，比 `ssh-keyscan` 可靠得多
+ * （Windows 自带 keyscan 9.5p2 甚至会因为服务端首选 KEX 是 sntrup761x25519 而一行都吐不出来）。
+ *
+ * `@cert-authority` / `@revoked` 开头的行跳过：它们不是「这台主机用这把钥匙」的等价物。
+ * 哈希过的 host 字段（`|1|...`）无法匹配，如实返回空——不当成「没有变更」。
+ */
+export function parseKnownHostsFile(text: string): readonly KnownHostsEntry[] {
+  const entries: KnownHostsEntry[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '' || trimmed.startsWith('#')) continue
+    const parts = trimmed.split(/\s+/)
+    const hostsField = parts[0]
+    const algorithm = parts[1]
+    const blob = parts[2]
+    if (hostsField === undefined || algorithm === undefined || blob === undefined) continue
+    if (hostsField.startsWith('@')) continue
+    entries.push({ hosts: hostsField.split(','), algorithm, blob })
+  }
+  return entries
+}
+
+/** 这台主机（含端口）在 known_hosts 里登记过哪几把钥匙；按算法去重。 */
+export function keysFromKnownHosts(text: string, target: SshTarget): readonly ObservedHostKey[] {
+  const wanted = target.port === 22 ? [target.hostName, '[' + target.hostName + ']:22'] : ['[' + target.hostName + ']:' + String(target.port)]
+  const seen = new Map<string, ObservedHostKey>()
+  for (const entry of parseKnownHostsFile(text)) {
+    if (!entry.hosts.some((host) => wanted.includes(host))) continue
+    if (seen.has(entry.algorithm)) continue
+    seen.set(entry.algorithm, { algorithm: entry.algorithm, fingerprint: fingerprintOfKeyBlob(entry.blob) })
   }
   return [...seen.values()]
 }

@@ -14,6 +14,8 @@ import {
   hostKeysPath,
   knownHostsPath,
   loadHostKeys,
+  fingerprintOfKeyBlob,
+  parseKeyscanOutput,
   parseServerHostKeys,
   rememberHostKeys,
   writeHostKeysAtomic,
@@ -269,6 +271,32 @@ test('信任新指纹：删掉账本条目并返回要清理的 known_hosts 路�
   } finally {
     cleanup()
   }
+})
+
+test('keyscan 输出：注释行跳过、按算法去重、指纹按 OpenSSH 算法自算', () => {
+  const blob = Buffer.from('sample-host-key-material', 'utf8').toString('base64')
+  const stdout = [
+    '# 203.0.113.10:22 SSH-2.0-OpenSSH_9.6',
+    '203.0.113.10 ssh-ed25519 ' + blob,
+    '[203.0.113.10]:22 ssh-ed25519 ' + blob,
+    '',
+  ].join('\r\n')
+  const keys = parseKeyscanOutput(stdout)
+  assert.equal(keys.length, 1)
+  assert.equal(keys[0]?.algorithm, 'ssh-ed25519')
+  assert.equal(keys[0]?.fingerprint, fingerprintOfKeyBlob(blob))
+})
+
+test('keyscan 指纹形态与 OpenSSH 一致：SHA256: 加无填充 base64', () => {
+  const fingerprint = fingerprintOfKeyBlob(Buffer.from('abc', 'utf8').toString('base64'))
+  assert.match(fingerprint, /^SHA256:[A-Za-z0-9+/]+$/)
+  assert.equal(fingerprint.endsWith('='), false)
+})
+
+test('keyscan 一行有效内容都没有：返回空（空等于没证据，不等于没变更）', () => {
+  assert.deepEqual(parseKeyscanOutput(''), [])
+  assert.deepEqual(parseKeyscanOutput('# only a banner\r\n'), [])
+  assert.deepEqual(parseKeyscanOutput('203.0.113.10 ssh-ed25519\r\n'), [])
 })
 
 test('信任新指纹：本来就没记录时不写盘、不报错（幂等）', async () => {

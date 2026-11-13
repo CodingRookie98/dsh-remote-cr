@@ -1,4 +1,4 @@
-import { dirname, join } from 'node:path'
+import { dirname, posix } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 
 import { anchorIdFor, anchorTargetOf } from './anchors.ts'
@@ -11,6 +11,14 @@ export const DSH_ENGINE_HINT = '>=0.2.1-rc.0 <0.3.0'
 
 /** 远端没有 node 时安装的版本（与 M1 真机验证过的版本一致）。 */
 export const DEFAULT_NODE_INSTALL_VERSION = 'v24.22.1'
+
+/**
+ * 宿主的 npm 包名。**必须带 scope**：npm 上无 scope 的 `dsh` 是另一个人写的 JS shell
+ * （infusion/node-dsh，描述是 'A shell written in JavaScript'）。2026-11-12 真机首跑就是
+ * 照 `dsh@latest` 装的，装完 `npm/lib/node_modules/dsh/package.json` 里写着 "shell"，
+ * 而我们的检查只看 `<prefix>/bin/dsh` 存不存在——于是「装好了」但装的是别的软件。
+ */
+export const DSH_PACKAGE_NAME = '@deepseek-ai/dsh'
 
 export const STAGING_DIR_NAME = 'staging'
 export const BOOTSTRAP_STATE_FILENAME = 'state.json'
@@ -224,11 +232,17 @@ export function markStep(state: BootstrapState, step: string, detail: string, at
 
 export function stagingDirFor(homeDir: string, target: SshTarget): string {
   // staging 与锚点共用同一个目标身份（sha256(user@host:port) 前 16 位），否则同一个远端会有两套目录。
-  return join(homeDir, '.dsh-teleport', STAGING_DIR_NAME, anchorIdFor(anchorTargetOf(target)))
+  // homeDir 是**远端** home（探测拿到的 facts.home），不是本机 homedir()：
+  // 传本地路径时远端会得到一个名为 C:/Users/... 的相对目录，每条 mkdir 都 exit 0，
+  // 于是「引导成功」而 staging 里空无一物——2026-11-12 真机首跑就是这么假通过的。
+  // 必须是 posix.join：这里的 homeDir 是**远端** home，Windows 上 win32 join 会产出
+  // `/home/hui\.dsh-teleport\staging\<id>`，远端 bash 把反斜杠当转义符，mkdir 于是
+  // 建出一个名字诡异的目录而退出码仍是 0（2026-11-12 真机 S9 就是这么假通过的）。
+  return posix.join(homeDir, '.dsh-teleport', STAGING_DIR_NAME, anchorIdFor(anchorTargetOf(target)))
 }
 
 export function bootstrapStatePathFor(homeDir: string, target: SshTarget): string {
-  return join(stagingDirFor(homeDir, target), BOOTSTRAP_STATE_FILENAME)
+  return posix.join(stagingDirFor(homeDir, target), BOOTSTRAP_STATE_FILENAME)
 }
 
 export type BootstrapStepId = 'staging' | 'tar' | 'node' | 'dsh'
@@ -346,7 +360,7 @@ export interface DshPackageRequest {
  * 写进 staging 之后这份安装是可删的、可复现的，也不会污染目标机已有的 node 生态。
  */
 export function buildDshPackageScript(request: DshPackageRequest): string {
-  const spec = request.version === undefined ? 'dsh' : 'dsh@' + request.version
+  const spec = request.version === undefined ? DSH_PACKAGE_NAME + '@latest' : DSH_PACKAGE_NAME + '@' + request.version
   const lines: string[] = [
     'set -e',
     'command -v npm >/dev/null 2>&1 || { echo TELEPORT_MISSING_NPM; exit 5; }',

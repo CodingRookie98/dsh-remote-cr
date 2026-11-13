@@ -11,6 +11,7 @@ import {
   localForwardSpec,
   parseAllocatedPort,
   remoteForwardSpec,
+  WATCHDOG_EXIT_LINE,
   WATCHDOG_KILLED_MARK,
   WATCHDOG_PID_MARK,
 } from './launch.ts'
@@ -46,7 +47,13 @@ class FakeLaunchChild {
     },
     end: (): void => {
       this.ended = true
-      if (this.exitOnEnd) setImmediate(() => this.events.emit('exit', 0, null))
+      // 真实子进程会先 exit 再 close；两个都发，dispose 才能判定 stdio 已排空。
+      if (this.exitOnEnd) {
+        setImmediate(() => {
+          this.events.emit('exit', 0, null)
+          this.events.emit('close', 0, null)
+        })
+      }
     },
   }
 
@@ -80,7 +87,10 @@ function spawnOf(script: Script, seen?: { args: string[][] }): SshLaunchSpawn {
     setImmediate(() => {
       for (const chunk of script.stderr) child.stderr.emit('data', Buffer.from(chunk))
       for (const chunk of script.stdout) child.stdout.emit('data', Buffer.from(chunk))
-      if (script.exitCode !== undefined) child.events.emit('exit', script.exitCode, null)
+      if (script.exitCode !== undefined) {
+        child.events.emit('exit', script.exitCode, null)
+        child.events.emit('close', script.exitCode, null)
+      }
     })
     return child.asChild()
   }
@@ -92,11 +102,14 @@ const baseOptions = {
   auth: { kind: 'agent' as const },
   remoteRoot: '/home/hui/workspace/tools/deepseek-harness',
   localPort: 31800,
+  // 单测不该真的等 3s + 4s：判定逻辑与时长无关，缩短只影响跑得多快。
+  disposeGraceMs: 40,
+  disposeSettleMs: 60,
 }
 
 test('远端脚本：不给 -R 时不 read 也不 export 代理地址', () => {
   const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: false })
-  assert.equal(script.includes('IFS= read -r'), false)
+  assert.equal(script.includes('_teleport_proxy_port'), false)
   assert.equal(script.includes('TELEPORT_PROXY_URL'), false)
   assert.match(script, /cd '\/srv\/dsh' \|\| exit 1/)
 })
@@ -111,13 +124,16 @@ test('远端脚本：给 -R 时先 read 端口再 export，并把 dsh 的 stdin 
   assert.match(lines[spawnAt]!, /< \/dev\/null &$/, 'dsh 必须与看门狗分家，否则 cat 读不到 EOF')
 })
 
-test('远端脚本：看门狗标记的顺序是先 PID、后 cat、再 kill、最后 KILLED', () => {
+test('远端脚本：顺序是先 PID、再等回收行、再 kill、最后 KILLED', () => {
   const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: false })
   const pidAt = script.indexOf(WATCHDOG_PID_MARK)
-  const catAt = script.indexOf('cat > /dev/null')
+  const waitAt = script.indexOf('while IFS= read -r _teleport_line')
+  const exitLineAt = script.indexOf(WATCHDOG_EXIT_LINE)
   const killAt = script.indexOf('kill "$_teleport_child"')
   const killedAt = script.indexOf(WATCHDOG_KILLED_MARK)
-  assert.ok(pidAt > 0 && catAt > pidAt && killAt > catAt && killedAt > killAt)
+  assert.ok(pidAt > 0 && waitAt > pidAt && exitLineAt > waitAt && killAt > exitLineAt && killedAt > killAt)
+  // 只靠 stdin EOF 不保证能被远端读到（真机带 -R 时就不保证），所以循环里必须认这一行。
+  assert.ok(!script.includes('cat > /dev/null'), '不能退回只靠 cat 等 EOF 的写法')
 })
 
 test('远端脚本：路径含空格时被正确转义', () => {
@@ -235,6 +251,64 @@ test('dispose 关 stdin 让远端看门狗回收；两个标记都在才算干�
   assert.equal(clean, true)
 })
 
+test('完成标记被管道切成两块到达，仍算收到（真机回归）', async () => {
+  // 2026-11-12 真机：TELEPORT_WATCHDOG_KILLED 被切成两段到达，逐块匹配看不见，
+  // 日志里却明明有——于是把干净回收误报成「远端可能还活着」。
+  const handle = await launchSshDsh({
+    ...baseOptions,
+    spawn: spawnOf({
+      stderr: [WATCHDOG_PID_MARK + '4242\n', ''],
+      stdout: [URL_LINE, WATCHDOG_KILLED_MARK.slice(0, 10), WATCHDOG_KILLED_MARK.slice(10) + '\n'],
+    }),
+  })
+  const clean = await handle.dispose()
+  assert.equal(clean, true, '跨块的完成标记必须能被拼回去')
+})
+
+test('ssh 已退出但 KILLED 还没到：等标记，不直接判死', async () => {
+  // 真机：连接在看门狗标记送达之前就关掉了，若按「退了就算干净」或「没标记就算失败」都会错。
+  const child = new FakeLaunchChild()
+  const handle = await launchSshDsh({
+    ...baseOptions,
+    spawn: (_executable, args) => {
+      void args
+      setImmediate(() => {
+        child.stderr.emit('data', Buffer.from(WATCHDOG_PID_MARK + '4242\n'))
+        child.stdout.emit('data', Buffer.from(URL_LINE))
+      })
+      return child.asChild()
+    },
+  })
+  child.events.emit('exit', 0, null)
+  setTimeout(() => child.stdout.emit('data', Buffer.from(WATCHDOG_KILLED_MARK + '\n')), 20)
+  const clean = await handle.dispose()
+  assert.equal(clean, true, '标记晚到也要算数')
+})
+test('KILLED 晚于连接关闭才到：等收尾窗口，不误报幸存进程', async () => {
+  // 真机时序：stdin.end() → ssh 先 close → 远端看门狗的 KILLED 才排到本地缓冲。
+  const child = new FakeLaunchChild()
+  const handle = await launchSshDsh({
+    ...baseOptions,
+    spawn: (_executable, args) => {
+      void args
+      setImmediate(() => {
+        child.stderr.emit('data', Buffer.from(WATCHDOG_PID_MARK + '4242\n'))
+        child.stdout.emit('data', Buffer.from(URL_LINE))
+      })
+      return child.asChild()
+    },
+  })
+  child.stdin.end = () => {
+    child.ended = true
+    setImmediate(() => {
+      child.events.emit('exit', 0, null)
+      child.events.emit('close', 0, null)
+    })
+    setTimeout(() => child.stdout.emit('data', Buffer.from(WATCHDOG_KILLED_MARK + '\n')), 20)
+  }
+  const clean = await handle.dispose()
+  assert.equal(clean, true, '迟到的 KILLED 必须被收尾窗口接住')
+})
 test('只见 PID 不见 KILLED：不报干净（远端可能还有幸存进程）', async () => {
   const handle = await launchSshDsh({
     ...baseOptions,

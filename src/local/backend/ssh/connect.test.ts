@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -8,7 +8,7 @@ import test from 'node:test'
 import { TeleportError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { connectRemote, describeStoredHostKeys } from './connect.ts'
-import { hostKeysPath } from './known-hosts.ts'
+import { fingerprintOfKeyBlob, hostKeysPath, knownHostsPath } from './known-hosts.ts'
 import type { SshChild, SshSpawn } from './transport.ts'
 
 const VERBOSE_STDERR = [
@@ -85,6 +85,35 @@ function okSpawn(options: { readonly stderr?: string; readonly seen?: string[][]
     const child = new FakeChild()
     setImmediate(() => {
       child.stderr.emit('data', Buffer.from(options.stderr ?? VERBOSE_STDERR))
+      child.fire('exit', 0, null)
+    })
+    return child.asChild()
+  }
+}
+
+const WINDOWS_INFO_ONLY = [
+  'Authenticated to 203.0.113.10 ([203.0.113.10]:22) using "publickey".',
+  'Transferred: sent 2332, received 2724 bytes, in 1.1 seconds',
+  'Bytes per second: sent 2129.7, received 2487.7',
+  '',
+].join('\r\n')
+
+/** 假 ssh + 假 ssh-keyscan：按可执行文件名分派，模拟 Windows OpenSSH 不打指纹行。 */
+function hybridSpawn(options: {
+  readonly sshStderr: string
+  readonly keyscanStdout?: string
+  readonly seen?: string[]
+}): SshSpawn {
+  return (executable) => {
+    options.seen?.push(executable)
+    const child = new FakeChild()
+    const isKeyscan = executable.includes('keyscan')
+    setImmediate(() => {
+      if (isKeyscan) {
+        child.stdout.emit('data', Buffer.from(options.keyscanStdout ?? ''))
+      } else {
+        child.stderr.emit('data', Buffer.from(options.sshStderr))
+      }
       child.fire('exit', 0, null)
     })
     return child.asChild()
@@ -237,7 +266,68 @@ test('把 .pub 内容当私钥：报 key-unusable，文案指到具体文件', a
   }
 })
 
-test('没拿到 Server host key 行：如实上报「未取到指纹」，不记账也不拦', async () => {
+test('accept-new 写下的私有 known_hosts 就是指纹来源：不再多起一个进程', async () => {
+  const { home, cleanup } = sandbox()
+  try {
+    const keyFile = join(home, 'id_ed25519')
+    writeFileSync(keyFile, PLAIN_KEY, 'utf8')
+    const blob = Buffer.from('known-hosts-sample-key', 'utf8').toString('base64')
+    mkdirSync(join(home, '.dsh-teleport'), { recursive: true })
+    writeFileSync(knownHostsPath(home), '198.51.100.8 ssh-ed25519 ' + blob + '\n', 'utf8')
+    const seen: string[] = []
+    const result = await connectRemote({
+      homeDir: home,
+      target: targetWithKey(keyFile),
+      auth: { kind: 'key' },
+      spawn: hybridSpawn({ sshStderr: WINDOWS_INFO_ONLY, seen }),
+    })
+    assert.deepEqual(seen.length, 1, '不该为拿指纹再起一个进程：' + seen.join(','))
+    assert.equal(result.hostKeySource, 'known-hosts')
+    assert.equal(result.hostKeyObserved, true)
+    assert.equal(result.recorded, true)
+    const saved = JSON.parse(readFileSync(hostKeysPath(home), 'utf8')) as {
+      hosts: Record<string, { keys: Record<string, { fingerprint: string }> }>
+    }
+    assert.equal(saved.hosts['198.51.100.8:22']?.keys['ssh-ed25519']?.fingerprint, fingerprintOfKeyBlob(blob))
+  } finally {
+    cleanup()
+  }
+})
+
+test('ssh 不给指纹时回退 ssh-keyscan：指纹是自己按 OpenSSH 算法算的', async () => {
+  const { home, cleanup } = sandbox()
+  try {
+    const keyFile = join(home, 'id_ed25519')
+    writeFileSync(keyFile, PLAIN_KEY, 'utf8')
+    const blob = Buffer.from('teleport-keyscan-sample-key', 'utf8').toString('base64')
+    const seen: string[] = []
+    const result = await connectRemote({
+      homeDir: home,
+      target: targetWithKey(keyFile),
+      auth: { kind: 'key' },
+      spawn: hybridSpawn({
+        sshStderr: WINDOWS_INFO_ONLY,
+        keyscanStdout: '# 203.0.113.10:22 SSH-2.0-OpenSSH_9.6\r\n203.0.113.10 ssh-ed25519 ' + blob + '\r\n',
+        seen,
+      }),
+    })
+    assert.deepEqual(seen.length, 2, '应该只多问一次 keyscan')
+    assert.ok(seen[1]?.includes('keyscan'), '第二次不是 keyscan：' + String(seen[1]))
+    assert.equal(result.hostKeySource, 'keyscan')
+    assert.equal(result.hostKeyObserved, true)
+    assert.equal(result.hostKey.state, 'new')
+    assert.equal(result.recorded, true)
+    assert.deepEqual(result.hostKey.added, ['ssh-ed25519'])
+    const saved = JSON.parse(readFileSync(hostKeysPath(home), 'utf8')) as {
+      hosts: Record<string, { keys: Record<string, { fingerprint: string }> }>
+    }
+    assert.equal(saved.hosts['198.51.100.8:22']?.keys['ssh-ed25519']?.fingerprint, fingerprintOfKeyBlob(blob))
+  } finally {
+    cleanup()
+  }
+})
+
+test('关掉 keyscan 且 ssh 不给指纹：如实上报「未取到指纹」，不记账也不拦', async () => {
   const { home, cleanup } = sandbox()
   try {
     const keyFile = join(home, 'id_ed25519')
@@ -247,8 +337,10 @@ test('没拿到 Server host key 行：如实上报「未取到指纹」，不记
       target: targetWithKey(keyFile),
       auth: { kind: 'key' },
       spawn: okSpawn({ stderr: 'debug1: Reading configuration data\r\n' }),
+      disableKeyscan: true,
     })
     assert.equal(result.hostKeyObserved, false)
+    assert.equal(result.hostKeySource, 'none')
     assert.equal(result.recorded, false)
     assert.equal(existsSync(hostKeysPath(home)), false)
   } finally {

@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises'
 import { TeleportError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { inspectPrivateKey, type PrivateKeyInspection } from './keyfile.ts'
+import { scanHostKeys } from './keyscan.ts'
 import {
   assertTrustedHostKey,
   compareHostKeys,
@@ -22,8 +23,10 @@ import {
   hostKeyId,
   hostKeysPath,
   knownHostsPath,
+  keysFromKnownHosts,
   loadHostKeys,
   parseServerHostKeys,
+  type ObservedHostKey,
   rememberHostKeys,
   type HostKeyCheck,
   type HostKeyRecord,
@@ -42,6 +45,13 @@ export interface SshConnectRequest {
   readonly spawn?: SshSpawn
   /** 握手时顺带在远端执行的命令；默认 `['true']`（只验证认证）。 */
   readonly command?: readonly string[]
+  /** keyscan 可执行文件名/路径；默认用 PATH 里的 ssh-keyscan。 */
+  readonly keyscanExecutable?: string
+  /**
+   * 关掉 keyscan 回退。只在测试里用——产品路径必须开着：
+   * Windows OpenSSH 不会把指纹打进 stderr，关掉就等于放弃 TOFU 记账。
+   */
+  readonly disableKeyscan?: boolean
   /**
    * 用户已确认新指纹：不再拦截，而是**用本次观察到的指纹覆盖**账本。
    * 只能由「信任新指纹」按钮传 true，绝不能默认开。
@@ -52,8 +62,10 @@ export interface SshConnectRequest {
 export interface SshConnectResult {
   readonly result: SshRunResult
   readonly hostKey: HostKeyCheck
-  /** 是否真的从 stderr 里读到了 `Server host key:` 行。 */
+  /** 是否取到了指纹（不论来自 stderr 还是 keyscan 回退）。 */
   readonly hostKeyObserved: boolean
+  /** 指纹来源；none 表示这次没有证据，账本不动。 */
+  readonly hostKeySource: 'verbose' | 'known-hosts' | 'keyscan' | 'none'
   /** 账本是否被写过。 */
   readonly recorded: boolean
   /** 私钥静态体检结果（agent / password 认证为 undefined）。 */
@@ -75,20 +87,60 @@ export async function connectRemote(request: SshConnectRequest): Promise<SshConn
     ...(request.spawn === undefined ? {} : { spawn: request.spawn }),
   })
 
-  const observed = parseServerHostKeys(result.stderr)
+  const { observed, source } = await observeHostKeys(request, result.stderr)
   if (observed.length === 0) {
     // 没有指纹 = 没有证据。既不记账也不谎称 known，交给上层展示「本次未取到指纹」。
-    return { result, hostKey: compareHostKeys(undefined, []), hostKeyObserved: false, recorded: false, identity }
+    return {
+      result,
+      hostKey: compareHostKeys(undefined, []),
+      hostKeyObserved: false,
+      hostKeySource: 'none',
+      recorded: false,
+      identity,
+    }
   }
 
   if (request.trustNewFingerprint === true) {
     await forgetHostKeys({ homeDir: request.homeDir, target: request.target })
     const trusted = await rememberHostKeys({ homeDir: request.homeDir, target: request.target, observed })
-    return { result, hostKey: trusted.check, hostKeyObserved: true, recorded: trusted.written, identity }
+    return { result, hostKey: trusted.check, hostKeyObserved: true, hostKeySource: source, recorded: trusted.written, identity }
   }
 
   const stored = await assertTrustedHostKey({ homeDir: request.homeDir, target: request.target, observed })
-  return { result, hostKey: stored.check, hostKeyObserved: true, recorded: stored.written, identity }
+  return { result, hostKey: stored.check, hostKeyObserved: true, hostKeySource: source, recorded: stored.written, identity }
+}
+
+async function keysFromPrivateKnownHosts(request: SshConnectRequest): Promise<readonly ObservedHostKey[]> {
+  try {
+    const text = await readFile(knownHostsPath(request.homeDir), 'utf8')
+    return keysFromKnownHosts(text, request.target)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 指纹取证：ssh 的 stderr → 私有 known_hosts 文件 → ssh-keyscan。
+ *
+ * 实测（Windows OpenSSH 9.5p2）：-o LogLevel=VERBOSE 只打 INFO 三行，没有指纹行；
+ * 自带 ssh-keyscan 又因服务端首选 KEX 不认识而一行都不输出。唯一必然有效的是
+ * accept-new 亲手写下的 known_hosts——它就是这次握手用到的钥匙。
+ */
+async function observeHostKeys(
+  request: SshConnectRequest,
+  stderr: string,
+): Promise<{ readonly observed: readonly ObservedHostKey[]; readonly source: 'verbose' | 'known-hosts' | 'keyscan' }> {
+  const fromStderr = parseServerHostKeys(stderr)
+  if (fromStderr.length > 0) return { observed: fromStderr, source: 'verbose' }
+  const stored = await keysFromPrivateKnownHosts(request)
+  if (stored.length > 0) return { observed: stored, source: 'known-hosts' }
+  if (request.disableKeyscan === true) return { observed: [], source: 'verbose' }
+  const scanned = await scanHostKeys({
+    target: request.target,
+    ...(request.keyscanExecutable === undefined ? {} : { keyscanExecutable: request.keyscanExecutable }),
+    ...(request.spawn === undefined ? {} : { spawn: request.spawn }),
+  })
+  return { observed: scanned, source: 'keyscan' }
 }
 
 /**

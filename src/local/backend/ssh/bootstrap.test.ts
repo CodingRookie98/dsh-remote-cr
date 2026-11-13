@@ -204,11 +204,13 @@ test('node 安装脚本：有 curl 用 curl、没有就 wget、都没有退出 4
 test('dsh 安装脚本：源写进 NPM_CONFIG_REGISTRY，缺 npm 退出 5', () => {
   const script = buildDshPackageScript({ registry: 'https://registry.npmmirror.com/', dshHome: '/home/hui/.dsh', version: '0.2.1-rc.5' })
   assert.match(script, /NPM_CONFIG_REGISTRY='https:\/\/registry\.npmmirror\.com\/'/)
-  assert.match(script, /npm install --global --no-audit --no-fund 'dsh@0\.2\.1-rc\.5'/)
+  // 包名必须带 scope：无 scope 的 dsh 是别人写的 JS shell（真机首跑装错的那个）。
+  assert.match(script, /npm install --global --no-audit --no-fund '@deepseek-ai\/dsh@0\.2\.1-rc\.5'/)
+  assert.equal(script.includes(" 'dsh@"), false, '不能装成无 scope 的 dsh')
   assert.match(script, /TELEPORT_MISSING_NPM/)
   assert.match(script, /exit 5/)
   const bare = buildDshPackageScript({ registry: 'https://registry.npmjs.org/', dshHome: '/home/hui/.dsh' })
-  assert.match(bare, /npm install --global --no-audit --no-fund 'dsh'/)
+  assert.match(bare, /npm install --global --no-audit --no-fund '@deepseek-ai\/dsh@latest'/)
 })
 
 test('dsh 装进 staging 前缀：非 root 也能装，且 PATH 指过去', () => {

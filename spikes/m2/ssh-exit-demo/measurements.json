@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-11-13T02:24:23.062Z",
+  "alias": "gcp",
+  "negativeControl": false,
+  "steps": [
+    {
+      "id": "S9-1",
+      "title": "配置解析：从真实 ssh config 解析出目标",
+      "ok": true,
+      "ms": 5
+    },
+    {
+      "id": "S9-2",
+      "title": "主机密钥 TOFU：首见入库，二次认账",
+      "ok": true,
+      "ms": 6835
+    },
+    {
+      "id": "S9-3",
+      "title": "单 channel 探测：平台/架构/内核/home 一次拿全",
+      "ok": true,
+      "ms": 3191
+    },
+    {
+      "id": "S9-4",
+      "title": "引导器：staging 0700 + tar 预检 + dsh 装进前缀",
+      "ok": true,
+      "ms": 66197
+    },
+    {
+      "id": "S9-5",
+      "title": "启动 dsh + 同一条连接挂 -L/-R，远端请求真的到达本机代理",
+      "ok": true,
+      "ms": 16754
+    },
+    {
+      "id": "S9-6",
+      "title": "经 -L 读到远端 dsh 的 HTTP 响应，远端命令与探测一致",
+      "ok": true,
+      "ms": 3974
+    },
+    {
+      "id": "S9-7",
+      "title": "退出回收：远端 dsh 被看门狗收掉，本地隧道口关闭",
+      "ok": true,
+      "ms": 4421
+    }
+  ],
+  "failed": []
+}

@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-11-13T02:28:58.012Z",
+  "alias": "gcp",
+  "negativeControl": true,
+  "steps": [
+    {
+      "id": "S9-1",
+      "title": "配置解析：从真实 ssh config 解析出目标",
+      "ok": true,
+      "ms": 4
+    },
+    {
+      "id": "S9-2",
+      "title": "主机密钥 TOFU：首见入库，二次认账",
+      "ok": true,
+      "ms": 6934
+    },
+    {
+      "id": "S9-3",
+      "title": "单 channel 探测：平台/架构/内核/home 一次拿全",
+      "ok": true,
+      "ms": 3241
+    },
+    {
+      "id": "S9-4",
+      "title": "引导器：staging 0700 + tar 预检 + dsh 装进前缀",
+      "ok": true,
+      "ms": 66316
+    },
+    {
+      "id": "S9-5",
+      "title": "启动 dsh + 同一条连接挂 -L/-R，远端请求真的到达本机代理",
+      "ok": false,
+      "ms": 180114,
+      "error": "[remote/startup-failed] 远端 dsh 没有打印访问 URL，也没有给出可识别的原因"
+    },
+    {
+      "id": "S9-6",
+      "title": "经 -L 读到远端 dsh 的 HTTP 响应，远端命令与探测一致",
+      "ok": false,
+      "ms": 8,
+      "error": "The expression evaluated to a falsy value:\n\n  assert.ok(handle !== undefined)\n"
+    },
+    {
+      "id": "S9-7",
+      "title": "退出回收：远端 dsh 被看门狗收掉，本地隧道口关闭",
+      "ok": false,
+      "ms": 1,
+      "error": "The expression evaluated to a falsy value:\n\n  assert.ok(handle !== undefined)\n"
+    }
+  ],
+  "failed": [
+    "S9-5",
+    "S9-6",
+    "S9-7"
+  ]
+}
