@@ -42,7 +42,6 @@ import {
 } from './bootstrap.ts'
 import type { SshTarget } from './config.ts'
 import { knownHostsPath } from './known-hosts.ts'
-import { probeSshTarget, type SshProbeResult } from './probe.ts'
 import { shellQuote } from '../posix-probe.ts'
 import { runSsh, type SshAuth } from './transport.ts'
 
@@ -82,14 +81,54 @@ export interface ResolveRemoteDshRequest {
   readonly sshExecutable?: string
   readonly askpassPath?: string
   readonly signal?: AbortSignal
-  /** 探测注入缝（单测用）；缺省 `probeSshTarget`。 */
-  readonly probe?: (request: ResolveRemoteDshRequest) => Promise<SshProbeResult>
   /** 执行注入缝（单测用）；缺省走 `runSsh` 的一条 channel。 */
   readonly exec?: RemoteExec
 }
 
-const CHECKOUT_MARK = 'TELEPORT_CHECKOUT=1'
-const STAGING_READY_MARK = 'TELEPORT_STAGING_DSH='
+
+const INSPECT_MARK = 'TELEPORT_'
+
+/**
+ * 一次远端往返就把「用哪份 dsh」定下来。
+ *
+ * 为什么合成一条脚本：目录在不在 / 有没有检出 / staging 装没装过 / node 与 dsh 版本，
+ * 每件单独发一条 `ssh` 就要各付一次连接与认证的固定开销。真机实测 gcp 一次往返约 1.5s，
+ * 四件就是 6s——而 `requirements.md` §7 的首连门禁是 **10s 整**。
+ *
+ * 输出是「标记名=值」，末行 `TELEPORT_END=1` 证明脚本**跑完了**：缺末行说明远端 shell 的
+ * 启动横幅把输出吃掉了，或者远端根本没有 `sh`。这时宁可报错，不猜。
+ */
+function buildInspectScript(request: ResolveRemoteDshRequest, stagingSuffix: string): string {
+  const checkoutBin = posix.join(request.remoteRoot, 'apps/cli/lib/bin.js')
+  return [
+    'p() { printf "%s=%s\\n" "$1" "$2"; }',
+    'p TELEPORT_HOME "$HOME"',
+    'p TELEPORT_NODE "$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null || true)"',
+    'p TELEPORT_DSH "$(command -v dsh >/dev/null 2>&1 && dsh --version 2>/dev/null || true)"',
+    '[ -d ' + shellQuote(request.remoteRoot) + ' ] && p TELEPORT_DIR 1',
+    '[ -f ' + shellQuote(checkoutBin) + ' ] && p TELEPORT_CHECKOUT 1',
+    // `$(` … `)` 里那一段是**命令替换**，因此 stagingBin 要再引一次；外层整体由 shellQuote 包。
+    // staging 在**远端** home 下，而远端 home 只有远端知道——所以脚本自己拼，别喂本地路径。
+    // 2026-11-13 真机踩过：拿本地 home 拼出 `C:\\Users\\hui/.dsh-teleport/...` 当成远端目录，
+    // 引导器于是对着一个不存在的路径装包。
+    'S="$HOME/' + stagingSuffix + '"',
+    '[ -x "$S/npm/bin/dsh" ] && p TELEPORT_STAGING "$("$S/npm/bin/dsh" --version 2>/dev/null)"',
+    'p TELEPORT_END 1',
+  ].join(String.fromCharCode(10))
+}
+
+function inspectValues(stdout: string): Map<string, string> {
+  const values = new Map<string, string>()
+  for (const line of stdout.split(/\r?\n/)) {
+    const at = line.indexOf(INSPECT_MARK)
+    if (at < 0) continue
+    const rest = line.slice(at + INSPECT_MARK.length)
+    const eq = rest.indexOf('=')
+    if (eq <= 0) continue
+    values.set(rest.slice(0, eq), rest.slice(eq + 1).trim())
+  }
+  return values
+}
 
 /**
  * 决定这次的远端 dsh 用哪一份，并把 staging 需要的东西装好。
@@ -101,13 +140,25 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const log: string[] = []
   const exec = request.exec ?? defaultExec(request)
   const checkoutBin = posix.join(request.remoteRoot, 'apps/cli/lib/bin.js')
+  // staging 的**相对**位置只取决于目标（user@host:port 的 hash），与远端 home 无关；
+  // 绝对路径则必须等检查脚本把远端 `$HOME` 报回来才能拼。
+  const stagingSuffix = posix.join('.dsh-teleport', 'staging', anchorIdFor(anchorTargetOf(request.target)))
+
+  const inspect = await exec(buildInspectScript(request, stagingSuffix), 30_000)
+  const values = inspectValues(inspect.stdout)
+  if (!values.has('END')) {
+    throw new TeleportError({
+      code: 'remote/probe-incomplete',
+      detail:
+        '远端没有跑完检查脚本（缺 TELEPORT_END）：' +
+        (inspect.stderr.trim() === '' ? '无 stderr' : inspect.stderr.trim().slice(-300)),
+      nextActions: ['确认远端有 sh、登录横幅不会吞掉 stdout', '重试一次', '改用 WSL 后端'],
+      logTail: log.join(String.fromCharCode(10)),
+    })
+  }
 
   // 1. 检出优先：它和设备上用哪份 dsh 是同一套语义（WSL 侧就是这样）。
-  const checkout = await exec(
-    '[ -d ' + shellQuote(request.remoteRoot) + ' ] && [ -f ' + shellQuote(checkoutBin) + ' ] && printf %s\\n ' + CHECKOUT_MARK,
-    20_000,
-  )
-  if (checkout.code === 0 && checkout.stdout.includes(CHECKOUT_MARK)) {
+  if (values.get('CHECKOUT') === '1') {
     log.push('检出：' + checkoutBin)
     return {
       argvPrefix: [request.nodeCommand ?? 'node', checkoutBin],
@@ -116,38 +167,27 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
       log,
     }
   }
-  if (checkout.code === 0) {
-    // 目录与文件都在，却没打印标记：脚本被远端 shell 的启动横幅吃掉了。宁可报错，不猜。
-    throw failure('remoteRoot ' + request.remoteRoot + ' 里没有 apps/cli/lib/bin.js，也没拿到检出标记', log, request)
-  }
-  const rootMissing = !(await dirExists(exec, request.remoteRoot))
-  if (rootMissing) {
+  if (values.get('DIR') !== '1') {
     throw new TeleportError({
       code: 'remote/path-unreadable',
       detail: '远端目录 ' + request.remoteRoot + ' 不存在，无法在其中启动 dsh',
       nextActions: ['在面板里换一个存在的远端目录', '先在远端建好这个目录再接入'],
-      logTail: log.join('\n'),
+      logTail: log.join(String.fromCharCode(10)),
     })
   }
   log.push('检出：' + request.remoteRoot + ' 里没有 apps/cli/lib/bin.js，改用引导器装到 staging')
 
-  // 2. staging：先看装没装过（快路径），没装才真装。
-  const probeRun = await (request.probe ?? ((item: ResolveRemoteDshRequest) => probeSshTarget(probeRequestOf(item))))(request)
-  const remoteHome = probeRun.probe.home
+  // 2. staging：同一条往返已经问过「装没装过」，装过且版本可用就直接复用。
+  const remoteHome = values.get('HOME') ?? ''
   if (remoteHome === '') {
-    throw failure('探测没有拿到远端 home，无法确定 staging 位置', log, request)
+    throw failure('检查脚本没有拿到远端 home，无法确定 staging 位置', log, request)
   }
   const stagingDir = stagingDirFor(remoteHome, request.target)
   const stagingBin = posix.join(stagingDir, 'npm/bin/dsh')
   log.push('staging：' + stagingDir)
-
-  const reuse = await exec(
-    '[ -x ' + shellQuote(stagingBin) + ' ] && printf %s\\n ' + STAGING_READY_MARK + '"$(' + shellQuote(stagingBin) + ' --version 2>/dev/null)"',
-    30_000,
-  )
-  const reusedVersion = versionOf(reuse.stdout, STAGING_READY_MARK)
-  if (reuse.code === 0 && dshSupported(reusedVersion)) {
-    log.push('staging：复用已装的 dsh ' + String(reusedVersion))
+  const reusedVersion = values.get('STAGING') ?? ''
+  if (dshSupported(reusedVersion)) {
+    log.push('staging：复用已装的 dsh ' + reusedVersion)
     return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, log }
   }
 
@@ -155,13 +195,11 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const state = await loadState(statePath, request.target)
   const mirror = DEFAULT_MIRRORS[0]?.registry
   const plan = planBootstrap({
-    facts: { node: probeRun.probe.nodeVersion, dsh: probeRun.probe.dshVersion },
+    facts: { node: values.get('NODE') ?? '', dsh: values.get('DSH') ?? '' },
     state,
     stagingDir,
     ...(request.dshVersion === undefined ? {} : { dshVersion: request.dshVersion }),
     ...(mirror === undefined ? {} : { mirror }),
-    ...(probeRun.system.platform === undefined ? {} : { platform: probeRun.system.platform }),
-    ...(probeRun.system.arch === undefined ? {} : { arch: probeRun.system.arch }),
     dshHome: posix.join(remoteHome, '.dsh'),
   })
   const outcome = await runBootstrap(plan, async (script): Promise<StepOutcome> => {
@@ -180,7 +218,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
         '在远端手工安装 ' + String(request.dshVersion ?? '@deepseek-ai/dsh') + ' 后重试',
         '查看远端网络与 tar/npm 是否可用',
       ],
-      logTail: log.concat(outcome.executed).join('\n'),
+      logTail: log.concat(outcome.executed).join(String.fromCharCode(10)),
     })
   }
   let next: BootstrapState = state
@@ -193,25 +231,16 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   if (verify.code !== 0 || !dshSupported(version)) {
     throw new TeleportError({
       code: 'remote/bootstrap-failed',
-      detail: '引导器报成功，但 ' + stagingBin + ' 跑不出可用版本（退出码 ' + String(verify.code) + '，输出 ' + (version === '' ? '（空）' : version) + '）',
+      detail:
+        '引导器报成功，但 ' + stagingBin + ' 跑不出可用版本（退出码 ' + String(verify.code) +
+        '，输出 ' + (version === '' ? '（空）' : version) + '）',
       nextActions: ['重试引导', '在远端手工执行 ' + stagingBin + ' --version 看真实报错'],
-      logTail: log.join('\n'),
+      logTail: log.join(String.fromCharCode(10)),
     })
   }
   log.push('staging：验过版本 ' + version)
   return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, log }
 }
-
-function probeRequestOf(request: ResolveRemoteDshRequest): Parameters<typeof probeSshTarget>[0] {
-  return {
-    homeDir: request.homeDir,
-    target: request.target,
-    auth: request.auth,
-    ...(request.sshExecutable === undefined ? {} : { sshExecutable: request.sshExecutable }),
-    ...(request.askpassPath === undefined ? {} : { askpassPath: request.askpassPath }),
-  }
-}
-
 /** 缺省执行器：一条 `ssh` channel，非零退出**不**抛（引导器要按退出码分支）。 */
 function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {
   return async (script, deadlineMs) => {
@@ -219,7 +248,10 @@ function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {
       target: request.target,
       knownHostsFile: knownHostsPath(request.homeDir),
       auth: request.auth,
-      command: ['sh', '-c', script],
+      // `ssh` 把 argv 用空格拼成一行交给远端 shell，**不会**替我们加引号：
+      // 不 shellQuote 的话 `sh -c '[ -d x ] && printf yes'` 到了远端变成 `sh -c [ -d x ] ...`，
+      // 远端 `[` 只拿到 `-d` 一个参数，报 `-d: 1: [: missing ]`。
+      command: ['sh', '-c', shellQuote(script)],
       allowFailure: true,
       deadlineMs: deadlineMs ?? 60_000,
       ...(request.sshExecutable === undefined ? {} : { sshExecutable: request.sshExecutable }),
@@ -228,16 +260,6 @@ function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {
     })
     return { code: result.code, stdout: result.stdout, stderr: result.stderr }
   }
-}
-
-async function dirExists(exec: RemoteExec, path: string): Promise<boolean> {
-  const result = await exec('[ -d ' + shellQuote(path) + ' ] && printf %s\\n yes', 20_000)
-  return result.code === 0 && result.stdout.includes('yes')
-}
-
-function versionOf(stdout: string, mark: string): string {
-  const line = stdout.split(/\r?\n/).find((item) => item.includes(mark))
-  return line === undefined ? '' : line.slice(line.indexOf(mark) + mark.length).trim()
 }
 
 function statePathOf(request: ResolveRemoteDshRequest): string {
