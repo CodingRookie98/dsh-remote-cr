@@ -81,7 +81,8 @@ MSYS_NO_PATHCONV=1 GATE=a5a8 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.c
 7. **负控不能靠「把输入留空」**：A5/A8 若沿用老路（`SSH_ROOT=''`），接入按钮直接 disabled，
    探针连第一枪都开不出来，只剩一条 `S2P-FATAL`——那就什么都证明不了。要拆就在页面里拆：
    错误框退化成纯文本、取消按钮换成克隆，正向该绿的地方继续绿。
-8. **判据本身会空转，必须让负控咬住**：第一版 `G-A5-2` 把 `portFreed` 当必要条件，而
+8. **跑之前先 `pnpm build` + `pnpm build:client`**：探针加载的是 `lib/` 产物，不是 `src/`。只跑 `tsc --noEmit` 时宿主半还是旧的——表现是新路由 404、新字段 `undefined`，两条断言都「假失败」，排查时极容易怀疑产品代码。2026-11-13 M3 的 UI 场景就栽在这。
+9. **判据本身会空转，必须让负控咬住**：第一版 `G-A5-2` 把 `portFreed` 当必要条件，而
    `sawBusy=false` 时 `portFreed` 恒真（12 次空查的耗时被当成回收耗时）；第一版 `G-A8-3`
    只看「进度没了 + 错误框没了 + 有个在线条目」，这三件事能被「只清错误、什么都不做」同时
    满足。现在 `portFreed` 收紧成「真的忙过又释放」（否则 `portReclaim:null`），`G-A8-3`
