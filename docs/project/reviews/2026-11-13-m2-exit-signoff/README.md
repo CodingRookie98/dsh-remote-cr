@@ -26,7 +26,7 @@
 | 验收 | 判据（`requirements.md` 摘要） | 证据（文件 + 实测） | 负控 | 结论 |
 |---|---|---|---|---|
 | **A1** 原生入口 | 远端工作区出现在**本地原生 UI**（`sidebar.panellist` + `main`）里 | `spikes/m2/ssh-panel/probe.cjs` 面板 7/7：槽位 `["main","sidebar.panellist","directoryFlow"]`、投影条目 online 且远端路径一致 | 路径留空 3/7（失败集 `S2P-3/4/5/6`） | ✅ 已验证 |
-| **A2** 宿主在远端 | 远端有 `dsh` 进程；模型请求由远端发起 | `env-policy.ts` 11/11（按端口读 `/proc/<pid>/environ`）+ `model-request.ts` 8/8（代理侧 `status=200`、`substitutions` 有记录） | 7/11（失败集 `A4-4..A4-7`） | ✅ 已验证；⚠️「关 GUI 后会话数据」未验证（§3） |
+| **A2** 宿主在远端 | 远端有 `dsh` 进程；模型请求由远端发起 | `env-policy.ts` 11/11（按端口读 `/proc/<pid>/environ`）+ `model-request.ts` 8/8（代理侧 `status=200`、`substitutions` 有记录） | 7/11（失败集 `A4-4..A4-7`） | ✅ 已验证（含「关 GUI 后会话数据」：`spikes/m3/long-task.ts` 实测 dispose 60 s 后重连 `sessionKept:true`） |
 | **A3** 远端插件可用 | 远端插件**真的注册了工具/钩子** | `remote-tools.ts` 三态：present 8/8（工具表 32→38）、absent 8/8（32）、对照 `web_fetch` 两态都在 | 失败集恰为 `A3-3` | ✅ 已验证（工具面；钩子未单独取证） |
 | **A4** 环境可选 | 三档至少两档可用且状态可见 | `env-policy.ts` 11/11：`reuse` 不加变量、`isolated` 只加 `DSH_HOME` 且目录落地、`sync` 明确拒绝；面板 `panel-env` 报档位 | 7/11（`A4-4..A4-7`） | ✅ 已验证 |
 | **A5** 首连体验 | 分阶段进度 + 取消；二次连接 ≤ 5s | `GATE=a5a8` 正向 **8/8**：`probe→bootstrap→launch→tunnel→attach` 依次出现；`G-A5-2` 取消打到宿主（`{"cancelled":true}`）、进度消失、无错误框；**`G-A5-2b` 在 `probe` 段取消 ⇒ `/attach` 终态 `remote/cancelled`**；二次连接见 `ssh-e2e/measurements.json`（热组重连 P50 1664 / P90 2094，限 5000） | 负控 3/8，失败集 `G-A5-2/G-A5-2b/G-A8-1/G-A8-2/G-A8-3` | ✅ 已验证（；端口回收**仍未观测到**：取消点在 `tunnel` 段（`sawBusy:true`、`portFreed:false`，60 s 内端口一直在监听）；C5 单测证明本次新建连接会被 `dispose()`，但**远端 dsh 何时退出未验证**（契约见 `architecture.md` §8.5，`portReclaim:null` 不再被当成「已回收」）） |
@@ -40,7 +40,7 @@
 
 | 子句 | 缺什么证据 | 为什么现在没有 |
 |---|---|---|
-| A2「关掉本地 GUI 不影响远端会话数据」 | 关宿主后从另一个客户端读远端会话记录 | 现有证据只到「关宿主后远端 dsh 被看门狗回收（不留孤儿）」；会话数据落远端 `DSH_HOME` 只由 A4 隔离档间接支持 |
+| A2「关掉本地 GUI 不影响远端会话数据」 | 关宿主后从另一个客户端读远端会话记录 | **已补齐（2026-11-13，`spikes/m3/long-task.ts`）**：`service.dispose()` 后 60 s 重新接入 ⇒ `sessionKept:true`、24 条会话、workspace id 不变；同一时刻远端 dsh 已被看门狗回收（`dshAliveAfterWait:false`、端口释放）——会话数据在远端 `DSH_HOME`，与本地进程无关。剩余口径：只验了 60 s，「远端整机重启后」未验 |
 | A7「链路丢包 / 整机重启后恢复」 | 断网（TCP 超时）与远端重启后 cookie 失效的完整握手时序 | 本轮验的是「远端 dsh 被杀」，它让 `-L` 立刻被拒，等价于传输层消失；真正的链路丢包是另一种时间尺度 |
 | A5 阶段覆盖 | `verify` / `barrier` 在 SSH 路径上的出现与文案 | 这两段在 SSH 上没有发射点（`verify` 只在 M1 的 `workspace.ts:224`）；热路径只走五段 |
 | A5 端口回收代价 | 取消后远端 dsh 从「在监听」到「释放」的耗时 | 取消点已移到 `tunnel` 段（`sawBusy:true`），但 **60 s 内端口一直在监听**（`portFreed:false`）。C5 单测证明 `dispose()` 被调用；远端 dsh 的退出由看门狗在 ssh 结束之后完成，这段时序**未验证**——当前最可能被 R1 #3 抓的一条 |
@@ -158,5 +158,5 @@ R1 #5 判「不是 Zero Blockers」：2 BLOCKER + 3 MAJOR + 7 MINOR。
 - [x] R1 #4 复审（判 2 BLOCKER + 4 MAJOR + 5 MINOR；B1/B2 已修，D4/D5 记账）
 - [ ] R1 #5 复审（基线 = 本提交）
 - [ ] R2 元架构师终审
-- [ ] §3 剩余未验证子句（A2 关 GUI、A7 链路丢包/整机重启、A5 verify/barrier 与端口回收代价、A3 钩子）
+- [ ] §3 剩余未验证子句（A7 链路丢包/整机重启、A5 verify/barrier 与端口回收代价、A3 钩子；**A2 已闭合**）
 - [ ] `isTransportLoss` 的 slug 撞名风险（m-2 残留）
