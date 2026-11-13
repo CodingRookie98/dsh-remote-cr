@@ -1177,6 +1177,87 @@ async function runGateStop() {
   }
 }
 
+// ── 发布素材：真机截图（M3-3）────────────────────────────────────────────
+//
+// 只做「看得见的证据」：面板首屏、接入后的投影与会话行、结束远端后的状态。
+// 截图落 docs/assets/，README 直接引用；不 PS、不手绘。
+async function runGateShots() {
+  const outDir = path.join(ROOT, 'docs', 'assets')
+  fs.mkdirSync(outDir, { recursive: true })
+  const shot = async (cdp, sid, name) => {
+    const captured = await cdp.send('Page.captureScreenshot', { format: 'png' }, sid)
+    const file = path.join(outDir, name)
+    fs.writeFileSync(file, Buffer.from(captured.data, 'base64'))
+    console.log('  · 截图 ' + name)
+  }
+  killRemoteOnPort(REMOTE_PORT)
+  if (!(await hostPortFree())) throw new Error('宿主端口 ' + String(HOST_PORT) + ' 已被占用')
+  ensureProfile()
+  const url = await startHost()
+  await startChrome()
+  const cdp = await connectCdp(await waitForChrome())
+  const created = await cdp.send('Target.createTarget', { url: 'about:blank' })
+  const attached = await cdp.send('Target.attachToTarget', { targetId: created.targetId, flatten: true })
+  const sid = attached.sessionId
+  const watchdog = armWatchdog(cdp, sid, 10 * 60_000)
+  /** 关掉 DSH 的首次引导弹窗（Preview Notice / Get started）——发布截图不能有遮挡。 */
+  const dismissOverlays = async () => {
+    await evaluate(cdp, sid, '(() => { const b = Array.from(document.querySelectorAll("button"))' +
+      ' .find(x => (x.textContent || "").trim() === "Continue"); if (b) { b.click(); return true } return false })()')
+    await sleep(300)
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sid)
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sid)
+    await sleep(300)
+    await evaluate(cdp, sid, '(() => { const b = Array.from(document.querySelectorAll("button"))' +
+      ' .find(x => /close|关闭/i.test(x.getAttribute("aria-label") || "") || (x.textContent || "").trim() === "×");' +
+      ' if (b) { b.click(); return true } return false })()')
+    await sleep(300)
+  }
+  try {
+    await cdp.send('Runtime.enable', {}, sid)
+    await cdp.send('Page.enable', {}, sid)
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }, sid)
+    await cdp.send('Page.navigate', { url }, sid)
+    await waitFor(cdp, sid, SEL_TELEPORT + ' !== null', 120_000, '侧栏出现「瞬移」')
+    await openPanel(cdp, sid)
+    await waitFor(cdp, sid, q('ssh') + ' !== null', 120_000, 'SSH 表单出现')
+    await gateEnsureHosts(cdp, sid)
+    // DSH 0.2 首次会弹「Preview Notice」，不关掉会把面板遮一半（截图里出现过）。
+    const dismissed = await evaluate(
+      cdp, sid,
+      '(() => { const b = Array.from(document.querySelectorAll("button"))' +
+        ' .find(x => (x.textContent || "").trim() === "Continue");' +
+        ' if (!b) return false; b.click(); return true })()',
+    )
+    if (dismissed === true) await sleep(600)
+    await dismissOverlays()
+    await shot(cdp, sid, 'panel-ssh.png')
+    const picked = await evaluate(
+      cdp, sid,
+      '(() => { const rows = ' + qa('ssh-alias') + ';' +
+        ' const hit = rows.find(r => (r.textContent || "").indexOf(' + JSON.stringify(ALIAS + ' ·') + ') === 0);' +
+        ' if (!hit) return "missing"; hit.click(); return "clicked" })()',
+    )
+    if (picked !== 'clicked') throw new Error('别名 ' + ALIAS + ' 不在列表')
+    if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('远端路径填不进去')
+    const clicked = await gateClickAttach(cdp, sid)
+    if (clicked.ok !== true) throw new Error('点不到接入：' + JSON.stringify(clicked.why))
+    await waitFor(cdp, sid, q('projected') + ' !== null', 300_000, '投影条目出现')
+    await openPanel(cdp, sid)
+    await dismissOverlays()
+    await sleep(800)
+    await shot(cdp, sid, 'panel-connected.png')
+    // 结束远端：留一张「收尸之后」的现场。
+    await evaluate(cdp, sid, '(() => { const b = ' + q('stop-remote') + '; if (!b) return false; b.click(); return true })()')
+    await sleep(4_000)
+    await openPanel(cdp, sid)
+    await dismissOverlays()
+    await shot(cdp, sid, 'panel-stopped.png')
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+
 async function main() {
   console.log('== M2-EXIT ' + (NEG ? '负控' : '正向') + ' · SSH 面板 · ALIAS=' + ALIAS + ' · REMOTE_ROOT=' + JSON.stringify(REMOTE_ROOT))
 
@@ -1347,7 +1428,7 @@ async function main() {
   return { attachMs, sessionId, disconnectMs, reconnectMs }
 }
 
-const running = GATE === 'a5a8' ? runGate() : GATE === 'stop' ? runGateStop() : main()
+const running = GATE === 'a5a8' ? runGate() : GATE === 'stop' ? runGateStop() : GATE === 'shots' ? runGateShots() : main()
 
 running
   .then((outcome) => {

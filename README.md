@@ -51,6 +51,14 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 > `<ORG>` 是占位：仓库尚未公开，发布时替换成实际组织名。`private: true` 暂时保留（不走 npm publish，走 GitHub tag/tgz，与社区插件的做法一致）。
 
+### 长什么样（真机截图，未后期）
+
+| 面板（SSH 远端 + 主机列表） | 接入后（投影工作区 + 会话运行状态） | 点「结束远端」之后 |
+|---|---|---|
+| ![SSH 面板](./docs/assets/panel-ssh.png) | ![接入后](./docs/assets/panel-connected.png) | ![结束后](./docs/assets/panel-stopped.png) |
+
+> 截图由 `GATE=shots` 的 CDP 探针在真机上抓取（1440×900），不是示意图；会话行里的「空闲/运行中」就是 M3-2a 的可见性。
+
 ### 兼容矩阵
 
 | 组件 | 支持范围 |

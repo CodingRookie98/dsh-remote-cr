@@ -1,26 +1,6 @@
 {
-  "at": "2026-11-13T14:11:21.446Z",
+  "at": "2026-11-13T14:21:30.325Z",
   "negative": false,
   "measurements": [],
-  "results": [
-    {
-      "id": "M3-UI-1",
-      "ok": true,
-      "detail": {
-        "sessionRunning": {
-          "text": "空闲",
-          "running": "false"
-        }
-      }
-    },
-    {
-      "id": "M3-UI-2",
-      "ok": true,
-      "detail": {
-        "stopClicked": "clicked",
-        "freed": true,
-        "remotePort": 8961
-      }
-    }
-  ]
+  "results": []
 }
