@@ -30,6 +30,7 @@ import { shellQuote } from '../backend/posix-probe.ts'
 import { TeleportError, type ConnectionPhase } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
+import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
 import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
 import { INSTANCE_VERSION, buildKillInstanceScript, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
@@ -381,7 +382,15 @@ async function connectSsh(
     },
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
   })
-  return openConnection(handle, policy, control.signal)
+  const connection = await openConnection(handle, policy, control.signal)
+  return {
+    ...connection,
+    // 导入远端工作区要用：把任意远端路径映射成本地锚点虚拟路径（M4-1）。
+    anchorFor: async (remotePath: string) => {
+      const mapped = await resolveAnchorPath({ homeDir: ssh.homeDir, target: sshTarget, remotePath })
+      return { localPath: mapped.localPath }
+    },
+  }
 }
 
 /** 读远端实例登记（一条 ssh；任何失败都当作「没有」——复用是优化，不是正确性）。 */

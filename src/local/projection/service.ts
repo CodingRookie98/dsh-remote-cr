@@ -34,9 +34,10 @@ import type { EnvPolicy } from '../env-policy/index.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
 import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
+import { parseBaselineFrame, type RemoteWorkspaceRow } from './import.ts'
 import type { ProbeOptions, ProbeResult } from './probe.ts'
 import { TERMINAL_WARMUP_MS, preheatProbe, runSessionProbe } from './probe.ts'
-import type { ProjectionRpc } from './remote.ts'
+import type { ProjectionRpc, StreamHandle } from './remote.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
 
 /**
@@ -62,6 +63,13 @@ export interface RemoteConnection {
   keepAlive?(): Promise<void>
   /** 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。 */
   stopRemote?(): Promise<void>
+  /**
+   * 把远端绝对路径映射成本地锚点虚拟路径（导入远端工作区要用）。
+   *
+   * 放在连接上而不是 service 的构造参数里：锚点解析依赖 SSH 的 homeDir 与 target，
+   * 那些只有连接层知道；service 不该反过来持有 SSH 配置。
+   */
+  anchorFor?(remotePath: string): Promise<{ readonly localPath: string }>
   /**
    * 回收远端连接（含远端进程）：`false` = 没确认收干净（看门狗未在窗口内退出）。
    *
@@ -458,6 +466,58 @@ export class ProjectionService {
    * 与 `dispose()` 的区别：`dispose()` 在驻留模式下只是「放手」；这里永远是真收 ——
    * 面板上的「结束远端」必须能终止一个没人接回的驻留实例。
    */
+  /**
+   * 读远端**已有**的工作区列表（M4-1）。
+   *
+   * DSH 没有 `workspace/list`：唯一读入口是 `workspace/follow` 流，每代以 baseline 帧开场。
+   * 所以这里开流、读首帧、立刻 cancel —— 不常驻长连接。首帧 10 s 不来就报错，
+   * 而不是让面板一直转圈。
+   */
+  async importable(): Promise<readonly RemoteWorkspaceRow[]> {
+    const live = this.#live
+    if (live === undefined) {
+      throw new TeleportError({
+        code: 'remote/not-attached',
+        detail: '还没有连上远端，读不到远端的工作区列表',
+        nextActions: ['先在面板里接入一个远端'],
+      })
+    }
+    const stream = live.connection.rpc.openStream('workspace/follow', {})
+    try {
+      return parseBaselineFrame(await firstFrame(stream, 10_000))
+    } finally {
+      stream.cancel()
+    }
+  }
+
+  /** 把勾选的远端路径逐个投影进来（`workspace/create` 幂等，已有就复用）。 */
+  async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number }> {
+    const live = this.#live
+    if (live === undefined) {
+      throw new TeleportError({
+        code: 'remote/not-attached',
+        detail: '还没有连上远端，无法导入工作区',
+        nextActions: ['先在面板里接入一个远端'],
+      })
+    }
+    const anchorFor = live.connection.anchorFor
+    if (anchorFor === undefined) {
+      throw new TeleportError({
+        code: 'remote/not-attached',
+        detail: '当前后端没有提供锚点解析（导入只支持 SSH 后端）',
+        nextActions: ['改用 SSH 后端接入后再导入'],
+      })
+    }
+    const deps = attachDeps(live.target, live.connection.rpc, this.#store)
+    let imported = 0
+    for (const remotePath of paths) {
+      const mapped = await anchorFor(remotePath)
+      await attachWorkspace(deps, { remotePath, localPath: mapped.localPath, title: baselineTitle(remotePath) })
+      imported += 1
+    }
+    return { imported }
+  }
+
   async stopRemote(): Promise<void> {
     const live = this.#live
     const detached = this.#detached
@@ -738,4 +798,33 @@ export function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
   if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro === right.distro
   if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias === right.alias
   return false
+}
+
+/** 取一条流的第一帧；超时抛 `remote/tunnel-unavailable`（面板据此提示重试）。 */
+async function firstFrame(stream: StreamHandle, timeoutMs: number): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      stream[Symbol.asyncIterator]().next().then((step) => (step.done === true ? undefined : step.value)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new TeleportError({
+              code: 'remote/tunnel-unavailable',
+              detail: '读 workspace/follow 首帧超过 ' + String(timeoutMs) + 'ms',
+              nextActions: ['重试一次', '确认远端实例还活着'],
+            }),
+          )
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/** 远端路径 → 默认标题（最后一段目录名）；远端没给 title 时用它。 */
+function baselineTitle(remotePath: string): string {
+  const parts = remotePath.split('/').filter((part) => part.length > 0)
+  return parts[parts.length - 1] ?? remotePath
 }

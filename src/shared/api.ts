@@ -179,6 +179,13 @@ export interface ProjectedSessionInfo {
 }
 
 /** 面板要的全部投影数据 + 连接状态 + 接入默认值。 */
+  /** 远端已有、可导入的工作区（M4-1：DSH 没有 workspace/list，靠 workspace/follow 首帧）。 */
+export interface ImportableWorkspaceInfo {
+  readonly workspaceId: string
+  readonly path: string
+  readonly title: string
+}
+
 export interface ProjectionSnapshotInfo {
   readonly workspaces: readonly ProjectedWorkspaceInfo[]
   readonly sessions: readonly ProjectedSessionInfo[]

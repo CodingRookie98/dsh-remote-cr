@@ -520,6 +520,23 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     }))
   })
 
+  mount('/workspace/importable', ['GET'], async (_req, res) => {
+    sendJson(res, 200, okEnvelope({ workspaces: await requireProjection().importable() }))
+  })
+
+  mount('/workspace/import', ['POST'], async (req, res) => {
+    const body = (await readJsonBody(req)) as { paths?: unknown } | null
+    const raw = body?.paths
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string' || item.length === 0)) {
+      throw new TeleportError({
+        code: 'remote/workspace-invalid-path',
+        detail: 'paths 必须是远端绝对路径的字符串数组',
+        nextActions: ['刷新导入列表后重新勾选'],
+      })
+    }
+    sendJson(res, 200, okEnvelope(await requireProjection().importWorkspaces(raw as string[])))
+  })
+
   mount('/stop', ['POST'], async (_req, res) => {
     await requireProjection().stopRemote()
     sendJson(res, 200, okEnvelope({ stopped: true }))

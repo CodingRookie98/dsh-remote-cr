@@ -17,6 +17,7 @@
  */
 
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
+import type { ImportableWorkspaceInfo } from '../shared/api.ts'
 
 import type {
   DirEntry,
@@ -42,6 +43,8 @@ import {
   readFlow,
   readProjection,
   reconnectRemote,
+  importWorkspaces,
+  listImportable,
   startWorkspace,
   stopRemote,
   TeleportApiError,
@@ -549,6 +552,8 @@ export function TeleportPanel(): unknown {
   const [busy, setBusy] = useState<string | null>(null)
   const [probe, setProbe] = useState<ProbeOutcome | null>(null)
   const [activeSession, setActiveSession] = useState<string | null>(null)
+  const [importable, setImportable] = useState<readonly ImportableWorkspaceInfo[] | null>(null)
+  const [importPick, setImportPick] = useState<readonly string[]>([])
   // SSH 接入：主机清单来自 /sources（只含 alias / 端口 / 有无密钥），路径由用户手输。
   const [ssh, setSsh] = useState<SshSourceReport | null>(null)
   const [sshError, setSshError] = useState<string | null>(null)
@@ -730,6 +735,35 @@ export function TeleportPanel(): unknown {
       setError(null)
     } catch (caught) {
       setError(failureOf(caught, { kind: 'link', action }))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** 读远端已有工作区（M4-1）；读完不自动勾选，导入是用户动作。 */
+  const onLoadImportable = async (): Promise<void> => {
+    setBusy('import-list')
+    try {
+      const listed = await listImportable()
+      setImportable(listed.workspaces)
+      setImportPick([])
+    } catch (caught) {
+      setError(failureOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onImport = async (): Promise<void> => {
+    if (importPick.length === 0) return
+    setBusy('import')
+    try {
+      await importWorkspaces(importPick)
+      setImportable(null)
+      setImportPick([])
+      await refresh()
+    } catch (caught) {
+      setError(failureOf(caught))
     } finally {
       setBusy(null)
     }
@@ -998,6 +1032,54 @@ export function TeleportPanel(): unknown {
       'div',
       { 'data-teleport': 'panel-env', 'data-env-policy': snapshot?.envPolicy ?? 'unknown' },
       envPolicyLine(snapshot),
+    ),
+    h(
+      'div',
+      { 'data-teleport': 'import' },
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'import-open',
+          disabled: snapshot?.connected !== true || busy !== null,
+          title: snapshot?.connected === true ? '列出远端已有的工作区，勾选后投影到本地侧栏' : '尚未连接远端',
+          onClick: () => void onLoadImportable(),
+        },
+        busy === 'import-list' ? '读取中…' : '导入远端工作区',
+      ),
+      importable === null
+        ? null
+        : h(
+            'div',
+            { 'data-teleport': 'import-list' },
+            ...importable.map((item: ImportableWorkspaceInfo) =>
+              h(
+                'label',
+                { key: item.workspaceId, 'data-teleport': 'import-row' },
+                h('input', {
+                  type: 'checkbox',
+                  'data-teleport': 'import-check',
+                  checked: importPick.includes(item.path),
+                  onChange: (event: { target: { checked: boolean } }) => {
+                    setImportPick((current) =>
+                      event.target.checked ? [...current, item.path] : current.filter((path) => path !== item.path),
+                    )
+                  },
+                }),
+                h('span', { 'data-teleport': 'import-path' }, item.path),
+              ),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-teleport': 'import-go',
+                disabled: importPick.length === 0 || busy !== null,
+                onClick: () => void onImport(),
+              },
+              busy === 'import' ? '导入中…' : '导入选中 (' + String(importPick.length) + ')',
+            ),
+          ),
     ),
     attachBox,
     h(

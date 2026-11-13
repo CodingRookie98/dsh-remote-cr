@@ -15,6 +15,7 @@
  */
 
 import { API_PREFIX } from '../shared/api.ts'
+import type { ImportableWorkspaceInfo } from '../shared/api.ts'
 
 /** 宿主半挂载的前缀；与 `src/local/api/routes.ts` 共用同一个常量。 */
 export const API_BASE = API_PREFIX
@@ -170,6 +171,21 @@ export function cancelAttach(fetchImpl?: typeof fetch): Promise<{ readonly cance
  */
 export function stopRemote(fetchImpl?: typeof fetch): Promise<{ readonly stopped: boolean }> {
   return callApi('/stop', { method: 'POST' }, fetchImpl)
+}
+
+/** 远端已有、可导入的工作区（M4-1）。要求已连接，否则宿主回 `remote/not-attached`。 */
+export function listImportable(
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly workspaces: readonly ImportableWorkspaceInfo[] }> {
+  return callApi('/workspace/importable', {}, fetchImpl)
+}
+
+/** 把勾选的远端路径投影进来；`workspace/create` 幂等，已存在就复用。 */
+export function importWorkspaces(
+  paths: readonly string[],
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly imported: number }> {
+  return callApi('/workspace/import', { method: 'POST', body: JSON.stringify({ paths }) }, fetchImpl)
 }
 
 /** 在一个已接入的远端工作区里新建会话（远端 `session/create`）。 */

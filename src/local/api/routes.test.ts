@@ -182,6 +182,8 @@ test('十四条路由全部挂载在 /teleport/api 下，且各自声明允许�
       '/teleport/api/sources GET',
   '/teleport/api/stop POST',
       '/teleport/api/workspace POST',
+  '/teleport/api/workspace/import POST',
+  '/teleport/api/workspace/importable GET',
       '/teleport/api/workspaces GET',
     ],
   )
