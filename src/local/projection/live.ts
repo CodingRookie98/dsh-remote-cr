@@ -162,7 +162,7 @@ async function connectWsl(
     ...(control.signal === undefined ? {} : { signal: control.signal }),
   })
   control.onPhase?.('tunnel')
-  return openConnection(handle, policy)
+  return openConnection(handle, policy, control.signal)
 }
 
 /** 档位字符串 → 枚举；写错时给结构化错误，不静默回落到 `reuse`。 */

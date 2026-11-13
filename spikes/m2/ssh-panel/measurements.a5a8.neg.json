@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-13T10:56:16.366Z",
+  "at": "2026-11-13T11:10:40.047Z",
   "negative": true,
   "measurements": [],
   "results": [
@@ -24,6 +24,7 @@
         "portFreed": false,
         "portFreeMs": null,
         "portReclaim": null,
+        "attachOutcome": "未取消（可能点晚了）",
         "timeline": []
       }
     },

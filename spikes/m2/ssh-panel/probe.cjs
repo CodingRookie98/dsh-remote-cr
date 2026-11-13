@@ -844,7 +844,10 @@ async function runGateA5A8() {
       // 「端口回收」可测。此前在 `bootstrap` 取消，远端从未起来，`portReclaim` 恒为 null ——
       // R1-B-2 指出的正是这一点（62.6s 是空查耗时，不是回收耗时）。
       // 等不到那两个阶段就退回「非 probe 即点」，并如实记账（detail 里有 sawBusy）。
-      const latePhase = progress !== null && (progress.phase === 'tunnel' || progress.phase === 'attach')
+      // 取消点选 `bootstrap` / `launch`：`tunnel` 之后的窗口只有约 1s（页面快照还有 300ms
+      // 延迟），实测会「点晚」——那一次 `/attach` 已经成功，端口自然一直在监听。
+      // 端口回收不在这条断言里判（见 README：独立脚本实测 ~3.3s），这里只要**取消真的生效**。
+      const latePhase = progress !== null && (progress.phase === 'bootstrap' || progress.phase === 'launch')
       const fallback = progress !== null && progress.phase !== 'probe' && Date.now() - attachStart > 25_000
       if (latePhase || fallback) {
         const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
@@ -914,7 +917,21 @@ async function runGateA5A8() {
   } catch {
     cancelAcknowledged = false
   }
-  const cancelledMidFlight = cancelClicked && cancelAcknowledged && cancelPhase !== null && cancelPhase !== 'probe'
+  // 光有回执不够：取消可能落在**接入完成之后**（页面 `data-phase` 有 300ms 快照延迟），
+  // 那时 `/attach` 照样成功，端口当然一直在监听。必须看这次请求的终态。
+  let cancelTookEffect = false
+  try {
+    const attachRaw = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_ATTACH__ ?? [])')
+    const calls = JSON.parse(String(attachRaw))
+    const last = Array.isArray(calls) && calls.length > 0 ? calls[calls.length - 1] : null
+    if (last !== null) {
+      const body = JSON.parse(String(last.body))
+      cancelTookEffect = body.ok === false && body.code === 'remote/cancelled'
+    }
+  } catch {
+    cancelTookEffect = false
+  }
+  const cancelledMidFlight = cancelClicked && cancelAcknowledged && cancelTookEffect && cancelPhase !== null && cancelPhase !== 'probe'
   // 判据只看「取消真的发生」：进度消失、不留错误框。端口回收另立 `portReclaim` ——
   // `sawBusy=false` 时它根本没被测到，既不能当通过条件，也不能当结论（R1-B-2）。
   // 判据**不含**端口回收：`architecture.md` §8.5 的语义是「回收归退出，不归取消」——
@@ -930,6 +947,7 @@ async function runGateA5A8() {
     portFreed,
     portFreeMs,
     portReclaim: sawBusy ? portFreeMs : null,
+    attachOutcome: cancelTookEffect ? 'cancelled' : '未取消（可能点晚了）',
     timeline,
   })
 

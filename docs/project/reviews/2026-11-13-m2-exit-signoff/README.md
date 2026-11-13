@@ -74,6 +74,21 @@ R1 报告：[../2026-11-13-m2-exit-r1/README.md](../2026-11-13-m2-exit-r1/README
 | **N3**（取消后连接留存且未入契约） | `service.attach` 记住接入前是否有可复用连接；取消且本次新建 ⇒ `dispose()`；`architecture.md` §8.5 写死「取消 ≠ 断开 ≠ 回收」 | 夹具 C5 转红 + 新单测「取消发生在 attach 段：连接要被 dispose」 |
 | **C3**（`session/list` 段取消仍写投影） | `attachWorkspace` 在两个 RPC 都回来、过了取消检查之后才写投影表 | 夹具 C3 转红 + 新单测「session/list 段取消也不许写投影」 |
 
+### 4.2 R1 #3 处置（2026-11-13，第三轮复审）
+
+R1 #3 判「不是 Zero Blockers」：1 BLOCKER + 5 MAJOR。逐条：
+
+| 条目 | 处置 | 取证 |
+|---|---|---|
+| **D1（BLOCKER）** C5 判据错误：「此刻有没有连接」≠「本次这条是否新建」 | `service.attach` 记住接入前的 `#live` **引用**；取消时只有 `#live !== liveBefore` 才 dispose 并回滚到接入前状态 | 夹具 D1 由绿转红；语义写进 §8.5 |
+| **M-A** WSL 握手段无 signal | `live.ts` 的 WSL 分支补 `openConnection(handle, policy, control.signal)` | tsc + 单测；**WSL 侧真机握手取消未跑**（记账） |
+| **M-B** stderr-only 失败退化成 `remote/startup-failed` | `launch.ts` 新增 `classifyFailure`：隧道 → `classifySshFailure`（认证/连接）→ dsh 启动话术；`ssh/errors.ts` 的认证错误表**首次被调用** | 单测全绿；**真机认证失败场景未复跑**（记账） |
+| **M-C** §8.5 的「取消不承诺端口释放」被用来豁免 G-A5-2 | 措辞收窄为「**复用既有连接**时不释放；本次新建的连接必须 dispose」；G-A5-2 取消点改到 `bootstrap`/`launch`（`tunnel` 窗口约 1s，实测会点晚），判据加「`/attach` 终态必须是 cancelled」 | `attachOutcome:"cancelled"`；独立脚本实测 attach 段取消后端口 **3270 ms** 释放 |
+| **M-D** dispose 成败无证据通道 | **未做**：`dispose()` 的返回仍被 `void` 丢弃，取消路径不 await。记账为未验证，留 R1 #4 | — |
+| **M-E** `session/list` 失败 ⇒ 远端已建、本地不写 | `attachWorkspace` 在**非取消**的 `session/list` 失败时写一条 **offline** 条目再抛错（重试幂等命中补齐） | 夹具 D2 由绿转红 |
+
+**门禁**：双 tsc Exit 0、`pnpm test` **560/560**、R1 #3 夹具 1 绿 2 红（D1/D2 已修、P1 证明 N1 修复成立）。
+
 ## 5. R1 台账
 
 | 轮次 | 基线 | 派发 | 结果 |
@@ -81,7 +96,8 @@ R1 报告：[../2026-11-13-m2-exit-r1/README.md](../2026-11-13-m2-exit-r1/README
 | R1 #1 | `1accc74`（被测 `9b1f58c`） | `subagent r1-reviewer`，首轮因 `(no LLM providers)` 空转被停；后端恢复后同一 agent 完成 | **报告已落盘**（230 行 + `repro/cancel-lie.test.ts`）：2 BLOCKER / 5 MAJOR / 8 MINOR，**非 Zero Blockers**。Lead 已处置（§4），复测正向 8/8、负控 3/8 |
 | R1 #2（待派） | 本轮修复后的工作区 | — | **未派发**。复审输入 = 本条 + §4 处置表 + `repro/cancel-lie.test.ts`（现在应 2/3 转红、第 3 条因断言只看 HTTP 状态而不再有效） |
 | R1 #2 | `1c12736` | `subagent r1-reviewer-2` | **报告已落盘**：1 BLOCKER + 3 MAJOR + 6 MINOR，非 Zero Blockers；夹具 `round2-probes.test.ts` C1–C5 当时 5/5 绿（缺陷成立）。Lead 已处置（§4.1），复跑后该夹具 5/5 转红 |
-| R2（待派） | R1 #3 之后 | — | 元架构师终审 |
+| R1 #3 | `23f5671` | `subagent r1-reviewer-3` | **报告已落盘**：1 BLOCKER + 5 MAJOR，非 Zero Blockers；夹具 `round3-probes.test.ts` 当时 3/3 绿。Lead 已处置（§4.2；M-D 记账未做），复跑后 D1/D2 转红、P1 仍绿 |
+| R2（待派） | R1 #4 之后 | — | 元架构师终审 |
 
 ## 6. Lead 代位自查（不替代 R1）
 

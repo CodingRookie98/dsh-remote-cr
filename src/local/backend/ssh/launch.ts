@@ -27,12 +27,13 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 
 import { classifyStartFailure, parseDshEndpoint, tailLines } from '../dsh-output.ts'
+import { classifySshFailure } from './errors.ts'
 import { TeleportError } from '../errors.ts'
 import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
 import type { SshTarget } from './config.ts'
 import { knownHostsPath } from './known-hosts.ts'
 import { shellQuote } from '../posix-probe.ts'
-import { buildSshInvocation, type SshAuth, type SshConnectOptions } from './transport.ts'
+import { buildSshInvocation, describeTarget, type SshAuth, type SshConnectOptions } from './transport.ts'
 
 /** 远端 agent 读这个变量取凭据代理地址；名字写进远端脚本，改它就是改契约。 */
 export const PROXY_URL_ENV = 'TELEPORT_PROXY_URL'
@@ -372,6 +373,23 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   const invocation = buildSshInvocation(connectOptions, ['sh', '-c', shellQuote(script)])
   const spawnProcess = options.spawn ?? defaultSpawn
   const timeoutMs = options.timeoutMs ?? 90_000
+
+  /**
+   * 失败分类顺序：隧道 → **ssh 自己的拒绝**（认证 / 连接）→ dsh 的启动话术。
+   *
+   * 之前只走 dsh 的分类器：`Permission denied (publickey).` 被归成 `remote/startup-failed`
+   * +「没有给出可识别的原因」，而 `ssh/errors.ts` 那张认证错误表（`remote/auth-failed` /
+   * `remote/password-unavailable` / `remote/password-rejected`）一次都没被调用（R1 #3 M-B）。
+   */
+  const classifyFailure = (extra: string): TeleportError => {
+    const text = buffer + extra
+    const sshSide = classifySshFailure(text, {
+      target: describeTarget(options.target),
+      auth: options.auth.kind,
+      logTail: tailLines(text, 40),
+    })
+    return sshSide.code === 'remote/unknown' ? classifyStartFailure(text) : sshSide
+  }
   const child = spawnProcess(invocation.executable, invocation.args, invocation.env)
   let buffer = ''
   let announcedLaunch = false
@@ -475,7 +493,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     timer = setTimeout(() => {
       killChild()
       const tunnel = classifyTunnelFailure(buffer)
-      finish(() => reject(tunnel ?? classifyStartFailure(buffer + '\nTIMEOUT after ' + String(timeoutMs) + 'ms')))
+      finish(() => reject(tunnel ?? classifyFailure('\nTIMEOUT after ' + String(timeoutMs) + 'ms')))
     }, timeoutMs)
 
     if (options.signal !== undefined) {
@@ -505,7 +523,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     child.on('exit', (code) => {
       exited = true
       const tunnel = classifyTunnelFailure(buffer)
-      finish(() => reject(tunnel ?? classifyStartFailure(buffer + '\nssh exit ' + String(code ?? 'null'))))
+      finish(() => reject(tunnel ?? classifyFailure('\nssh exit ' + String(code ?? 'null'))))
     })
   })
 

@@ -213,9 +213,10 @@ export class ProjectionService {
       control.onPhase?.(next)
     }
     const signal = control.signal
-    // 取消要不要连带回收连接：只有当这条连接是**本次接入新建**的才回收。
-    // 复用既有连接（或断线留存连接）时不能收 —— 那会把用户正在用的连接断掉。
-    const hadReusable = this.#live !== undefined || this.#detached !== undefined
+    // 取消的回滚判据比的是**连接对象的身份**，不是「此刻有没有连接」：
+    // 只看布尔值会在「先连着 A、再接入 B 时取消 B」的情况下放过 B 的连接（R1 #3 D1：
+    // B 不 dispose、`#live` 不清、link 还是 connected）。
+    const liveBefore = this.#live
     try {
       // 三段边界检查：底层（ssh / 假连接 / 别家实现）未必认 signal，服务层不能因此变成
       // 「点了取消照样建成工作区」。R1-B-1 的复现 1 就是靠这条兜底转红的。
@@ -234,10 +235,14 @@ export class ProjectionService {
       // 取消且这条连接是本次新建的 ⇒ 连带回收。否则「取消」会留下一条仍在监听的
       // 远端 dsh 与一个没人持有的连接对象（R1 #2 C5：connected:true / disposed:false）。
       // 取消只回滚到接入前的状态；用户主动「断开」仍走 `disconnect()`（留存连接，§8.5）。
-      if (signal !== undefined && signal.aborted && !hadReusable) {
+      if (signal !== undefined && signal.aborted) {
         const live = this.#live
-        this.#live = undefined
-        live?.connection.dispose()
+        if (live !== undefined && live !== liveBefore) {
+          // 本次接入新装上的连接：回收它，并把 `#live` 回滚到接入前的状态。
+          // 复用（同一 target）时 `live === liveBefore`，绝不动用户正在用的连接。
+          this.#live = liveBefore
+          live.connection.dispose()
+        }
       }
       // 只清自己这一份：将来若放开并发，先结束者不能把后一次的进度清掉。
       const current = this.#attach

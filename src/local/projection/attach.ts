@@ -170,9 +170,17 @@ export async function attachWorkspace(deps: AttachDeps, request: AttachRequest):
     title: request.title ?? created.workspace.title,
     availability: 'online',
   }
-  const listed = readSessionList(
-    await rpc.call<unknown>('session/list', { args: { _request: {} } }, request.signal),
-  )
+  let listed: ReturnType<typeof readSessionList>
+  try {
+    listed = readSessionList(await rpc.call<unknown>('session/list', { args: { _request: {} } }, request.signal))
+  } catch (error) {
+    // 取消不是失败：不写任何东西（R1 #2 C3）。
+    if (request.signal?.aborted === true) throw error
+    // 远端工作区已经建好、只是会话列表拉不到：写一条 **offline** 条目让状态可见，再原样
+    // 抛错。重试会幂等命中并补齐（R1 #3 M-E：以前这里本地一条都没有，自动重连也救不回来）。
+    store.upsertWorkspace({ ...workspace, availability: 'offline' })
+    throw error
+  }
   // 两个 RPC 都回来之后才写投影表：`session/list` 段取消时若 workspace 已写进去，
   // 面板会看到一条 online 工作区而请求报「已取消」（R1 #2 C3 实测）。
   throwIfCancelled(request.signal)
