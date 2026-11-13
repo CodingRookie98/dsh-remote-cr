@@ -5,6 +5,7 @@ import test from 'node:test'
 import { TeleportError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import {
+  assertExtraEnv,
   buildRemoteLaunchScript,
   classifyTunnelFailure,
   launchSshDsh,
@@ -370,3 +371,36 @@ test('不传 localPort 时由内核挑一个空闲端口，且与远端端口不
   assert.equal(handle.endpoint.port, handle.localPort)
   await handle.dispose()
 })
+
+test('远端脚本：extraEnv 在拿到 -R 端口之后 export，且 $TELEPORT_PROXY_URL 保持为引用', () => {
+  const script = buildRemoteLaunchScript({
+    remoteRoot: '/srv/dsh',
+    remotePort: 8899,
+    waitForProxyPort: true,
+    extraEnv: { DEEPSEEK_BASE_URL: '$TELEPORT_PROXY_URL/r/deepseek', DEEPSEEK_API_KEY: 'dsh-teleport-abc' },
+  })
+  const lines = script.split('\n')
+  const readAt = lines.findIndex((line) => line.includes('IFS= read -r _teleport_proxy_port'))
+  const baseUrlAt = lines.findIndex((line) => line.startsWith('export DEEPSEEK_BASE_URL='))
+  const spawnAt = lines.findIndex((line) => line.includes('apps/cli/lib/bin.js'))
+  assert.ok(readAt >= 0 && baseUrlAt > readAt && spawnAt > baseUrlAt, '必须先拿到端口、再 export、再起 dsh')
+  // 引用不能被单引号吃掉：否则远端拿到的是字面量 $TELEPORT_PROXY_URL，推理时才连不上。
+  assert.equal(lines[baseUrlAt], "export DEEPSEEK_BASE_URL=''\"$TELEPORT_PROXY_URL\"'/r/deepseek'")
+  assert.equal(lines.find((line) => line.startsWith('export DEEPSEEK_API_KEY=')), "export DEEPSEEK_API_KEY='dsh-teleport-abc'")
+})
+
+test('extraEnv：名字不合法 / 值含换行 / 引用代理但没挂 -R，都在启动前拒绝', () => {
+  const reject = (extraEnv: Record<string, string>, hasProxyPort: boolean) => {
+    assert.throws(
+      () => { assertExtraEnv(extraEnv, hasProxyPort) },
+      (error: unknown) => error instanceof TeleportError && error.code === 'remote/startup-failed',
+    )
+  }
+  reject({ '1BAD': 'x' }, true)
+  reject({ GOOD: 'a\nb' }, true)
+  reject({ GOOD: '$TELEPORT_PROXY_URL/r/deepseek' }, false)
+  // 正例：合法名字 + 无换行 + 有代理端口，不该抛。
+  assertExtraEnv({ GOOD: '$TELEPORT_PROXY_URL/r/deepseek' }, true)
+  assertExtraEnv({ GOOD: 'plain' }, false)
+})
+

@@ -60,6 +60,14 @@ export interface LiveSshOptions {
    * 入口会记一条日志，而不是静默当成没配。
    */
   readonly proxyPort?: number | (() => number | undefined)
+  /**
+   * 追加给远端 dsh 进程的环境变量（值里可用 `$TELEPORT_PROXY_URL`）。
+   *
+   * 为什么入口要能传：远端 provider 的 `baseURL`/key 只能靠环境变量在启动时指定，
+   * 而代理的远端端口是转发建好之后才分配 —— 调用方在启动前不知道它，
+   * 所以这里只传「怎么引用」，展开交给 `buildRemoteLaunchScript`。
+   */
+  readonly extraEnv?: Readonly<Record<string, string>>
   /** 装哪个版本的 dsh（只有走到引导器时用得上）。 */
   readonly dshVersion?: string
   /**
@@ -176,6 +184,7 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
     ...(ssh.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: ssh.connectTimeoutMs }),
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
     ...(proxyPort === undefined || proxyPort <= 0 ? {} : { proxyPort }),
+    ...(ssh.extraEnv === undefined ? {} : { extraEnv: ssh.extraEnv }),
   })
   return openConnection(handle)
 }

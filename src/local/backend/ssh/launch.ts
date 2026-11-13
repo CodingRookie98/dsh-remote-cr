@@ -116,6 +116,13 @@ export interface SshLaunchOptions {
   /** 启动前的工作目录；缺省用 `remoteRoot`。给 `undefined` 表示不切目录。 */
   readonly cwd?: string | null
   readonly extraArgs?: readonly string[]
+  /**
+   * 追加给远端 dsh 进程的环境变量；值里可用 `$TELEPORT_PROXY_URL`（拿到 `-R` 端口后才展开）。
+   *
+   * 用途：把远端 provider 的 baseURL / key 指到本机代理。没有它，「凭据不出本机」只能靠
+   * 用户手工在远端写配置，而那一步没法验证。
+   */
+  readonly extraEnv?: Readonly<Record<string, string>>
   /** 等访问 URL 的上限，默认 90s：SSH 握手 + 远端 dsh 冷启动比 WSL 更慢。 */
   readonly timeoutMs?: number
   /** 关 stdin 之后等远端优雅回收的上限；默认 3s，测试可缩短。 */
@@ -152,6 +159,15 @@ export function buildRemoteLaunchScript(options: {
   readonly cwd?: string | null
   readonly extraArgs?: readonly string[]
   readonly waitForProxyPort: boolean
+  /**
+   * 追加给远端 dsh 进程的环境变量。
+   *
+   * 为什么需要它：凭据代理的**远端端口是转发建立之后才分配的**（`-R 127.0.0.1:0:…`），
+   * 而「把模型请求指向本机代理」只能靠环境变量告诉远端（provider 的 baseURL 读
+   * `DEEPSEEK_BASE_URL`，key 读 `DEEPSEEK_API_KEY`）。值里可以写 `$TELEPORT_PROXY_URL`，
+   * 由本脚本在拿到端口之后展开 —— 调用方在启动前并不知道端口，所以必须支持这个引用。
+   */
+  readonly extraEnv?: Readonly<Record<string, string>>
 }): string {
   const argv = [
     ...(options.argvPrefix ?? [options.nodeCommand ?? 'node', 'apps/cli/lib/bin.js']),
@@ -169,6 +185,9 @@ export function buildRemoteLaunchScript(options: {
     lines.push('IFS= read -r _teleport_proxy_port || exit 1')
     lines.push('export ' + PROXY_URL_ENV + '="http://127.0.0.1:$_teleport_proxy_port"')
   }
+  for (const [name, value] of Object.entries(options.extraEnv ?? {})) {
+    lines.push('export ' + name + '=' + shellWordWithProxyUrl(value))
+  }
   lines.push(argv.map((part) => shellQuote(part)).join(' ') + ' < /dev/null &')
   lines.push('_teleport_child=$!')
   lines.push("printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$_teleport_child"')
@@ -181,6 +200,50 @@ export function buildRemoteLaunchScript(options: {
   return lines.join('\n')
 }
 
+/**
+ * 把 `extraEnv` 的一个值渲染成 shell 词：`$TELEPORT_PROXY_URL` 保持为引用，其余按单引号转义。
+ *
+ * 为什么不能整体 `shellQuote`：那会把引用变成字面量 `$TELEPORT_PROXY_URL`，远端拿到的
+ * 就是一个不存在的地址 —— 而且是**看起来像成功**的那种失败（dsh 起来了、推理才连不上）。
+ */
+export function shellWordWithProxyUrl(value: string): string {
+  const token = '$' + PROXY_URL_ENV
+  const parts = value.split(token)
+  if (parts.length === 1) return shellQuote(value)
+  return parts.map((part) => (part === '' ? "''" : shellQuote(part))).join('"' + token + '"')
+}
+
+/**
+ * 校验调用方给的 `extraEnv`：名字必须是合法变量名，值里不许有换行，引用代理地址时必须真挂了 `-R`。
+ *
+ * 三条都是「静默错位」类错误的入口，所以放在启动前一次性拒绝，不在脚本里做兜底。
+ */
+export function assertExtraEnv(extraEnv: Readonly<Record<string, string>>, hasProxyPort: boolean): void {
+  const token = '$' + PROXY_URL_ENV
+  for (const [name, value] of Object.entries(extraEnv)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new TeleportError({
+        code: 'remote/startup-failed',
+        detail: '环境变量名不合法：' + JSON.stringify(name),
+        nextActions: ['改成 POSIX 变量名（字母或下划线开头，只含字母数字下划线）后重试'],
+      })
+    }
+    if (/[\n\r\0]/.test(value)) {
+      throw new TeleportError({
+        code: 'remote/startup-failed',
+        detail: '环境变量 ' + name + ' 的值里有换行或 NUL，无法安全写进远端脚本',
+        nextActions: ['去掉换行后重试'],
+      })
+    }
+    if (!hasProxyPort && value.includes(token)) {
+      throw new TeleportError({
+        code: 'remote/startup-failed',
+        detail: '环境变量 ' + name + ' 引用了 ' + PROXY_URL_ENV + '，但这次连接没有挂反向转发（没有代理端口）',
+        nextActions: ['先启动凭据代理并把端口传进来', '或把值改成不含 ' + token + ' 的字面量'],
+      })
+    }
+  }
+}
 export function localForwardSpec(localPort: number, remotePort: number): string {
   return '127.0.0.1:' + String(localPort) + ':127.0.0.1:' + String(remotePort)
 }
@@ -270,6 +333,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   const remotePort = options.remotePort ?? 8899
   const localPort = options.localPort ?? (await pickFreeLocalPort())
   const proxyPort = options.proxyPort !== undefined && options.proxyPort > 0 ? options.proxyPort : undefined
+  if (options.extraEnv !== undefined) assertExtraEnv(options.extraEnv, proxyPort !== undefined)
 
   const script = buildRemoteLaunchScript({
     remoteRoot: options.remoteRoot,
@@ -279,6 +343,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     ...(options.argvPrefix === undefined ? {} : { argvPrefix: options.argvPrefix }),
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(options.extraArgs === undefined ? {} : { extraArgs: options.extraArgs }),
+    ...(options.extraEnv === undefined ? {} : { extraEnv: options.extraEnv }),
   })
 
   const connectOptions: SshConnectOptions = {
