@@ -24,6 +24,7 @@
  */
 
 import { spawn } from 'node:child_process'
+import { connect as netConnect } from 'node:net'
 import { createServer } from 'node:net'
 
 import { classifyStartFailure, parseDshEndpoint, tailLines } from '../dsh-output.ts'
@@ -671,3 +672,101 @@ const defaultSpawn: SshLaunchSpawn = (executable, args, env) =>
     // stdin 必须是 pipe：既是端口喂给远端的通道，也是回收用的 EOF 信号。
     stdio: ['pipe', 'pipe', 'pipe'],
   }) as unknown as SshLaunchChild
+
+/** attach-only 隧道句柄：只到远端端口，不启动、也不托管 dsh。 */
+export interface SshTunnelHandle {
+  readonly localPort: number
+  readonly remotePort: number
+  log(): string
+  dispose(): Promise<boolean>
+}
+
+/**
+ * 只建一条 `-L` 隧道，**不启动** dsh（M3-2b 跨进程复用的执行端）。
+ *
+ * 为什么需要它：驻留模式下远端 dsh 已经在跑，新进程只要一条到它端口的隧道 + 登记里的
+ * token 就能接回去。走 `launchSshDsh` 会再起一个实例，直接撞端口（实测卡在重连）。
+ *
+ * 判据是「本地端口可连」，不是「ssh 进程还活着」：ssh 可能在、隧道却没建起来。
+ */
+export async function openSshTunnel(options: {
+  readonly homeDir: string
+  readonly target: SshTarget
+  readonly auth: SshAuth
+  readonly remotePort: number
+  readonly localPort?: number
+  readonly readyTimeoutMs?: number
+  readonly sshExecutable?: string
+  readonly connectTimeoutMs?: number
+  readonly spawn?: SshLaunchSpawn
+}): Promise<SshTunnelHandle> {
+  const localPort = options.localPort ?? options.remotePort + 1
+  const connectOptions: SshConnectOptions = {
+    target: options.target,
+    auth: options.auth,
+    knownHostsFile: knownHostsPath(options.homeDir),
+    forwardLocal: [localForwardSpec(localPort, options.remotePort)],
+    exitOnForwardFailure: true,
+    ...(options.sshExecutable === undefined ? {} : { sshExecutable: options.sshExecutable }),
+    ...(options.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: options.connectTimeoutMs }),
+  }
+  const invocation = buildSshInvocation(connectOptions, ['-N'])
+  const spawnProcess = options.spawn ?? defaultSpawn
+  const child = spawnProcess(invocation.executable, invocation.args, invocation.env)
+  let buffer = ''
+  const digest = (chunk: { toString(encoding?: string): string }): void => {
+    buffer += chunk.toString('utf8')
+  }
+  child.stdout?.on('data', digest)
+  child.stderr?.on('data', digest)
+
+  const ready = await new Promise<boolean>((resolve) => {
+    const deadline = Date.now() + (options.readyTimeoutMs ?? 1_500)
+    let settled = false
+    const attempt = (): void => {
+      if (settled) return
+      const socket = netConnect({ host: '127.0.0.1', port: localPort })
+      socket.once('connect', () => {
+        settled = true
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => {
+        socket.destroy()
+        if (Date.now() > deadline) {
+          settled = true
+          resolve(false)
+          return
+        }
+        setTimeout(attempt, 60)
+      })
+    }
+    attempt()
+  })
+  if (!ready) {
+    try {
+      child.kill()
+    } catch {
+      // 已经退了
+    }
+    throw new TeleportError({
+      code: 'remote/tunnel-unavailable',
+      detail: 'attach-only 隧道 ' + String(options.readyTimeoutMs ?? 1_500) + 'ms 内没建起来（本地端口 ' + String(localPort) + '）',
+      nextActions: ['确认远端实例还在监听', '重新接入（会回落到正常启动）'],
+      logTail: buffer.slice(-400),
+    })
+  }
+  return {
+    localPort,
+    remotePort: options.remotePort,
+    log: () => buffer,
+    dispose: async () => {
+      try {
+        child.kill()
+      } catch {
+        // 已经退了
+      }
+      return true
+    },
+  }
+}
