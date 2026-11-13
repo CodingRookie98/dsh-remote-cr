@@ -4,7 +4,7 @@ import { stat } from 'node:fs/promises'
 
 import { TeleportError } from '../errors.ts'
 import { knownHostsPath } from './known-hosts.ts'
-import { shellQuote } from './probe.ts'
+import { shellQuote } from '../posix-probe.ts'
 import type { SshTarget } from './config.ts'
 import { buildSftpInvocation, buildSshInvocation, type SshAuth, type SshConnectOptions } from './transport.ts'
 

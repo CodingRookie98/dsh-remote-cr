@@ -31,7 +31,7 @@ import { TeleportError } from '../errors.ts'
 import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
 import type { SshTarget } from './config.ts'
 import { knownHostsPath } from './known-hosts.ts'
-import { shellQuote } from './probe.ts'
+import { shellQuote } from '../posix-probe.ts'
 import { buildSshInvocation, type SshAuth, type SshConnectOptions } from './transport.ts'
 
 /** 远端 agent 读这个变量取凭据代理地址；名字写进远端脚本，改它就是改契约。 */

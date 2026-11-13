@@ -18,12 +18,12 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: S9 已完成（真机 7/7 + 负控逐项相等）；下一片 = SSH 侧 `RemoteBackend` 适配层并接进投影/提示词/工具层
-- **当前活跃子任务**: Task S9.5（RemoteBackend 实现类）
+- **当前活跃阶段**: S9.5a 已完成（WSL/SSH 两个 `RemoteBackend` 实现类 + POSIX 探测脚本提到中立层）；下一片 = S9.5b 把 SSH 接进投影/提示词/工具层
+- **当前活跃子任务**: Task S9.5b（`ConnectTarget` 泛化 + 按 backend 分派投影器）
 - **当前子任务重试计数**: 0/3
 - **S9 重试计数**: 4/3 已熔断并升档（探针自身缺陷 3 处 + 产品缺陷 4 处，逐条记录在 Context Log）
-- **最后一次验证状态**: 2026-11-13 — **S9 真机 7/7**（目标 `gcp`：203.0.113.10 / user hui / key 认证 / Windows OpenSSH 9.5p2）：S9-1 5ms、S9-2 6.8s、S9-3 3.2s、S9-4 66.2s、S9-5 16.8s、S9-6 4.0s、S9-7 4.4s；负控 `NEGATIVE_CONTROL=1` 4/7 且失败集恰为 `['S9-5','S9-6','S9-7']`，输出 `NEGATIVE CONTROL OK`。门禁：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **475/475**、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。上一片 S6：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **429/429**（新增 `ssh/anchors.test.ts` **16**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。**未做**：锚点作为真实工作区注册（要 `RemoteBackend` 实现类 + 工具层实参改写，本片只到映射与投影）。上一片 S5：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **413/413**（新增 `ssh/launch.test.ts` **18**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S4 的 395 条无回归。**未做**：SSH 真机端到端（要等 S9 探针，S5 目前只有假 spawn 单测与「本机真实 `sh` 跑脚本」两条证据）。
-- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 = `4289c91`；S3 = `cba6966`；`dsh-output` 搬家 = `244e98f`；S4 = `72587d0`；S5 = `34ed334`；S6 = `1aeded3`；S7 = `bae2bff`；S8 = `1b68abc` + 补正 `171dc26`；S9 前置 = `9386bc8`；S9 = 见 Context Log）
+- **最后一次验证状态**: 2026-11-13 — **S9.5a 完成**：新增 `src/local/backend/posix-probe.ts`（POSIX 探测脚本与解析，后端无关）、`src/local/backend/wsl/remote-backend.ts`（`WslRemoteBackend`）、`src/local/backend/ssh/remote-backend.ts`（`SshRemoteBackend`）与三份测试（`posix-probe.test.ts` 5 条、`wsl/remote-backend.test.ts` 7 条、`ssh/remote-backend.test.ts` 6 条）。门禁：`npx tsc --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **493/493**、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。**未验证**：两个实现类都没有真机跑过（WSL 侧的 `runInDistro` 与 SSH 侧的 `connectRemote` 都只在上一片的自由函数上验证过，适配层本身只有注入假实现的路）；`mirroredNetwork` 仍是 `undefined`（`wsl --list --verbose` 没有该列，判定归 env-policy）。上一片 **S9 真机 7/7**（目标 `gcp`：203.0.113.10 / user hui / key 认证 / Windows OpenSSH 9.5p2）：S9-1 5ms、S9-2 6.8s、S9-3 3.2s、S9-4 66.2s、S9-5 16.8s、S9-6 4.0s、S9-7 4.4s；负控 `NEGATIVE_CONTROL=1` 4/7 且失败集恰为 `['S9-5','S9-6','S9-7']`，输出 `NEGATIVE CONTROL OK`。门禁：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **475/475**、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。上一片 S6：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **429/429**（新增 `ssh/anchors.test.ts` **16**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。**未做**：锚点作为真实工作区注册（要 `RemoteBackend` 实现类 + 工具层实参改写，本片只到映射与投影）。上一片 S5：`npx tsc -p tsconfig.json --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **413/413**（新增 `ssh/launch.test.ts` **18**）、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。S4 的 395 条无回归。**未做**：SSH 真机端到端（要等 S9 探针，S5 目前只有假 spawn 单测与「本机真实 `sh` 跑脚本」两条证据）。
+- **最新有效提交**: 见下方 Context Log（S1 + S0-7 = `b0fb315`；S2 = `4289c91`；S3 = `cba6966`；`dsh-output` 搬家 = `244e98f`；S4 = `72587d0`；S5 = `34ed334`；S6 = `1aeded3`；S7 = `bae2bff`；S8 = `1b68abc` + 补正 `171dc26`；S9 前置 = `9386bc8`；S9 = 见 Context Log；S9.5a = 见 Context Log）
 - **阻断原因**: 无
 
 ---
@@ -86,6 +86,7 @@
 | **S6** | 锚点工作区 + 虚拟根映射 | `ssh/anchors.ts` | 锚点目录创建、`map.json` 落盘、提示词投影与工具层共用同一张表、`doctor` 可打印 | [x] |
 | **S7** | 上行文件（SFTP → `cat >` 回退） | `ssh/upload.ts` | 失败瞬间 `unpipe + destroy`；无虚假进度日志 | [x] |
 | **S8** | 引导器（远端 Node/dsh 安装） | `installer/` 扩展 | 镜像测速、缓存、断点、`tar` 预检、私有 staging 不放 `/tmp` | [x] 21 → 22 条全绿；dsh 装进 `<staging>/npm` 前缀（非 root 也能装，`1b68abc` + `171dc26`）；断点账本坏记录不当空账本；任一步失败即停。**未验证**：真机执行（S9 覆盖） |
+| **S9.5a** | `RemoteBackend` 实现类（WSL/SSH）+ POSIX 探测中立化 | `posix-probe.ts` + `wsl/remote-backend.ts` + `ssh/remote-backend.ts` + 三份测试 | 两个实现类都满足 `RemoteBackend` 三动词；探测不完整一律 `remote/probe-incomplete`；`mirroredNetwork` 未探测给 `undefined`；`dispose` 幂等且任一不干净即 `clean:false` | [x] 18 条新测试全绿（5 + 7 + 6）；**未验证**：适配层无真机证据（它调的自由函数在 S9 跑过，经适配层没跑过）；尚未接进投影/提示词/工具层 |
 | **S9** | 真机端到端探针 `spikes/m2/ssh-exit-demo/` | probe.ts | 与 M1 `p352` 同构（7 项 + 负控 + §7 门禁测量） | [x] 真机 **7/7**（`gcp`）+ 负控失败集逐项相等；产物 `measurements.json` / `measurements.neg.json`。7 项：配置解析 / TOFU / 单 channel 探测 / 引导器装 `@deepseek-ai/dsh@0.2.2-rc.1` / `-L`+`-R` 同连接且远端请求真的回到本机代理 / 经 `-L` 读远端 HTTP 且远端命令与探测一致 / 看门狗回收 + 本地隧道口关闭 |
 
 **出口**：同一套 UI 与语义下，SSH 达到 A1–A8（= A9 达成），且 S1–S8 全部勾选、S9 真机 7/7 + 负控失败集逐项相等。
@@ -94,6 +95,12 @@
 
 ## 4. Context Log
 
+- 2026-11-13：**S9.5a 完成**（后端适配层落地，未接投影）。新增三个文件：`src/local/backend/posix-probe.ts`、`src/local/backend/wsl/remote-backend.ts`（`WslRemoteBackend`）、`src/local/backend/ssh/remote-backend.ts`（`SshRemoteBackend`），加三份测试（5 + 7 + 6 条）。三条硬决定：
+  ① **把 POSIX 探测脚本提到中立层**，而不是让 WSL 反向 import SSH：`PROBE_MARKER` / `PROBE_FIELDS` / `buildProbeScript` / `shellQuote` / `parseProbeOutput` / `emptyToUndefined` / `toSystemFacts` 全在 `posix-probe.ts`，`ssh/probe.ts` 只留 SSH 特有的三件事（走 `connectRemote` 做指纹 TOFU、映射成 `BackendProbe`、失败给 nextActions），并 re-export 纯逻辑保住既有 import 与 12 条 S4 测试。`ssh/{launch,upload,bootstrap}.ts` 的 `shellQuote` import 改指向 `../posix-probe.ts`（三行）。理由：同一段脚本对 WSL / SSH / docker 是同一句话，留在 ssh 目录里就等于「中立接口又依赖某一家实现」，正是 S0-7 修过的那种环。
+  ② **`mirroredNetwork` 对 WSL 也给 `undefined`**，不冒充 `false`：`wsl --list --verbose` 没有网络模式列，要判定得读 `/etc/resolv.conf` 或 `ip route`，那是 env-policy 的活。给 `false` 会被上层读成「已探测且确认是 NAT」，和 S4 对 SSH 的处理保持同一口径。
+  ③ **两个适配器都只做委派，不重新实现语义**：`probe()` 里只做「跑脚本 → 解析 → 不完整就抛 `remote/probe-incomplete` → 映射字段」；`launch()` 原样把 `LaunchRequest` 合进各自后端的启动选项（`exactOptionalPropertyTypes` 下用条件展开，避免写入 `undefined` 键）；`dispose()` 记账自己推入的句柄，**任一句柄不干净 ⇒ `clean: false`**，且第二次调用是空操作（有断言）。刻意不在这里 bootstrap：装包/上传是引导器职责，混进来会让 probe 与 launch 的成功条件纠缠。
+  接线点：`WslRemoteBackend` 收 `runInDistro` / `launch` 两个注入缝，`SshRemoteBackend` 收 `probe` / `launch` 两个；测试全部用假实现，因此**适配层本身仍无真机证据**——它调的 `runInDistro` / `connectRemote` / `launchRemoteDsh` / `launchSshDsh` 在 S9 已真机跑过，但「经适配层走一遍」这件事没跑过。门禁：`npx tsc --noEmit` 与 `-p tsconfig.client.json` 均 Exit 0、`npm test` **493/493**、`npm run build` Exit 0、`npm run build:client` 17 modules / 66360 B。
+  下一步 S9.5b：泛化 `projection/service.ts:54-60` 的 `ConnectTarget`（现为 WSL 专属 `{distro, port, remoteRoot}`），按 `kind` 分派投影器（WSL → UNC，SSH → 锚点虚拟根），牵动 service / live / store / attach / routes / client api 六处。
 - 2026-11-13：**S9 真机闭环 7/7**（第一次让 SSH 侧在真实主机上跑完整条链路，目标 `gcp`）。产物：`spikes/m2/ssh-exit-demo/probe.ts` + `measurements.json` + `measurements.neg.json`。真机联调挖出 **4 个产品缺陷 + 3 个探针自身缺陷**，逐条记账（都是「假通过」或「假失败」这一类，靠单测无法发现）：
   1. `stagingDirFor(homeDir, target)` 的 `homeDir` 是**远端** home，探针却传了本地 `homedir()`，远端 `mkdir -p 'C:/Users/hui/...'` 建出相对目录并 exit 0 ⇒ 引导器假通过。修法：`bootstrap.ts` 改用 `posix.join`（win32 的 `join` 会产出反斜杠，远端 bash 当转义吃掉），注释写明语义；探针改传 `facts.probe.home`。
   2. Windows OpenSSH 9.5p2 在 `-o LogLevel=VERBOSE` 下**不打印** `Server host key:` 行（只三行 INFO），`ssh-keyscan` 在本机也不可用（只吐 `# SSH-2.0-…` 与 `choose_kex: unsupported KEX`）⇒ 靠 stderr 抓指纹整条路不可用。改为三级回退 **stderr → 私有 known_hosts → keyscan**（`hostKeySource: 'verbose'|'known-hosts'|'keyscan'|'none'`）：`accept-new` 亲手写下的私有 `known_hosts` 就是明文公钥，自算 `SHA256:` 指纹最可靠（`fingerprintOfKeyBlob`）。

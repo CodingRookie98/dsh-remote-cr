@@ -2,7 +2,7 @@ import { dirname, posix } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 
 import { anchorIdFor, anchorTargetOf } from './anchors.ts'
-import { shellQuote } from './probe.ts'
+import { shellQuote } from '../posix-probe.ts'
 import type { SshTarget } from './config.ts'
 
 /** 与 package.json 的 engines 保持同一句话；两处不一致时以 package.json 为准（有测试对照）。 */
