@@ -13,6 +13,7 @@ import { DirectoryFlow, TeleportIcon, TeleportPanel } from './components.ts'
 import type { SlotRecord } from './diagnostics.ts'
 import { HALF, describeSelf } from './half.ts'
 import { registerSlots, type RegistrationContext } from './registration.ts'
+import { ensurePanelStyles } from './styles.ts'
 import { wizardStore } from './wizard-store.ts'
 
 /** 依赖的宿主服务。`layout` 让面板进得了主区，`slots` 是注册入口。 */
@@ -35,6 +36,8 @@ function stringOption(options: Record<string, unknown>, name: string): string | 
 }
 
 export function apply(ctx: ClientContext): void {
+  // 幂等：样式只挂一次；插槽没有给第三方 CSS 的入口，所以用 <style> + data-teleport 选择器。
+  ensurePanelStyles()
   const mounted = registerSlots(ctx, {
     panel: TeleportPanel,
     icon: TeleportIcon,

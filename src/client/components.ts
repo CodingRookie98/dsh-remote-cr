@@ -988,7 +988,9 @@ export function TeleportPanel(): unknown {
     'div',
     { 'data-teleport': 'panel' },
     h('div', { 'data-teleport': 'panel-title' }, '瞬移'),
-    h('div', { 'data-teleport': 'panel-flow' }, summary),
+    // 只有流程真的在进行时才显示它：`flow` 是「添加工作区」的状态，接入成功后它是 undefined，
+    // 常显会让面板同时出现「尚未连接远端」和「远端已连接 · gcp」（截图里就是这么矛盾的）。
+    flow === undefined ? null : h('div', { 'data-teleport': 'panel-flow' }, summary),
     flow === undefined ? null : h('div', { 'data-teleport': 'panel-phase' }, FLOW_PHASE_LABELS[flow.phase]),
     isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
     h('div', { 'data-teleport': 'panel-connected', 'data-link': snapshot?.link ?? 'unknown' }, linkLine(snapshot)),
