@@ -6,7 +6,7 @@
 
 - 项目名：**dsh-remote-cr**（曾用名 `dsh-teleport` / 中文代号「瞬移」；2026-11-13 改名）
 - **命名分层**：包名与插件 id 是 `dsh-remote-cr`；**运行时标识保留 `teleport`**（`~/.dsh-teleport` 锚点与 staging、`DSH_TELEPORT_*` 环境变量、`/teleport` API 前缀、`data-teleport` DOM 属性）—— 改名不该作废既有锚点、staging 与已部署的环境变量
-- 状态：**M0 已关闭**（2026-10-31）；**M1（WSL）与 M2（SSH）已交付**——两条链路的 A1–A8 均有真机证据（560 条单测 + 7 套带负控的真机探针），**2026-11-13 按「有条件签署」放行**（A5 的取消能力分级、已知限制与未验证清单见 [`签署归档`](./docs/project/reviews/2026-11-13-m2-exit-signoff/README.md)）；**M3（长任务 / 丝滑）待开**（计划：[`2026-11-13-m3-long-task.md`](./docs/project/plans/2026-11-13-m3-long-task.md)）
+- 状态：**M0 已关闭**（2026-10-31）；**M1（WSL）与 M2（SSH）已交付**——两条链路的 A1–A8 均有真机证据（560 条单测 + 7 套带负控的真机探针），**2026-11-13 按「有条件签署」放行**（A5 的取消能力分级、已知限制与未验证清单见 [`签署归档`](./docs/project/reviews/2026-11-13-m2-exit-signoff/README.md)）；**M3 进行中**：长任务闭环已打通——`keepAlive` 让远端 dsh 在本地退出后继续跑，重连**复用同一实例**（真机 `sameInstance:true`、会话 id 不变），M3-1 的取消状态机也已形式化（见 [`2026-11-13-m3-long-task.md`](./docs/project/plans/2026-11-13-m3-long-task.md)）
 - 目标平台：Windows 上的 DSH Desktop / dsh web + 本机 WSL2 发行版 / 任意 POSIX SSH 主机
 - 后端交付顺序：**WSL2（M1）→ SSH（M2）→ Docker（M5）**
 - 非目标（v1）：完整 IDE（LSP/Monaco）、多人协作、headless-only 部署；Docker 可用链路排到 M5

@@ -51,4 +51,6 @@
 
 - ✅ `keepAlive()` 真的保住了远端 dsh（`spikes/m3/measurements.long-task.json`，`waitSeconds:30`）。
 - ✅ 默认（`keepRemote:false`）行为不变（同一探针 `dshAliveAfterWait:false`）。
-- ❌ 跨进程复用、TTL、显式结束入口、WSL 的 keepAlive —— 均未实现。
+- ✅ **跨进程复用**（2026-11-13）：`live.ts` 读登记 → `openSshTunnel` → 登记 token 握手；真机 `KEEP=1` 验收 `sameInstance:true`、`sessionKept:true`、28 条会话。
+- ⚠️ 隧道就绪窗口：**1.5 s 太短**（实测冷连接 ~4 s），已改 5 s；这是复用「看起来失败」的真凶。
+- ❌ TTL 的**自动回收执行**、面板「结束远端」入口、WSL 的 keepAlive —— 仍未做（TTL 目前只有判定，没有执行）。
