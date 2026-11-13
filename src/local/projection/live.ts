@@ -287,16 +287,21 @@ async function connectSsh(
     onStage: (stage) => control.onPhase?.(stage),
   })
   control.onPhase?.('tunnel')
-  return openConnection(handle, policy)
+  return openConnection(handle, policy, control.signal)
 }
 
 /** 握手 + 打包成 `RemoteConnection`；启动器只负责给出一个可连的句柄。 */
-async function openConnection(handle: RemoteDshHandle, envPolicy: EnvPolicy): Promise<RemoteConnection> {
+async function openConnection(
+  handle: RemoteDshHandle,
+  envPolicy: EnvPolicy,
+  signal?: AbortSignal,
+): Promise<RemoteConnection> {
   const endpoint = handle.endpoint
   let rpc: RemoteRpc
   try {
     // RemoteRpc.open 内部就是 handshakeRemote：握手只在这里发生一次。
-    rpc = await RemoteRpc.open(endpoint, endpoint.token)
+    // signal 必须传：握手最坏 15s，不传就等于「点了取消要等它握完」（R1 #2 B-1 同族）。
+    rpc = await RemoteRpc.open(endpoint, endpoint.token, signal === undefined ? {} : { signal })
   } catch (error) {
     // 握手失败也要把远端进程收掉，否则会留下一个没人用的 dsh 占着端口。
     void handle.dispose()

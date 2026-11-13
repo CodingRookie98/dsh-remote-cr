@@ -26,7 +26,7 @@
 | 项 | 断言 | 结果 |
 | --- | --- | --- |
 | G-A5-1 | 向导按阶段推进（`data-phase`）、取消按钮可见、最终 online | PASS `["probe","bootstrap","launch","tunnel","attach"]`，`sawCancelButton=true`，`linkPhase=connected` |
-| G-A5-2 | 点「取消」**真的打到宿主**（不是只点了按钮） | PASS 页面内抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`；进度条消失、无错误框残留、**口径**：本跑 `sawBusy:false`（远端端口从未监听）⇒ 端口回收**未测到**，`portReclaim:null`；此前记的「62589 ms 后释放」是 12 次空查的耗时，属误读 |
+| G-A5-2 | 点「取消」**真的打到宿主**（不是只点了按钮） | PASS 页面内抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`；进度条消失、无错误框残留、**口径**：取消点在 `tunnel` 段（`sawBusy:true`），但**端口 60 s 内一直在监听**（`portFreed:false`）⇒ `portReclaim:null`（未回收）；C5 单测证明本次新建连接会被 `dispose()`，远端 dsh 的退出时序未验证。此前记的「62589 ms 后释放」是 12 次空查的耗时，属误读 |
 | G-A5-2b | 在 `probe` 段（远端检查/安装）取消 ⇒ `/attach` 终态是 `remote/cancelled` | PASS `cancelPhase="probe"`、`code="remote/cancelled"`（修复前这条必然红：取消只在 `launch` 段生效） |
 | G-A5-3 | 取消之后重来仍能接入 | PASS `online=true` |
 | G-A8-1 | 失败给结构化码 + detail + nextActions | PASS `remote/workspace-invalid-path`，detail 带远端原文，next=`["查看远端日志","重试"]` |

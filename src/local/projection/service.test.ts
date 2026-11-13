@@ -523,3 +523,98 @@ test('并发第二次 attach 被 remote/attach-busy 拒绝，且不覆盖第一�
   release()
   await first
 })
+
+test('取消发生在 session/list 期间：抛 remote/cancelled，且投影表一条都不写', async () => {
+  const store = new ProjectionStore()
+  const timers = fakeTimers()
+  const controller = new AbortController()
+  let releaseSessions!: () => void
+  const sessionGate = new Promise<void>((resolve) => { releaseSessions = resolve })
+  const rpc = {
+    async call<T>(endpoint: string): Promise<T> {
+      if (endpoint === 'workspace/create') {
+        return {
+          workspace: { workspaceId: 'ws-c3', path: TARGET.remoteRoot, title: 'w', sessionIds: [], createdAt: '', updatedAt: '' },
+          created: true,
+        } as T
+      }
+      if (endpoint === 'session/list') await sessionGate
+      return { items: [] } as T
+    },
+    openStream() {
+      return { cancel() {}, async *[Symbol.asyncIterator]() {} }
+    },
+  }
+  const service = new ProjectionService({
+    store,
+    timers,
+    async connect() {
+      return { rpc: rpc as never, dispose() {} }
+    },
+  })
+  const running = service.attach(
+    TARGET,
+    { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/c3' },
+    { signal: controller.signal },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  controller.abort()
+  releaseSessions()
+  await assert.rejects(
+    running,
+    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+  )
+  // R1 #2 C3：`session/list` 段取消时若 workspace 已写进去，面板会看到在线条目而请求报已取消。
+  assert.equal(store.workspaces().length, 0, 'session/list 段取消也不许写投影')
+})
+
+test('取消发生在 attach 段：本次新建的连接要被 dispose，而不是留成 connected', async () => {
+  const store = new ProjectionStore()
+  const timers = fakeTimers()
+  const controller = new AbortController()
+  let disposed = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const rpc = {
+    async call<T>(endpoint: string): Promise<T> {
+      if (endpoint === 'workspace/create') {
+        await gate
+        return {
+          workspace: { workspaceId: 'ws-c5', path: TARGET.remoteRoot, title: 'w', sessionIds: [], createdAt: '', updatedAt: '' },
+          created: true,
+        } as T
+      }
+      return { items: [] } as T
+    },
+    openStream() {
+      return { cancel() {}, async *[Symbol.asyncIterator]() {} }
+    },
+  }
+  const service = new ProjectionService({
+    store,
+    timers,
+    async connect() {
+      return {
+        rpc: rpc as never,
+        dispose() {
+          disposed += 1
+        },
+      }
+    },
+  })
+  const running = service.attach(
+    TARGET,
+    { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/c5' },
+    { signal: controller.signal },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  controller.abort()
+  release()
+  await assert.rejects(
+    running,
+    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+  )
+  // R1 #2 C5：取消后若连接还在、远端还在监听，就是「取消了什么也没发生」的假象。
+  assert.equal(disposed, 1, '取消要回收本次新建的连接')
+  assert.equal(service.connected, false)
+})

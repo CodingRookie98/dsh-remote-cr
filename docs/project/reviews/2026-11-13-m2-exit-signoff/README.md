@@ -19,6 +19,7 @@
 2. **A9 仍未成立**：A9 要求两条链路都达到 A1–A8，而 WSL 轮的签署（`2026-11-01-m1-exit-demo`）终审裁决仍是「未定」。
 3. **R1 #1 的两条 BLOCKER 都已修并复测**：取消现在贯通到远端检查 / 引导器安装 / 握手 / 接入 RPC，`probe` 段取消的真实终态是 `remote/cancelled`（`G-A5-2b`）；取消后不再往投影表写在线条目。
 4. **仍属未验证的子句**见 §3 —— 它们没有因为这一轮修复而变成已验证。
+5. **R1 #2（复审）判「不是 Zero Blockers」**：1 BLOCKER + 3 MAJOR + 6 MINOR —— 握手段没有 signal、已 abort 的 signal 不预检、`/attach` 单飞存在 TOCTOU、`launch` 仍由 stderr 首字节触发、取消落在 tunnel/attach 段时连接留存且未写进契约。五条已全部处置（§4.1），R1 的 `round2-probes.test.ts` **5/5 由绿转红**，另新增 2 条单测（C3/C5）与 `architecture.md` §8.5 的「取消 ≠ 断开 ≠ 回收」契约。
 
 ## 2. A1–A8 逐条对证据（2026-11-13 最终代码）
 
@@ -28,7 +29,7 @@
 | **A2** 宿主在远端 | 远端有 `dsh` 进程；模型请求由远端发起 | `env-policy.ts` 11/11（按端口读 `/proc/<pid>/environ`）+ `model-request.ts` 8/8（代理侧 `status=200`、`substitutions` 有记录） | 7/11（失败集 `A4-4..A4-7`） | ✅ 已验证；⚠️「关 GUI 后会话数据」未验证（§3） |
 | **A3** 远端插件可用 | 远端插件**真的注册了工具/钩子** | `remote-tools.ts` 三态：present 8/8（工具表 32→38）、absent 8/8（32）、对照 `web_fetch` 两态都在 | 失败集恰为 `A3-3` | ✅ 已验证（工具面；钩子未单独取证） |
 | **A4** 环境可选 | 三档至少两档可用且状态可见 | `env-policy.ts` 11/11：`reuse` 不加变量、`isolated` 只加 `DSH_HOME` 且目录落地、`sync` 明确拒绝；面板 `panel-env` 报档位 | 7/11（`A4-4..A4-7`） | ✅ 已验证 |
-| **A5** 首连体验 | 分阶段进度 + 取消；二次连接 ≤ 5s | `GATE=a5a8` 正向 **8/8**：`probe→bootstrap→launch→tunnel→attach` 依次出现；`G-A5-2` 取消打到宿主（`{"cancelled":true}`）、进度消失、无错误框；**`G-A5-2b` 在 `probe` 段取消 ⇒ `/attach` 终态 `remote/cancelled`**；二次连接见 `ssh-e2e/measurements.json`（热组重连 P50 1664 / P90 2094，限 5000） | 负控 3/8，失败集 `G-A5-2/G-A5-2b/G-A8-1/G-A8-2/G-A8-3` | ✅ 已验证（；端口回收**本跑未观测到**：`sawBusy:false`、`portReclaim:null` —— 不再把空等耗时当成回收耗时） |
+| **A5** 首连体验 | 分阶段进度 + 取消；二次连接 ≤ 5s | `GATE=a5a8` 正向 **8/8**：`probe→bootstrap→launch→tunnel→attach` 依次出现；`G-A5-2` 取消打到宿主（`{"cancelled":true}`）、进度消失、无错误框；**`G-A5-2b` 在 `probe` 段取消 ⇒ `/attach` 终态 `remote/cancelled`**；二次连接见 `ssh-e2e/measurements.json`（热组重连 P50 1664 / P90 2094，限 5000） | 负控 3/8，失败集 `G-A5-2/G-A5-2b/G-A8-1/G-A8-2/G-A8-3` | ✅ 已验证（；端口回收**仍未观测到**：取消点在 `tunnel` 段（`sawBusy:true`、`portFreed:false`，60 s 内端口一直在监听）；C5 单测证明本次新建连接会被 `dispose()`，但**远端 dsh 何时退出未验证**（契约见 `architecture.md` §8.5，`portReclaim:null` 不再被当成「已回收」）） |
 | **A6** 凭据边界 | 远端只有占位令牌；真实 key 仅本机 | `proxy-ingress.ts` 6/6（真值只在假上游、远端 grep 不到）+ `model-request.ts` 8/8（代理侧入站记录含替换日志） | 2/6（`PX-2..PX-5`） | ✅ 已验证 |
 | **A7** 断线恢复 | 断线后状态可见、自动恢复、可回收 | **`spikes/m2/ssh-e2e/reconnect.ts` 正向 7/7**：杀远端 dsh（`killed: 96967`）⇒ `remote/tunnel-unavailable`、`retrying`、投影全 offline；**未手动干预**，2s 档自动重连 **18340 ms** 连回、端口 3550 ms 重新监听、投影 251 ms 重建且 id 不变；recycle 后 3113 ms 端口释放。面板侧另有 S2P-6（断开 13 ms / 重连 1865 ms）与 G-CLEAN | 负控（永不触发的 `ReconnectTimers`）4/7，失败集 `A7-3/A7-3b/A7-4` | ✅ 已验证（口径：远端 dsh 被杀；链路丢包与整机重启的握手时序未验证） |
 | **A8** 失败可诊断 | 结构化码 + 可复制日志 + 重试入口 | `GATE=a5a8` 8/8：`remote/workspace-invalid-path` + detail + nextActions；复制按钮在；**点重试真的发出新一次 `/attach`（`attachCalls: 4→5`）并恢复**；`forward-denied.ts` 5/5（`remote/forward-unavailable`） | 负控 3/8（`G-A8-1/2/3` 逐项转红） | ✅ 已验证 |
@@ -42,7 +43,7 @@
 | A2「关掉本地 GUI 不影响远端会话数据」 | 关宿主后从另一个客户端读远端会话记录 | 现有证据只到「关宿主后远端 dsh 被看门狗回收（不留孤儿）」；会话数据落远端 `DSH_HOME` 只由 A4 隔离档间接支持 |
 | A7「链路丢包 / 整机重启后恢复」 | 断网（TCP 超时）与远端重启后 cookie 失效的完整握手时序 | 本轮验的是「远端 dsh 被杀」，它让 `-L` 立刻被拒，等价于传输层消失；真正的链路丢包是另一种时间尺度 |
 | A5 阶段覆盖 | `verify` / `barrier` 在 SSH 路径上的出现与文案 | 这两段在 SSH 上没有发射点（`verify` 只在 M1 的 `workspace.ts:224`）；热路径只走五段 |
-| A5 端口回收代价 | 取消后远端 dsh 从「在监听」到「释放」的耗时 | 本跑取消落在 `bootstrap` 早期（`sawBusy:false`），远端从未监听；要测它必须把取消点移到 `tunnel`/`attach` 段 |
+| A5 端口回收代价 | 取消后远端 dsh 从「在监听」到「释放」的耗时 | 取消点已移到 `tunnel` 段（`sawBusy:true`），但 **60 s 内端口一直在监听**（`portFreed:false`）。C5 单测证明 `dispose()` 被调用；远端 dsh 的退出由看门狗在 ssh 结束之后完成，这段时序**未验证**——当前最可能被 R1 #3 抓的一条 |
 | A3 插件钩子 | 插件自有钩子的运行时取证 | 判据只能看 `tools[]`，钩子是进程内注册，没有可观察面 |
 
 ## 4. R1 #1 处置记录（2026-11-13）
@@ -62,13 +63,25 @@ R1 报告：[../2026-11-13-m2-exit-r1/README.md](../2026-11-13-m2-exit-r1/README
 
 **残留**：`isTransportLoss` 只认 `remote/tunnel-unavailable`，远端码 slug 若撞上该串仍会误判（m-2 的另一半）——未改，留给 R1 #2 判断是否阻断。
 
+### 4.1 R1 #2 处置（2026-11-13，第二轮复审）
+
+| 条目 | 处置 | 取证 |
+|---|---|---|
+| **B-1 剩余**（握手无 signal） | `RemoteRpcOptions.signal`；`handshakeRemote` 用 `AbortSignal.any([取消, 超时])`；`live.openConnection` 把 signal 传下去 | 夹具 C2/C4 转红；取消在握手阶段即抛 `remote/cancelled` |
+| **C4**（已 abort 的 signal 不预检） | `transport.ts` 挂监听前查 `signal.aborted` → 立刻 `onAbort()` 并结束 | 夹具 C4 由「照跑并正常返回」转红（现在抛 cancelled） |
+| **N1**（`/attach` 单飞 TOCTOU） | 检查与置位挪到 `readJsonBody` **之后**，两者之间不再有 await | 夹具 C2 转红 |
+| **N2**（stderr 推 launch） | `digest(chunk, announce)`：stderr 传 `false`，只进 buffer 与标记，不推阶段 | 夹具 C1 转红 |
+| **N3**（取消后连接留存且未入契约） | `service.attach` 记住接入前是否有可复用连接；取消且本次新建 ⇒ `dispose()`；`architecture.md` §8.5 写死「取消 ≠ 断开 ≠ 回收」 | 夹具 C5 转红 + 新单测「取消发生在 attach 段：连接要被 dispose」 |
+| **C3**（`session/list` 段取消仍写投影） | `attachWorkspace` 在两个 RPC 都回来、过了取消检查之后才写投影表 | 夹具 C3 转红 + 新单测「session/list 段取消也不许写投影」 |
+
 ## 5. R1 台账
 
 | 轮次 | 基线 | 派发 | 结果 |
 |---|---|---|---|
 | R1 #1 | `1accc74`（被测 `9b1f58c`） | `subagent r1-reviewer`，首轮因 `(no LLM providers)` 空转被停；后端恢复后同一 agent 完成 | **报告已落盘**（230 行 + `repro/cancel-lie.test.ts`）：2 BLOCKER / 5 MAJOR / 8 MINOR，**非 Zero Blockers**。Lead 已处置（§4），复测正向 8/8、负控 3/8 |
 | R1 #2（待派） | 本轮修复后的工作区 | — | **未派发**。复审输入 = 本条 + §4 处置表 + `repro/cancel-lie.test.ts`（现在应 2/3 转红、第 3 条因断言只看 HTTP 状态而不再有效） |
-| R2（待派） | R1 #2 之后 | — | 元架构师终审 |
+| R1 #2 | `1c12736` | `subagent r1-reviewer-2` | **报告已落盘**：1 BLOCKER + 3 MAJOR + 6 MINOR，非 Zero Blockers；夹具 `round2-probes.test.ts` C1–C5 当时 5/5 绿（缺陷成立）。Lead 已处置（§4.1），复跑后该夹具 5/5 转红 |
+| R2（待派） | R1 #3 之后 | — | 元架构师终审 |
 
 ## 6. Lead 代位自查（不替代 R1）
 
@@ -87,7 +100,8 @@ R1 报告：[../2026-11-13-m2-exit-r1/README.md](../2026-11-13-m2-exit-r1/README
 - [x] 门禁：双 tsc Exit 0 / `pnpm test` 558/558 / `build:client` 19 modules · 80635 B
 - [x] A5/A8 正向 8/8 + 负控 3/8（最终代码）
 - [x] A7 正向 7/7 + 负控 4/7（`spikes/m2/ssh-e2e/reconnect.ts`）
-- [ ] R1 #2 复审（基线 = 本轮修复后的工作区）
+- [x] R1 #2 复审（判 1 BLOCKER + 3 MAJOR + 6 MINOR；已全部处置，见 §4.1）
+- [ ] R1 #3 复审（基线 = 本轮修复后的工作区）
 - [ ] R2 元架构师终审
 - [ ] §3 剩余未验证子句（A2 关 GUI、A7 链路丢包/整机重启、A5 verify/barrier 与端口回收代价、A3 钩子）
 - [ ] `isTransportLoss` 的 slug 撞名风险（m-2 残留）

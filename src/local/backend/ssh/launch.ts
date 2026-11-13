@@ -398,9 +398,15 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     markTail = window.slice(-MARK_WINDOW)
   }
 
-  const digest = (chunk: { toString(encoding?: string): string }): void => {
+  /**
+   * 收日志。`announce` 只在 **stdout** 上为真：ssh 的 stderr 第一行可能就是
+   * `Permission denied` / `REMOTE HOST IDENTIFICATION HAS CHANGED`，把它当「launch」
+   * 会把一次失败的连接显示成「启动远端 dsh」（R1 #2 N2）。stderr 仍进 buffer（端口分配与
+   * 看门狗标记要从那里读），只是不推阶段。
+   */
+  const digest = (chunk: { toString(encoding?: string): string }, announce = true): void => {
     const text = chunk.toString('utf8')
-    if (!announcedLaunch && text !== '') {
+    if (announce && !announcedLaunch && text !== '') {
       announcedLaunch = true
       options.onStage?.('launch')
     }
@@ -433,7 +439,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     }
 
     const onStderr = (chunk: { toString(encoding?: string): string }): void => {
-      digest(chunk)
+      digest(chunk, false)
       if (settled) return
       if (portSent) return
       const allocated = parseAllocatedPort(buffer)

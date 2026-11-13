@@ -170,11 +170,13 @@ export async function attachWorkspace(deps: AttachDeps, request: AttachRequest):
     title: request.title ?? created.workspace.title,
     availability: 'online',
   }
-  store.upsertWorkspace(workspace)
-
   const listed = readSessionList(
     await rpc.call<unknown>('session/list', { args: { _request: {} } }, request.signal),
   )
+  // 两个 RPC 都回来之后才写投影表：`session/list` 段取消时若 workspace 已写进去，
+  // 面板会看到一条 online 工作区而请求报「已取消」（R1 #2 C3 实测）。
+  throwIfCancelled(request.signal)
+  store.upsertWorkspace(workspace)
   // 归属靠远端给的 sessionIds：SessionSummary 不带 workspaceId，按 cwd 猜会串台。
   const owned = new Set(created.workspace.sessionIds)
   const sessions: ProjectedSession[] = []

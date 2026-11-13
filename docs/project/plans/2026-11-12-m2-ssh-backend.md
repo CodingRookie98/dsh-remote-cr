@@ -18,7 +18,7 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: **S10-K / S10-L 完成 —— R1 #1 的两条 BLOCKER 已修并复测**（A5/A8 正向 8/8 + 负控 3/8；A7 正向 7/7 + 负控 4/7），A1–A8 的 SSH 轮证据面齐。下一片 = **R1 #2 复审**（基线 = 本轮修复后的工作区）→ R2 → 出口签署
+- **当前活跃阶段**: **S10-M 完成 —— R1 #2 的 1 BLOCKER + 3 MAJOR 已处置**（握手取消、abort 预检、单飞 TOCTOU、stderr 阶段、取消后回收 + 投影写入时机），R1 的 `round2-probes.test.ts` 5/5 转红、`pnpm test` 560/560、A5/A8 正向 8/8 + 负控 2/8。下一片 = **R1 #3 复审**（基线 = 本轮修复后）→ R2 → 出口签署
 - **历史阶段（S10 已完成）**: M2 出口的三条硬门槛 + 面板点击证据都已真机取证（代理接进 SSH 链路 `4881eca`；门槛 1 网络面 `5b5ff40` + 模型面 `8a74635`；门槛 2 `e991dd5`；门槛 3 `a20f043`；doctor 打印面 `e43c420`；面板点击证据见 Context Log）。下一片 = **M2 出口签署**（A1–A8 逐条对证据）+ `milestones.md` 勾选 + R1 终审
 - **当前活跃子任务**: Task M2-EXIT **证据面已齐**。九条证据各自带负控：`proxy-ingress.ts` 6/6、`model-request.ts` 8/8、`forward-denied.ts` 5/5、`anchor-files.ts` 9/9、`ssh-e2e/probe.ts` 33/33（§7.1 门禁）、`ssh-panel/probe.cjs` 面板 7/7 + **向导 A5/A8 7/7**（`GATE=a5a8`）、`ssh-exit-demo` 7/7、`remote-tools.ts` 三态 8/8 ×2、`env-policy.ts` 11/11。下一片 = 出口签署（逐条对证据）+ R1 终审
 - **当前子任务重试计数**: S9.6 = 2/3（① 首版探针把「起远端」算进首连 10s 门禁，是**口径错误**不是产品缺陷；② 首版负控要求计时门禁 `gate-commandMs` 必须红，错在负控——见 Context Log）。M2-EXIT = 3/3（① 门槛 1 首版只证到网络面、② 门槛 3 首版 `AF-6` 假绿（整包 includes 命中模型自己的 tool_use 入参）、③ 门槛 3 负控指望「目录不存在」让写失败（write 会建父目录）——三条都在当轮定位并改判据）；S10-J = 1/3（首两跑被探针自己的 Chrome 归属判据挡住，第三跑即正/负双绿，见 Context Log）
@@ -107,6 +107,7 @@
 | **S10-J** | A5 / A8 取证：SSH 向导的分阶段进度 + 取消 + 可复制日志 + 重试入口 | `spikes/m2/ssh-panel/probe.cjs`（`GATE=a5a8` 场景 + 页面内负控注入 + Chrome 诊断）+ `README.md` + `measurements.a5a8{,.neg}.json`（产品侧**五处新增**：`shared/phases.ts` 词表、`service.ts` 的 `AttachControl{signal,onPhase}` + 快照 `attach`、`routes.ts` 的 `AbortController` 单飞 + `POST /attach/cancel`、`remote.ts` 的远端拒绝码映射、面板的 `attach-progress` / `attach-cancel` / 结构化 `panel-error`） | 必须在**原生 GUI** 里点；取消要证明**打到宿主**（在页面里抓 `/attach/cancel` 的响应体），不是只证明按钮被点；负控必须拆产品的脸（错误框退化 + 取消按钮摘处理器），不许靠「路径留空把按钮按灰」；探针失败要能自证不是环境问题 | [x] 真机正向 **8/8**（R1 #1 处置后用最终代码重跑）：阶段依次 `probe → bootstrap → launch → tunnel → attach`、取消后抓到 `{"cancelled":true}`；**`G-A5-2b`：`probe` 段取消 ⇒ `/attach` 终态 `remote/cancelled`**；**`sawBusy:false` ⇒ 端口回收未测到**（原记「62589 ms 释放」是把 12 次空查当回收耗时，误读，已更正）、`remote/workspace-invalid-path` + nextActions、复制按钮、重试后 `recovered=true`、无孤儿；负控 **3/8**，失败集恰为 `G-A5-2/G-A5-2b/G-A8-1/G-A8-2/G-A8-3`，`NEGATIVE CONTROL OK`。**口径**：看到的是热路径五个阶段（`verify`/`barrier` 未出现）；「二次连接 ≤5s」由 `ssh-e2e/probe.ts` §7.1 热组门禁负责（P50 1664 / P90 2094 / 限 5000）。**顺带修的探针缺陷**：Chrome 启动器 `exitCode` 恒非空 + `throw` 被 `catch {}` 吞掉 ⇒ 负控前两跑只出 `S2P-FATAL`。门禁：双 tsc Exit 0、**558/558** 单测、build / build:client（19 modules / 80635 B） |
 | **S10-K** | A7 取证：SSH 侧断线可见 + 自动退避 + 投影重建 | `spikes/m2/ssh-e2e/reconnect.ts`（新）+ `measurements.a7{,.neg}.json`（产品零改动） | 判据必须是「不点任何按钮，自动退避自己把远端拉回来」；杀进程只能按端口定位（`ss -ltnp` 在 gcp 上非 root 不给 pid ⇒ 用 `/proc/net/tcp` inode 反查 `/proc/*/fd`）；负控要精确切掉「自动重连」而不是「识别断线」 | [x] 正向 **7/7**：`remote/tunnel-unavailable` → retrying → 全 offline → 18340 ms 自动连回 → 端口 3550 ms 重新监听 → 投影 251 ms 重建、id 不变 → recycle 后 3113 ms 端口释放；负控 **4/7**，失败集恰为 `A7-3/A7-3b/A7-4`，`NEGATIVE CONTROL OK` |
 | **S10-L** | R1 #1 处置：取消贯通、真单飞、阶段语义、重试意图、探针判据 | `live.ts` / `service.ts` / `attach.ts` / `remote.ts` / `runtime.ts` / `launch.ts` / `routes.ts` / `components.ts` + `probe.cjs` + `service.test.ts`（+2） | 取消必须在**每一段**生效且回执不说谎；并发必须显式拒绝而非覆盖；意图必须随错误走；探针判据不许空转（`portFreed` / `recovered`） | [x] A5/A8 正向 **8/8**、负控 **3/8**（失败集 5 条逐项相等）；R1 复现 1/2 转红；双 tsc Exit 0、**558/558**、19 modules / 80635 B |
+| **S10-M** | R1 #2 处置：握手取消、abort 预检、单飞 TOCTOU、stderr 阶段、取消后回收 | `remote.ts` / `transport.ts` / `live.ts` / `service.ts` / `attach.ts` / `routes.ts` / `launch.ts` + `architecture.md` §8.5 + `service.test.ts`（+2） | 取消要能打断**每一段**（含握手）；已 abort 的 signal 必须立刻生效；单飞的检查与置位之间不许有 await；阶段只认 stdout；取消要回滚到接入前状态 | [x] R1 #2 夹具 5/5 转红；**560/560**；A5/A8 正向 8/8、负控 2/8（6 条逐项相等）。**未验证**：取消后远端 dsh 的退出时序（60s 内端口仍在监听） |
 | **S9** | 真机端到端探针 `spikes/m2/ssh-exit-demo/` | probe.ts | 与 M1 `p352` 同构（7 项 + 负控 + §7 门禁测量） | [x] 真机 **7/7**（`gcp`）+ 负控失败集逐项相等；产物 `measurements.json` / `measurements.neg.json`。7 项：配置解析 / TOFU / 单 channel 探测 / 引导器装 `@deepseek-ai/dsh@0.2.2-rc.1` / `-L`+`-R` 同连接且远端请求真的回到本机代理 / 经 `-L` 读远端 HTTP 且远端命令与探测一致 / 看门狗回收 + 本地隧道口关闭 |
 
 **出口**：同一套 UI 与语义下，SSH 达到 A1–A8（= A9 达成），且 S1–S8 全部勾选、S9 真机 7/7 + 负控失败集逐项相等。
@@ -115,6 +116,15 @@
 
 ## 4. Context Log
 
+- 2026-11-13：**S10-M —— R1 #2 判「不是 Zero Blockers」，五条全部处置**（1 BLOCKER + 3 MAJOR + 6 MINOR；R1 的 `round2-probes.test.ts` 由 5/5 绿转 **5/5 红**）。这一轮抓的是**上一轮修得不彻底的地方**：
+  1. **握手段没有 signal**：`RemoteRpcOptions` 加 `signal`，`handshakeRemote` 用 `AbortSignal.any([取消, 超时])`，`live.openConnection` 传下去 —— 否则「点取消」最坏要等握手 15s。
+  2. **已 abort 的 signal 不会触发 `abort` 事件**：`transport.ts` 只挂监听等于没挂（`authFor` 阶段取消后，远端检查与整段安装会照跑 300s）。加 `signal.aborted` 预检后立刻 `onAbort()`。
+  3. **`/attach` 单飞是 TOCTOU**：检查与置位之间隔着 `await readJsonBody`，两个请求都能过检查、第二个覆盖 controller。把检查+置位挪到读 body 之后，中间不再有 await。
+  4. **`launch` 仍由 stderr 首字节触发**：`digest` 加 `announce` 参数，stderr 只进 buffer 与标记，不推阶段（`Permission denied` 不再被显示成「启动远端 dsh」）。
+  5. **取消后连接留存**：`service.attach` 记住接入前是否可复用；取消且本次新建 ⇒ `dispose()`；并把「**取消 ≠ 断开 ≠ 回收**」写进 `architecture.md` §8.5。
+  6. **`session/list` 段取消仍写投影**（C3）：`attachWorkspace` 改成两个 RPC 都回来、过了取消检查之后才写投影表。
+  7. 回归：新增 2 条单测（C3/C5）；`pnpm test` **560/560**；A5/A8 正向 **8/8**、负控 **2/8**（失败集 6 条含级联 `G-A5-1`，逐项相等）。
+  8. **仍未销账**：取消后远端 dsh 的退出时序（`sawBusy:true` 而 `portFreed:false`，60s 内端口一直监听）；R1 #3；A2/A7/A3 的剩余口径。
 - 2026-11-13：**S10-K / S10-L —— R1 #1 判「不是 Zero Blockers」，两条 BLOCKER 已修并用真机复测**（A5/A8 正向 8/8、负控 3/8；A7 正向 7/7、负控 4/7）。**先说上一片错在哪**：S10-J 交付时 A5 的「取消」只有 `launchSshDsh` 一段真生效（`live.ts` 没把 signal 传给 `resolveRemoteDsh`、`service` 没塞进 `AttachRequest`、`attach.ts` 写入前不检查），而探针把「`/attach/cancel` 回了 `cancelled:true`」当成「取消生效」—— 回执只说明当时有个 controller 在；同时把 `sawBusy:false` 下的 `portFreeMs=62589` 读成「端口 62.6s 后才释放」，那其实是 12 次空查的耗时。
   1. **取消四段贯通**（B-1）：`live.ts` 传 signal（`runtime.ts` 的 `defaultExec` 早已转发给 `runSsh`，所以引导器安装也能被打断）；`service.attach` 三段边界检查 + 把 signal 塞进 `AttachRequest`；`attach.ts` 在**第一次 upsert 之前**再查一次；`rpc.call` 把 `signal.aborted` 归成 `remote/cancelled`（否则会被 `isTransportLoss` 当成隧道断，点取消反而触发自动重连）。回归：`G-A5-2b`（probe 段取消 ⇒ `remote/cancelled`）+ 单测「取消发生在 workspace/create 之后：抛 cancelled 且 store 为空」。
   2. **回执不再说谎**：取消后 `/attach` 的终态是错误信封 `remote/cancelled`；取消瞬间的真失败（`bootstrap-failed` / `forward-unavailable`）原样上抛，不被洗成「已取消」。
@@ -123,7 +133,7 @@
   5. **重试不再串台**（M-3/M-4）：意图随 `PanelFailure.intent` 一起存（读类失败没有意图 ⇒ 按钮 disabled）；探针 hook 每次 `/attach`，`G-A8-3` 要求计数增加 —— 正向 `attachCalls: 4→5`，负控 `2→2` 红。
   6. **探针判据收紧**（B-2/M-5）：`portFreed` 改成 `sawBusy && portFreeMs !== null`，新增 `portReclaim`（未观测即 null）；新增 `G-A5-2b` 把「probe 段可取消」变成可复跑断言（修复前必然红）。
   7. **门禁**：双 tsc Exit 0、`pnpm test` **558/558**、`build:client` 19 modules / **80635 B**；R1 复现夹具 3 条里 2 条转红（第 3 条因断言只看 HTTP 200 而失去判别力 —— 路由把异常包成 200 + 错误信封，已记账）。
-  8. **仍未销账**：R1 #2 复审；`isTransportLoss` 的 slug 撞名风险；A2 关 GUI 后会话数据、A7 链路丢包/整机重启、A5 端口回收代价、A3 钩子面。
+  8. **仍未销账**：R1 #2 复审（已派，见 S10-M）；`isTransportLoss` 的 slug 撞名风险；A2 关 GUI 后会话数据、A7 链路丢包/整机重启、A5 端口回收代价、A3 钩子面。
 - 2026-11-13：**S10-J 完成 —— A1–A8 在 SSH 上逐条都有证据，最后一条缺口（向导）点通**（正向 7/7、负控 3/7 且失败集逐项相等）。产品侧**零改动**：向导早就有 `data-step` 分阶段、`running` 的 `progressBar` + `data-teleport='cancel'`、`error` 分支的 `errorBox`（可复制报告 + `data-teleport='retry'`）——缺的从来不是能力而是**点击证据**；这一条本身就是结论：S10 之前 A5/A8 的 SSH 轮等于没验。
   1. **这一片不是补证据，是补能力**。S10-I 的记账里写着「向导本来就有 `data-step` / `progressBar` / `cancel` / `errorBox`」，点一遍即可；真去点才发现那条向导是 M1 的「添加工作区」四选一（`directoryFlow`），**SSH 面板路径根本走不到它**——接入按钮只会 busy，取消按钮不存在，错误框是一行自由文本。产品侧因此补了五块（按数据流）：`src/shared/phases.ts` 只放阶段词表（浏览器半不能 import 宿主半，S10-H 踩过 TS2591）；`ProjectionService` 加 `AttachControl{signal,onPhase}` 与快照字段 `attach`（进度进快照而不是新开一条流，少一种「两个状态源不一致」的失败形态）；`routes.ts` 用 `AbortController` 做单飞并接 `POST /attach/cancel`（没在接入时回 `cancelled:false` 而不是报错——按钮可能比请求晚一帧）；`remote.ts` 把远端拒绝码规整成本地码（`workspace/invalid-path` → `remote/workspace-invalid-path`，否则 A8 的码永远停在 `remote/unknown`）；`launch.ts` 只在**可观察边界**报 `bootstrap` / `launch`，不伪造更细的段。
   2. **取消必须证明「打到宿主」**。点一下按钮只证明 DOM 被点。探针在页面里 hook `fetch`，记下 `/attach/cancel` 的响应体：正向是 `{"ok":true,"value":{"cancelled":true}}`，负控（按钮换成没挂 React 处理器的克隆）是空数组。同一条断言两种结果，才不空洞为真。

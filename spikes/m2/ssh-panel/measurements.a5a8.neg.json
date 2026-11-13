@@ -1,14 +1,22 @@
 {
-  "at": "2026-11-13T10:26:29.199Z",
+  "at": "2026-11-13T10:56:16.366Z",
   "negative": true,
   "measurements": [],
   "results": [
+    {
+      "id": "G-A5-2b",
+      "ok": false,
+      "detail": {
+        "cancelPhase": "probe",
+        "code": null
+      }
+    },
     {
       "id": "G-A5-2",
       "ok": false,
       "detail": {
         "cancelClicked": false,
-        "cancelCalls": "[]",
+        "cancelCalls": "[{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":false}}\"}]",
         "cancelPhase": null,
         "sawBusy": false,
         "progressGone": null,
@@ -16,74 +24,18 @@
         "portFreed": false,
         "portFreeMs": null,
         "portReclaim": null,
-        "timeline": [
-          {
-            "phase": "probe",
-            "at": 330
-          },
-          {
-            "phase": "bootstrap",
-            "at": 8138
-          },
-          {
-            "phase": "launch",
-            "at": 10834
-          },
-          {
-            "phase": "tunnel",
-            "at": 21943
-          },
-          {
-            "phase": "attach",
-            "at": 23478
-          }
-        ]
-      }
-    },
-    {
-      "id": "G-A5-2b",
-      "ok": false,
-      "detail": {
-        "cancelPhase": "attach",
-        "code": null
+        "timeline": []
       }
     },
     {
       "id": "G-A5-1",
-      "ok": true,
+      "ok": false,
       "detail": {
-        "phases": [
-          "probe",
-          "bootstrap",
-          "launch",
-          "tunnel",
-          "attach"
-        ],
-        "sawCancelButton": true,
+        "phases": [],
+        "sawCancelButton": false,
         "online": true,
         "linkPhase": "connected",
-        "timeline": [
-          {
-            "phase": "probe",
-            "at": 330
-          },
-          {
-            "phase": "bootstrap",
-            "at": 8138
-          },
-          {
-            "phase": "launch",
-            "at": 10834
-          },
-          {
-            "phase": "tunnel",
-            "at": 21943
-          },
-          {
-            "phase": "attach",
-            "at": 23478
-          }
-        ]
+        "timeline": []
       }
     },
     {
@@ -116,7 +68,7 @@
       "detail": {
         "retried": false,
         "recovered": false,
-        "attachCalls": "2→2"
+        "attachCalls": "1→1"
       }
     },
     {

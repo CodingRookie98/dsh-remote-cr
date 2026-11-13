@@ -350,6 +350,13 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
       })
     }
     if (options.signal !== undefined) {
+      // 已经 abort 的 signal **不会再次触发** `abort` 事件 —— 只挂监听等于没挂。
+      // 上游可能交出「已 abort 的 signal」（例如 `authFor` 阶段用户就点了取消），
+      // 没有这道预检，远端检查与整段安装会照跑 300s 才在边界上见到取消（R1 #2 C4）。
+      if (options.signal.aborted) {
+        onAbort()
+        return
+      }
       options.signal.addEventListener('abort', onAbort, { once: true })
       detachAbort = () => options.signal?.removeEventListener('abort', onAbort)
     }

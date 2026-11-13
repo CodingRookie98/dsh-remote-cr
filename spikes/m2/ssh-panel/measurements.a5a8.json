@@ -1,39 +1,51 @@
 {
-  "at": "2026-11-13T10:25:32.602Z",
+  "at": "2026-11-13T10:58:31.755Z",
   "negative": false,
   "measurements": [],
   "results": [
-    {
-      "id": "G-A5-2",
-      "ok": true,
-      "detail": {
-        "cancelClicked": true,
-        "cancelCalls": "[{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"}]",
-        "cancelPhase": "bootstrap",
-        "sawBusy": false,
-        "progressGone": true,
-        "errorAfterCancel": false,
-        "portFreed": false,
-        "portFreeMs": 46384,
-        "portReclaim": null,
-        "timeline": [
-          {
-            "phase": "probe",
-            "at": 327
-          },
-          {
-            "phase": "bootstrap",
-            "at": 3653
-          }
-        ]
-      }
-    },
     {
       "id": "G-A5-2b",
       "ok": true,
       "detail": {
         "cancelPhase": "probe",
         "code": "remote/cancelled"
+      }
+    },
+    {
+      "id": "G-A5-2",
+      "ok": true,
+      "detail": {
+        "cancelClicked": true,
+        "cancelCalls": "[{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"},{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"}]",
+        "cancelPhase": "tunnel",
+        "sawBusy": true,
+        "progressGone": true,
+        "errorAfterCancel": false,
+        "portFreed": false,
+        "portFreeMs": null,
+        "portReclaim": null,
+        "timeline": [
+          {
+            "phase": "probe",
+            "at": 365
+          },
+          {
+            "phase": "bootstrap",
+            "at": 4827
+          },
+          {
+            "phase": "launch",
+            "at": 7264
+          },
+          {
+            "phase": "tunnel",
+            "at": 15920
+          },
+          {
+            "phase": "attach",
+            "at": 16510
+          }
+        ]
       }
     },
     {
@@ -53,11 +65,23 @@
         "timeline": [
           {
             "phase": "probe",
-            "at": 327
+            "at": 365
           },
           {
             "phase": "bootstrap",
-            "at": 3653
+            "at": 4827
+          },
+          {
+            "phase": "launch",
+            "at": 7264
+          },
+          {
+            "phase": "tunnel",
+            "at": 15920
+          },
+          {
+            "phase": "attach",
+            "at": 16510
           }
         ]
       }
@@ -75,7 +99,7 @@
       "ok": true,
       "detail": {
         "code": "remote/workspace-invalid-path",
-        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794565522705\": ENOENT: no such file or direc",
+        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794567498378\": ENOENT: no such file or direc",
         "next": [
           "查看远端日志",
           "重试"

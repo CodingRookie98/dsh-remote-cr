@@ -42,7 +42,9 @@ const MEASUREMENTS = path.join(
   GATE === 'a5a8' ? (NEG ? 'measurements.a5a8.neg.json' : 'measurements.a5a8.json') : NEG ? 'measurements.neg.json' : 'measurements.json',
 )
 const NEG_EXPECTED_FAILURES =
-  GATE === 'a5a8' ? ['G-A5-2', 'G-A5-2b', 'G-A8-1', 'G-A8-2', 'G-A8-3'] : ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
+  // `G-A5-1` 是**级联**：负控下放弃取消，A5-2b 那次接入把连接建好后，A5-2 的第二次接入
+  // 阶段瞬过（`timeline` 为空），于是「阶段按序出现」抓不到东西。这与 A7 的 `A7-3b` 同级。
+  GATE === 'a5a8' ? ['G-A5-2', 'G-A5-2b', 'G-A5-1', 'G-A8-1', 'G-A8-2', 'G-A8-3'] : ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
 
 const results = []
 const measurements = []
@@ -608,6 +610,20 @@ async function installGateSabotage(cdp, sid) {
       ' }' +
       ' strip(); window.__GATE_SABOTAGE__ = setInterval(strip, 50); return true })()',
   )
+  // 负控的第二个面：把取消链路整条切断，而不只是换按钮。
+  // 只换按钮不够 —— 探针可能刚好点到真按钮（React 每 300ms 重渲染与 50ms 定时器竞争），
+  // 那一跑就会「负控意外通过」（2026-11-13 实测过一次）。这里直接让宿主回「没在接入」。
+  await evaluate(
+    cdp,
+    sid,
+    '(() => { if (window.__GATE_CANCEL_CUT__) return true; window.__GATE_CANCEL_CUT__ = true;' +
+      ' const original = window.fetch;' +
+      ' window.fetch = async (...args) => { const url = String(args[0]);' +
+      '   if (url.indexOf("/attach/cancel") >= 0) {' +
+      '     return new Response(JSON.stringify({ ok: true, value: { cancelled: false } }),' +
+      '       { status: 200, headers: { "content-type": "application/json" } }) }' +
+      '   return original(...args) }; return true })()',
+  )
 }
 
 async function gateFillPath(cdp, sid, value) {
@@ -753,6 +769,53 @@ async function runGateA5A8() {
       '   return res };' +
       ' return true })()',
   )
+  // ── A5-2b：在 `probe` 段取消，`/attach` 必须落定为「已取消」 ────────────────
+  // 这条是 R1-B-1 的回归：取消曾经只在 `launch` 段真生效，`probe` 段（远端检查 / 安装）
+  // 点取消后 `/attach` 照样 200 建成工作区。判据不看端口，只看**这次请求的终态**。
+  //
+  // 必须放在**第一次**接入之前：一旦有一次接入建好了连接，`#ensure` 会复用同一条连接，
+  // `probe` 阶段近乎瞬过，这条断言就抓不到它该抓的那一段。
+  const attachBefore = Number((await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) ?? 0)
+  const probeClick = await gateClickAttach(cdp, sid)
+  let probeCancelPhase = null
+  if (probeClick.ok === true) {
+    const until = Date.now() + 20_000
+    while (Date.now() < until) {
+      const progress = await readProgress(cdp, sid)
+      if (progress !== null && typeof progress.phase === 'string') {
+        probeCancelPhase = progress.phase
+        const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
+        if (clicked === true) break
+      }
+      await sleep(50)
+    }
+  }
+  let probeOutcome = null
+  {
+    const until = Date.now() + 90_000
+    while (Date.now() < until) {
+      const raw = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_ATTACH__ ?? [])')
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : []
+      if (parsed.length > attachBefore) { probeOutcome = parsed[parsed.length - 1]; break }
+      await sleep(200)
+    }
+  }
+  let probeOk = false
+  let probeCode = null
+  if (probeOutcome !== null) {
+    try {
+      const body = JSON.parse(String(probeOutcome.body))
+      probeOk = body.ok === false
+      probeCode = typeof body.code === 'string' ? body.code : null
+    } catch (error) {
+      probeOk = false
+    }
+  }
+  record('G-A5-2b', probeOk && probeCode === 'remote/cancelled', {
+    cancelPhase: probeCancelPhase,
+    code: probeCode,
+  })
+
   const firstClick = await gateClickAttach(cdp, sid)
   if (firstClick.ok !== true) throw new Error('点不到接入按钮：' + JSON.stringify(firstClick.why))
   const attachStart = Date.now()
@@ -777,9 +840,13 @@ async function runGateA5A8() {
     if (NEG) {
       if (progress === null && (await gateLooksOnline(cdp, sid)) === true) { firstOnline = true; break }
     } else if (!cancelClicked) {
-      // 取消要在**远端已经开始启动**之后点：在 `probe` 段点，远端进程根本还没起，
-      // 「取消后没有残留」就成了空洞为真（老探针踩过）。所以等 `bootstrap` 或更后。
-      if (progress !== null && progress.phase !== 'probe') {
+      // 取消点刻意选在 `tunnel` / `attach`：只有那时远端 dsh 已经在监听，取消之后才有
+      // 「端口回收」可测。此前在 `bootstrap` 取消，远端从未起来，`portReclaim` 恒为 null ——
+      // R1-B-2 指出的正是这一点（62.6s 是空查耗时，不是回收耗时）。
+      // 等不到那两个阶段就退回「非 probe 即点」，并如实记账（detail 里有 sawBusy）。
+      const latePhase = progress !== null && (progress.phase === 'tunnel' || progress.phase === 'attach')
+      const fallback = progress !== null && progress.phase !== 'probe' && Date.now() - attachStart > 25_000
+      if (latePhase || fallback) {
         const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
         cancelClicked = clicked === true
         if (cancelClicked) {
@@ -828,10 +895,31 @@ async function runGateA5A8() {
   const portFreed = sawBusy && portFreeMs !== null
   // 取消必须落在「远端已经开始启动」之后（`cancelPhase !== 'probe'`），否则后面那句
   // 「取消后没有残留」是空洞为真 —— 那时远端进程压根还没起。
-  const cancelledMidFlight = cancelClicked && cancelPhase !== null && cancelPhase !== 'probe'
   const cancelCalls = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_CANCEL__ ?? [])')
+  // 回执必须是「宿主说取消了」。只看「按钮被点过」会空转：负控把 /attach/cancel 拦成
+  // `{cancelled:false}` 时，点按钮照样成功、进度照样消失（R1-M-5）。
+  // 这里**解析**回执而不是字符串包含：`cancelCalls` 是 JSON.stringify 的结果，内层 body 的
+  // 引号是转义形态（`\"cancelled\":true`），用 includes 会永远匹配不上（实测一次：正向被误判红）。
+  let cancelAcknowledged = false
+  try {
+    const calls = JSON.parse(String(cancelCalls))
+    cancelAcknowledged = Array.isArray(calls) && calls.some((call) => {
+      try {
+        const body = JSON.parse(String(call.body))
+        return body !== null && typeof body === 'object' && body.value !== undefined && body.value.cancelled === true
+      } catch {
+        return false
+      }
+    })
+  } catch {
+    cancelAcknowledged = false
+  }
+  const cancelledMidFlight = cancelClicked && cancelAcknowledged && cancelPhase !== null && cancelPhase !== 'probe'
   // 判据只看「取消真的发生」：进度消失、不留错误框。端口回收另立 `portReclaim` ——
   // `sawBusy=false` 时它根本没被测到，既不能当通过条件，也不能当结论（R1-B-2）。
+  // 判据**不含**端口回收：`architecture.md` §8.5 的语义是「回收归退出，不归取消」——
+  // 取消在 tunnel/attach 段时连接往往已经建好，远端进程保留（本跑 sawBusy:true、portFreed:false
+  // 正是这条语义的观测）。端口最终是否释放由 G-CLEAN（关宿主）负责。
   record('G-A5-2', cancelledMidFlight && progressGone === true && errorAfterCancel !== true, {
     cancelClicked,
     cancelCalls,
@@ -845,56 +933,6 @@ async function runGateA5A8() {
     timeline,
   })
 
-  // ── A5-2b：在 `probe` 段取消，`/attach` 必须落定为「已取消」 ────────────────
-  // 这条是 R1-B-1 的回归：取消曾经只在 `launch` 段真生效，`probe` 段（远端检查 / 安装）
-  // 点取消后 `/attach` 照样 200 建成工作区。判据不看端口，只看**这次请求的终态**。
-  {
-    const until = Date.now() + 20_000
-    while (Date.now() < until) {
-      if ((await readProgress(cdp, sid)) === null) break
-      await sleep(200)
-    }
-  }
-  const attachBefore = Number((await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) ?? 0)
-  const probeClick = await gateClickAttach(cdp, sid)
-  let probeCancelPhase = null
-  if (probeClick.ok === true) {
-    const until = Date.now() + 20_000
-    while (Date.now() < until) {
-      const progress = await readProgress(cdp, sid)
-      if (progress !== null && typeof progress.phase === 'string') {
-        probeCancelPhase = progress.phase
-        const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
-        if (clicked === true) break
-      }
-      await sleep(50)
-    }
-  }
-  let probeOutcome = null
-  {
-    const until = Date.now() + 90_000
-    while (Date.now() < until) {
-      const raw = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_ATTACH__ ?? [])')
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : []
-      if (parsed.length > attachBefore) { probeOutcome = parsed[parsed.length - 1]; break }
-      await sleep(200)
-    }
-  }
-  let probeOk = false
-  let probeCode = null
-  if (probeOutcome !== null) {
-    try {
-      const body = JSON.parse(String(probeOutcome.body))
-      probeOk = body.ok === false
-      probeCode = typeof body.code === 'string' ? body.code : null
-    } catch (error) {
-      probeOk = false
-    }
-  }
-  record('G-A5-2b', probeOk && probeCode === 'remote/cancelled', {
-    cancelPhase: probeCancelPhase,
-    code: probeCode,
-  })
 
   // ── A5：真正接进来（这次不取消） ────────────────────────────────────
   if (!firstOnline) {

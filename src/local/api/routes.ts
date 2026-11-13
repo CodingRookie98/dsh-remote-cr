@@ -470,7 +470,10 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   })
 
   mount('/attach', ['POST'], async (req, res) => {
-    // 「同一时刻只允许一个」必须是真的拒绝，而不是把 controller 覆盖掉（R1-M-1）。
+    const service = requireProjection()
+    const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
+    // 检查与置位之间**不许有 await**：中间隔一个 `readJsonBody` 就是 TOCTOU —— 两个请求都能
+    // 通过检查，第二个覆盖 controller，第一个从此不可取消（R1 #2 N1）。
     if (attaching !== undefined) {
       throw new TeleportError({
         code: 'remote/attach-busy',
@@ -478,8 +481,6 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
         nextActions: ['等它结束', '或先点面板上的「取消接入」'],
       })
     }
-    const service = requireProjection()
-    const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
     // 取消要能真的打断「起进程/建隧道」这一段，否则按钮只是个装饰。
     const controller = new AbortController()
     attaching = controller

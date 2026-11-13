@@ -87,6 +87,13 @@ export interface RemoteRpcOptions {
   readonly callTimeoutMs?: number
   /** 注入以便单测；默认用全局 `fetch`。 */
   readonly fetchImpl?: typeof fetch
+  /**
+   * 取消信号：握手也必须能被打断。
+   *
+   * 没有它，「点取消」最坏要等握手 15s 才被看见 —— 那正是「点了没反应」的来源之一
+   * （R1 #2 B-1 同族）。
+   */
+  readonly signal?: AbortSignal
 }
 
 /**
@@ -124,12 +131,22 @@ export async function handshakeRemote(
   const doFetch = options.fetchImpl ?? fetch
   const url = baseUrl(endpoint) + '/connect?token=' + encodeURIComponent(token) + '&interactions=answer'
   const timeoutMs = options.handshakeTimeoutMs ?? 15_000
-  const signal = AbortSignal.timeout(timeoutMs)
+  const timeout = AbortSignal.timeout(timeoutMs)
+  // `AbortSignal.any` 让「超时」与「用户取消」都落到握手 fetch 上。
+  const signal = options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout])
 
   let response: Response
   try {
     response = await doFetch(url, { redirect: 'manual', signal })
   } catch (error) {
+    // 用户取消 ≠ 隧道断：混在一起会让「点取消」被当成传输层失败（R1-B-1 的同族问题）。
+    if (options.signal !== undefined && options.signal.aborted) {
+      throw new TeleportError({
+        code: 'remote/cancelled',
+        detail: '已取消这次接入（握手阶段）',
+        nextActions: ['重新点一次「接入」', '换个目标再试'],
+      })
+    }
     throw new TeleportError({
       code: 'remote/tunnel-unavailable',
       detail: '连不上远端 dsh 的 /connect：' + (error instanceof Error ? error.message : String(error)),
