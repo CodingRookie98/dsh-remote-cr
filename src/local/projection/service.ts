@@ -262,15 +262,15 @@ export class ProjectionService {
         // 只有 `created` —— 本次真的新建的连接 —— 才回收。复用连接绝不动（B1/D3）。
         const live = this.#live
         // I2：已退休的连接不得写回任何槽位（D7 的根因就是这里少了这道检查）。
-        this.#live = liveBefore !== undefined && this.#retired.has(liveBefore.connection) ? undefined : liveBefore
+        this.#setLive(liveBefore)
         // `detachedBefore` 是**值快照**，它可能在本次接入里已被 `#dropDetached()` dispose
         // （救援失败 / 换 target 丢弃）。写回一个死连接比不写回更糟（R1 #5 B1）。
-        this.#detached =
-          detachedBefore !== undefined && !this.#retired.has(detachedBefore.connection) ? detachedBefore : undefined
+        this.#setDetached(detachedBefore)
         // D9：`#lastTarget` 也要回滚 —— 否则取消后点「重连」会连到**被取消的**那个 target。
         const restoredTarget = this.#live?.target ?? this.#detached?.target
         if (restoredTarget !== undefined) this.#lastTarget = restoredTarget
         if (created && live !== undefined) {
+          this.#retired.add(live.connection)
           const clean = await live.connection.dispose()
           if (clean === false) {
             // 用户取消了，但远端没收干净：这比「已取消」更需要他知道（A7 要求可回收）。
@@ -380,7 +380,7 @@ export class ProjectionService {
    */
   disconnect(): void {
     const live = this.#live
-    this.#live = undefined
+    this.#setLive(undefined)
     this.#stopDriver()
     this.#store.markAllOffline()
     // **只断传输，不杀远端进程**（architecture.md §8.5：回收归退出/cleanup，
@@ -422,18 +422,18 @@ export class ProjectionService {
    */
   recycle(): void {
     const live = this.#live
-    this.#live = undefined
+    this.#setLive(undefined)
     this.#stopDriver()
-    live?.connection.dispose()
+    if (live !== undefined) this.#retire(live.connection)
     this.#dropDetached()
   }
 
   /** 进程退出：释放连接（不标 offline，因为没人会再看这份内存表）。 */
   dispose(): void {
     const live = this.#live
-    this.#live = undefined
+    this.#setLive(undefined)
     this.#stopDriver()
-    live?.connection.dispose()
+    if (live !== undefined) this.#retire(live.connection)
     this.#dropDetached()
   }
 
@@ -461,7 +461,7 @@ export class ProjectionService {
    */
   #onTransportLost(): void {
     const live = this.#live
-    this.#live = undefined
+    this.#setLive(undefined)
     this.#store.markAllOffline()
     if (live !== undefined) this.#detatch(live)
     const target = live?.target ?? this.#detached?.target ?? this.#lastTarget
@@ -469,26 +469,43 @@ export class ProjectionService {
     this.#startDriver(target)
   }
 
+  /**
+   * 连接槽位的**唯一写入口**（M3-1 不变量 I2）。
+   *
+   * `#live` / `#detached` 的直接赋值只允许出现在这三个原语内部：任何外部写入都可能把
+   * 已 dispose 的连接放回槽位（D7 的根因）。
+   */
+  #setLive(entry: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined): void {
+    if (entry !== undefined && this.#retired.has(entry.connection)) return
+    this.#live = entry
+  }
+
+  #setDetached(entry: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined): void {
+    if (entry !== undefined && this.#retired.has(entry.connection)) return
+    this.#detached = entry
+  }
+
+  /** 回收一条连接：登记为已退休（此后不得再进任何槽位），再 dispose。 */
+  #retire(connection: RemoteConnection): void {
+    if (this.#retired.has(connection)) return
+    this.#retired.add(connection)
+    connection.dispose()
+  }
+
   /** 保存一条「传输断了、进程可能还活着」的连接；同一 target 只留一条。 */
   #detatch(entry: { readonly target: ConnectTarget; readonly connection: RemoteConnection }): void {
     const previous = this.#detached
-    if (previous !== undefined && previous.connection !== entry.connection) {
-      this.#retired.add(previous.connection)
-      previous.connection.dispose()
-    }
-    this.#detached = entry
+    if (previous !== undefined && previous.connection !== entry.connection) this.#retire(previous.connection)
+    this.#setDetached(entry)
   }
 
   /** 真收掉留存连接（目标变了、用户断开、进程退出时才调）。 */
   #dropDetached(): void {
     const entry = this.#detached
-    this.#detached = undefined
-    if (entry !== undefined) {
-      // 记下「这条已经 dispose 了」：取消回滚若把 detachedBefore 值快照写回去，
-      // 死连接会复活成 `#live`（R1 #5 D7/D8）。
-      this.#retired.add(entry.connection)
-      entry.connection.dispose()
-    }
+    this.#setDetached(undefined)
+    // 记下「这条已经 dispose 了」：取消回滚若把 detachedBefore 值快照写回去，
+    // 死连接会复活成 `#live`（R1 #5 D7/D8）。
+    if (entry !== undefined) this.#retire(entry.connection)
   }
 
   #startDriver(target: ConnectTarget): void {
@@ -519,9 +536,9 @@ export class ProjectionService {
   async #attemptReconnect(target: ConnectTarget): Promise<void> {
     if (this.#live === undefined) {
       const connection = await this.#reacquire(target)
-      this.#live = { target, connection }
+      this.#setLive({ target, connection })
       this.#lastTarget = target
-      this.#detached = undefined
+      this.#setDetached(undefined)
     }
     const live = this.#live
     if (live === undefined) return
@@ -555,7 +572,7 @@ export class ProjectionService {
         // 没有这条能力（假连接 / 别家实现）：老实回收，别占着端口。
         detached.connection.dispose()
       }
-      this.#detached = undefined
+      this.#setDetached(undefined)
     } else if (detached !== undefined) {
       // 留着一条别的 target 的残连接没有意义。
       this.#dropDetached()
@@ -581,8 +598,8 @@ export class ProjectionService {
           // 救回留存连接也是「隧道这一阶段」：面板上不该停在上一句「正在启动远端 dsh」。
           control?.onPhase?.('tunnel')
           await rehandshake.call(detached.connection)
-          this.#detached = undefined
-          this.#live = { target, connection: detached.connection }
+          this.#setDetached(undefined)
+          this.#setLive({ target, connection: detached.connection })
           this.#lastTarget = target
           this.#stopDriver()
           return { connection: detached.connection, created: false }
@@ -596,12 +613,12 @@ export class ProjectionService {
     if (live !== undefined) {
       // 换 target 只「搁置」旧连接，不走 `disconnect()`：那条路径会 `markAllOffline()`，
       // 而取消这次接入后要回滚到接入前 —— 那时旧工作区仍应在线（R1 #5 M1/D5）。
-      this.#live = undefined
+      this.#setLive(undefined)
       this.#stopDriver()
       this.#detatch(live)
     }
     const connection = await this.#connect(target, control)
-    this.#live = { target, connection }
+    this.#setLive({ target, connection })
     this.#lastTarget = target
     this.#stopDriver()
     return { connection, created: true }
