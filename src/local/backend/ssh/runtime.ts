@@ -62,6 +62,13 @@ export interface RemoteDshRuntime {
   readonly source: RemoteDshSource
   /** 检出模式下是 `remoteRoot`，staging 模式下是 `<远端 home>/.dsh-teleport/staging/<id>`。 */
   readonly dshRoot: string
+  /**
+   * 远端 `$HOME`（同一条检查脚本里的 `TELEPORT_HOME`）。
+   *
+   * 环境策略要把隔离目录拼在它下面，而它**只有远端知道**：拿本地 home 拼出来的路径
+   * 正是 S9 真机踩过的那类错（`D:\\home\\hui/.dsh-teleport/...`）。
+   */
+  readonly remoteHome: string
   /** 每一步做了什么、跳过了什么。失败时这条也进 `logTail`。 */
   readonly log: readonly string[]
 }
@@ -157,6 +164,9 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     })
   }
 
+  // 远端 home 在两种来源下都要用（隔离档拼 DSH_HOME、staging 拼目录），所以先取。
+  const remoteHome = values.get('HOME') ?? ''
+
   // 1. 检出优先：它和设备上用哪份 dsh 是同一套语义（WSL 侧就是这样）。
   if (values.get('CHECKOUT') === '1') {
     log.push('检出：' + checkoutBin)
@@ -164,6 +174,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
       argvPrefix: [request.nodeCommand ?? 'node', checkoutBin],
       source: 'checkout',
       dshRoot: request.remoteRoot,
+      remoteHome,
       log,
     }
   }
@@ -178,7 +189,6 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   log.push('检出：' + request.remoteRoot + ' 里没有 apps/cli/lib/bin.js，改用引导器装到 staging')
 
   // 2. staging：同一条往返已经问过「装没装过」，装过且版本可用就直接复用。
-  const remoteHome = values.get('HOME') ?? ''
   if (remoteHome === '') {
     throw failure('检查脚本没有拿到远端 home，无法确定 staging 位置', log, request)
   }
@@ -188,7 +198,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const reusedVersion = values.get('STAGING') ?? ''
   if (dshSupported(reusedVersion)) {
     log.push('staging：复用已装的 dsh ' + reusedVersion)
-    return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, log }
+    return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, remoteHome, log }
   }
 
   const statePath = statePathOf(request)
@@ -239,7 +249,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     })
   }
   log.push('staging：验过版本 ' + version)
-  return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, log }
+  return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, remoteHome, log }
 }
 /** 缺省执行器：一条 `ssh` channel，非零退出**不**抛（引导器要按退出码分支）。 */
 function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {

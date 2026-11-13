@@ -29,6 +29,7 @@
  */
 
 import { TeleportError } from '../backend/errors.ts'
+import type { EnvPolicy } from '../env-policy/index.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
 import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
@@ -48,6 +49,13 @@ export interface RemoteConnection {
   readonly rpc: ProjectionRpc
   /** 远端经 `-R` 拿到的本地代理端口；没挂代理的后端（WSL）为 `undefined`。 */
   readonly remoteProxyPort?: number | undefined
+  /**
+   * 这次连接用的环境档位（`reuse` / `isolated`）。
+   *
+   * 由连接层算出来而不是让面板去猜：「用户以为隔离了、其实用的是远端已有环境」
+   * 是这一档最糟的失败形态——它不报错，只是环境悄悄不是你以为的那个。
+   */
+  readonly envPolicy?: EnvPolicy | undefined
   rehandshake?(): Promise<void>
   dispose(): void
 }
@@ -97,6 +105,8 @@ export interface ProjectionSnapshot {
   readonly target: ConnectTarget | null
   /** 连接相位：`idle` / `connected` / `retrying` / `offline`。 */
   readonly link: LinkPhase
+  /** 当前连接的环境档位；从没连过（或档位未知）时是 `null`。 */
+  readonly envPolicy: EnvPolicy | null
 }
 
 /** 投影服务对外的一整套动作。 */
@@ -220,7 +230,18 @@ export class ProjectionService {
       connected: this.connected,
       target: this.target,
       link: this.link,
+      envPolicy: this.envPolicy,
     }
+  }
+
+  /**
+   * 环境档位：连着的用当前连接，断线后仍报上一次的档位。
+   *
+   * 报「上次的」而不是 `null`：面板在断线时也要能说清「你之前是在隔离环境里」，
+   * 否则用户一断线就失去这条线索。
+   */
+  get envPolicy(): EnvPolicy | null {
+    return this.#live?.connection.envPolicy ?? this.#detached?.connection.envPolicy ?? null
   }
 
   /**

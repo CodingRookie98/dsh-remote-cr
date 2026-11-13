@@ -12,9 +12,12 @@
  *    所以隔离档位在官方机制上成立（真机已验，见 `spikes/m1/p37-env/README.md`）。
  */
 
-export const ENV_POLICIES = ['reuse', 'isolated', 'sync'] as const
+// 词表放在 shared：面板快照的线上形状要用它，而 client 半不能 import 本地半（会拖进 node:crypto）。
+import { ENV_POLICY_NAMES, type EnvPolicy } from '../../shared/env-policy.ts'
 
-export type EnvPolicy = (typeof ENV_POLICIES)[number]
+export type { EnvPolicy }
+
+export const ENV_POLICIES = ENV_POLICY_NAMES
 
 /** 默认档位。改这里等于改产品行为，必须同步 `architecture.md` §6。 */
 export const DEFAULT_ENV_POLICY: EnvPolicy = 'reuse'

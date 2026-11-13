@@ -33,6 +33,13 @@ export interface LaunchOptions {
   readonly nodeCommand?: string
   /** 传给 `dsh web` 的额外参数。 */
   readonly extraArgs?: readonly string[]
+  /**
+   * 追加给远端 dsh 的环境变量（环境策略的隔离档靠它注入 `DSH_HOME`）。
+   *
+   * 走的是看门狗脚本里的前缀赋值而不是 `spawn` 的 `env`：后者是 **Windows 侧**
+   * 的进程环境，`wsl.exe --exec` 不会把它带进 distro（`env` 实测为空）。
+   */
+  readonly env?: Readonly<Record<string, string>>
   /** 等 URL 的上限，默认 60000ms（真机 12–18s 起，留足冷启动余量）。 */
   readonly timeoutMs?: number
   readonly signal?: AbortSignal
@@ -98,17 +105,42 @@ export function buildWatchdogScript(options: {
   host?: string
   nodeCommand?: string
   extraArgs?: readonly string[]
+  env?: Readonly<Record<string, string>>
 }): string {
   const argv = buildDshArgs({ remoteRoot: '.', ...options }).slice(1)
-  const quoted = argv.map((part) => (/^[A-Za-z0-9_./-]+$/.test(part) ? part : "'" + part.replace(/'/g, "'\\''") + "'"))
+  const words = [...envAssignments(options.env), ...argv.map(shellWord)]
   return [
-    quoted.join(' ') + ' &',
+    words.join(' ') + ' &',
     'child=$!;',
     "printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$child";',
     'cat > /dev/null;',
     'kill $child 2>/dev/null;',
     "printf '%s\\n' " + JSON.stringify(WATCHDOG_KILLED_MARK),
   ].join(' ')
+}
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** 一个 argv 词：安全字符裸露，其余单引号包起来（`'` 自己用 `'\\''` 收尾）。 */
+export function shellWord(part: string): string {
+  return /^[A-Za-z0-9_./-]+$/.test(part) ? part : "'" + part.replace(/'/g, "'\\''") + "'"
+}
+
+/**
+ * 环境变量 → `NAME=value` 前缀词。
+ *
+ * 名字与值都**先校验再拼**：脚本是单行 bash，一个换行就能把「设置变量」变成
+ * 「执行第二条命令」。名字非法或值里有控制字符时直接抛，不做转义猜测。
+ */
+export function envAssignments(env: Readonly<Record<string, string>> | undefined): string[] {
+  if (env === undefined) return []
+  const words: string[] = []
+  for (const [name, value] of Object.entries(env)) {
+    if (!ENV_NAME.test(name)) throw new Error('环境变量名非法：' + JSON.stringify(name))
+    if (/[\n\r\0]/.test(value)) throw new Error('环境变量值里有控制字符：' + name)
+    words.push(name + '=' + shellWord(value))
+  }
+  return words
 }
 
 /** `bash -lc <看门狗脚本>` —— 与 `buildDshArgs` 一一对应，只是多了一层壳。 */

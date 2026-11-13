@@ -453,6 +453,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       connected: snapshot.connected,
       target: snapshot.target === null ? null : toTargetInfo(snapshot.target),
       link: snapshot.link,
+      envPolicy: snapshot.envPolicy,
       defaults: readDefaults(),
     }
   }

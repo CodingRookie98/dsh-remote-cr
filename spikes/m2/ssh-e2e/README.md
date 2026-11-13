@@ -26,6 +26,7 @@
 | `forward-denied.ts` | `AllowTcpForwarding no` 时给 `remote/forward-unavailable` + 三条 nextActions | 5/5 | 3/3，夹具改 `yes` 后不误报（得 `remote/startup-failed`） |
 | `model-request.ts` | 远端 provider 配到代理后，**真的模型请求**打到代理并被替换 | 8/8 | — |
 | `anchor-files.ts` | 锚点工作区里 `read` 读到远端文件、`write`/`edit` 写的是远端那一个 | 9/9 | 4/9，失败集恰为 `AF-0b`/`AF-3`/`AF-4`/`AF-5`/`AF-6`，`AF-0/1/2/2b` 仍绿 |
+| `env-policy.ts` | `reuse` / `isolated` 两档真的作用到**远端进程环境**上，且快照里看得见 | 11/11 | 7/11，失败集恰为 `A4-4..A4-7`，端口与错误码四条仍绿 |
 
 ### probe.ts（S9.6，`§7.1` 口径）
 
@@ -74,6 +75,20 @@ Windows 侧用 `ssh -n -N -L 127.0.0.1:12222:127.0.0.1:12222 gcp` 接入，然�
 9/9：`AF-2` 走的是产品路径（`resolveAnchorPath` → `workspace/create` → `createSession`），锚点本地路径 `C:/Users/hui/.dsh-teleport/anchors/65369107ab8acbd8/home/hui/workspace` 与远端 `/home/hui/workspace` 是两份字符串，映射错位只有这条路径会暴露。
 负控（不播种远端文件 + 写目标改 `/proc/...` 只读路径）4/9，失败集逐项相等；`AF-0/1/2/2b` 仍绿说明断言没有互相串。
 
+### env-policy.ts（A4 环境档位）
+
+`MSYS_NO_PATHCONV=1 node spikes/m2/ssh-e2e/env-policy.ts gcp home/hui/workspace`
+
+不看「我们以为自己传了什么」，看**远端那个 dsh 进程实际拿到的环境**：先按端口找到 pid（`ss -ltnp | grep :8967`），
+再读 `/proc/<pid>/environ`。这段证据绕不过去——档位没生效时进程环境里就是没有 `DSH_HOME`。
+
+- `reuse`：`envPolicy=reuse`、进程环境**没有** `DSH_HOME`（17 个变量，与远端原本一致）、也没有顺手建 `~/.dsh-teleport/ssh:gcp`。
+- `isolated`：`envPolicy=isolated`、进程环境 `DSH_HOME=/home/hui/.dsh-teleport/ssh:gcp`、该目录在远端真的建出来了。
+- 状态可见：`ProjectionService.snapshot().envPolicy === 'isolated'`，面板据此显示一行（`data-teleport='panel-env'`）。
+- 写错的档位给 `remote/env-policy-invalid`，`sync` 给 `remote/env-policy-unavailable`（**不安静地按 reuse 跑**）。
+
+负控把隔离那一档拨回 `reuse`，期望变红的正是「隔离真的生效」那四条；端口释放与错误码仍绿，说明断言没有互相串。
+
 ## 三条探针缺陷（都曾让结果假绿）
 
 1. **`tool_result` 与 `tool_use` 混在一起判**：第一版把整个请求体 `includes(内容)` 当「读回了」的证据，而请求体里本来就有模型自己写的 `tool_use` 入参 ⇒ 恒真。改成只取 `tool_result` 正文。
@@ -82,6 +97,8 @@ Windows 侧用 `ssh -n -N -L 127.0.0.1:12222:127.0.0.1:12222 gcp` 接入，然�
 
 ## 未验证
 
-- 浏览器里点这套 SSH UI（面板入口有单测，无点击证据）；M1 的 `p352` 证明的是同一套产品代码在 WSL 上的点击链路。
-- `anchors.ts` 的 `describeAnchor`（doctor 输出）**没有接进任何路由**，`milestones.md` 里「`doctor` 能打印当前 host 的映射」这条仍未销账。
 - 跳板机（`ProxyJump`）、密码 / agent 认证、SFTP 上传回退这几条只有单测，无真机。
+- A3（远端插件真的注册了工具/钩子）**尚无证据**：gcp 的 `~/.dsh/profiles/web` 只挂了 `dsh-base` + `dsh-web-app`，上面没有装任何第三方插件。
+
+> 已销账（本文件早先版本列为未验证）：浏览器里点这套 SSH UI 由 `spikes/m2/ssh-panel/probe.cjs` 证明（7/7）；
+> `describeAnchor` 已接进 `GET /teleport/api/anchors`（S10-F）。

@@ -68,6 +68,7 @@ import {
 import {
   disconnectPlan,
   formatUpdatedAt,
+  envPolicyLine,
   linkLine,
   planAttach,
   planSshAttach,
@@ -775,6 +776,11 @@ export function TeleportPanel(): unknown {
     flow === undefined ? null : h('div', { 'data-teleport': 'panel-phase' }, FLOW_PHASE_LABELS[flow.phase]),
     isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
     h('div', { 'data-teleport': 'panel-connected', 'data-link': snapshot?.link ?? 'unknown' }, linkLine(snapshot)),
+    h(
+      'div',
+      { 'data-teleport': 'panel-env', 'data-env-policy': snapshot?.envPolicy ?? 'unknown' },
+      envPolicyLine(snapshot),
+    ),
     h(
       'div',
       { 'data-teleport': 'panel-link-actions' },

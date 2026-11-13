@@ -166,6 +166,20 @@ export function describeTargetInfo(target: RemoteTargetInfo): string {
   return target.backend === 'wsl' ? target.distro : target.alias
 }
 
+/**
+ * 环境档位的一句话。
+ *
+ * 必须显示而不是只存着：用户选了隔离档却静默按复用档跑，是这一档最糟的失败形态——
+ * 它不报错，只是环境悄悄不是你以为的那个。反过来，配置写错时这里会显示「未知」。
+ */
+export function envPolicyLine(snapshot: ProjectionSnapshotInfo | null): string {
+  const policy = snapshot?.envPolicy ?? null
+  if (policy === null) return '环境：未选定（尚未连接）'
+  if (policy === 'reuse') return '环境：复用远端已有 ~/.dsh'
+  if (policy === 'isolated') return '环境：隔离（不碰远端已有 ~/.dsh）'
+  return '环境：sync（M3 才落地）'
+}
+
 export function linkLine(snapshot: ProjectionSnapshotInfo | null): string {
   if (snapshot === null) return '尚未读取投影'
   const base = describeLink(snapshot.link)

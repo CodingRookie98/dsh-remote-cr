@@ -18,7 +18,8 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: **S10 全链完成 —— M2 出口的三条硬门槛 + 面板点击证据都已真机取证**（代理接进 SSH 链路 `4881eca`；门槛 1 网络面 `5b5ff40` + 模型面 `8a74635`；门槛 2 `e991dd5`；门槛 3 `a20f043`；doctor 打印面 `e43c420`；面板点击证据见 Context Log）。下一片 = **M2 出口签署**（A1–A8 逐条对证据）+ `milestones.md` 勾选 + R1 终审
+- **当前活跃阶段**: **S10-H 完成 —— 环境档位从「纯决策层」接进连接链路并真机取证（A4 的两档）**，M2 出口只剩 **A3**（远端插件真的注册了工具/钩子：gcp 的 `~/.dsh/profiles/web` 只有 `dsh-base` + `dsh-web-app`，没装任何第三方插件，因此尚未取证）。下一片 = A3 取证 → 出口签署 + `milestones.md` 勾选 + R1 终审
+- **历史阶段（S10 已完成）**: M2 出口的三条硬门槛 + 面板点击证据都已真机取证（代理接进 SSH 链路 `4881eca`；门槛 1 网络面 `5b5ff40` + 模型面 `8a74635`；门槛 2 `e991dd5`；门槛 3 `a20f043`；doctor 打印面 `e43c420`；面板点击证据见 Context Log）。下一片 = **M2 出口签署**（A1–A8 逐条对证据）+ `milestones.md` 勾选 + R1 终审
 - **当前活跃子任务**: Task M2-EXIT 剩余最后一项 **S10-G 已完成**（`spikes/m2/ssh-panel/probe.cjs` 真浏览器点面板：7/7，负控失败集恰为 `S2P-3/4/5/6`）。八条门槛证据：`proxy-ingress.ts` 6/6、`model-request.ts` 8/8、`forward-denied.ts` 5/5、`anchor-files.ts` 9/9、`ssh-e2e/probe.ts` 33/33（§7.1 门禁）、`ssh-panel/probe.cjs` 7/7、`ssh-exit-demo` 7/7，各自带负控。下一片 = 出口签署
 - **当前子任务重试计数**: S9.6 = 2/3（① 首版探针把「起远端」算进首连 10s 门禁，是**口径错误**不是产品缺陷；② 首版负控要求计时门禁 `gate-commandMs` 必须红，错在负控——见 Context Log）。M2-EXIT = 3/3（① 门槛 1 首版只证到网络面、② 门槛 3 首版 `AF-6` 假绿（整包 includes 命中模型自己的 tool_use 入参）、③ 门槛 3 负控指望「目录不存在」让写失败（write 会建父目录）——三条都在当轮定位并改判据）
 - **S9 重试计数**: 4/3 已熔断并升档（探针自身缺陷 3 处 + 产品缺陷 4 处，逐条记录在 Context Log）
@@ -101,6 +102,7 @@
 | **S10-E** | 门槛 3：锚点工作区里 `read`/`write`/`edit` 落在远端 | `spikes/m2/ssh-e2e/anchor-files.ts` | 走产品路径（`resolveAnchorPath` → `workspace/create` → `createSession`）；工具自述成功不算证据，必须进程外 `ssh cat` 复验；负控失败集逐项相等 | [x] 真机 **9/9**、负控 **4/9**（失败集 `AF-0b/AF-3/AF-4/AF-5/AF-6` 逐项相等）。**口径备注**：gcp 无 `/etc/hostname`，改用本机 nonce 播种的远端独有文件（更强）。**仍未销账**：`describeAnchor` 没接进路由（doctor 打印映射） |
 | **S10-F** | 锚点映射的打印面（doctor） | `ssh/anchor-runtime.ts`（`describeAnchors`）+ `anchor-runtime.test.ts`（+2）+ `api/routes.ts`（`GET /anchors`）+ `routes.test.ts`（+1，路由表十三条） | 输出必须来自与提示词/工具层同一份 `map.json`；坏掉的锚点照样列出并写明坏在哪（不静默省略） | [x] **543/543** 单测、双 tsc Exit 0、build / build:client（17 modules / 72282 B） |
 | **S10-G** | SSH 面板的真浏览器点击证据（A1 / A5 / A7） | `spikes/m2/ssh-panel/probe.cjs` + `README.md` + `measurements{,.neg}.json` | 必须在**原生 GUI** 里点（headless Chrome + CDP），不许直调 RPC 假装；接入计时受官方 workspace owner 导航影响，只能 Node 侧打点并**标明 `source: "node"`**，不冒充 rAF | [x] 真机 **7/7**；负控 3/7，失败集恰为 `S2P-3/4/5/6`（`S2P-7` 在负控下**空洞为真**，标注 `hadRemote=false`） |
+| **S10-H** | A4 环境档位：`reuse` / `isolated` 接进启动链路 | `src/local/env-policy/apply.ts`（+`apply.test.ts` 7 条）+ `src/shared/env-policy.ts` + `live.ts`（`connectWsl` 分派、`resolvePolicy`、`wslHome`）+ `ssh/runtime.ts`（`remoteHome`）+ `wsl/launch.ts`（`shellWord`/`envAssignments`/`LaunchOptions.env`）+ `service.ts`/`routes.ts`/`api.ts`/`panel.ts`/`components.ts`/`index.ts` + `spikes/m2/ssh-e2e/env-policy.ts` | `reuse` 下**一个变量都不加**；`isolated` 只加 `DSH_HOME`；`sync` 明确拒绝（不许悄悄按 `isolated` 办）；`extraEnv` 里已有不同的 `DSH_HOME` 必须硬失败；共享层不能 import 本地半（client 构建 TS2591） | [x] 真机 **11/11**、负控 **7/11**（失败集恰为 `A4-4..A4-7`）；双 tsc Exit 0、**550/550** 单测、build / build:client（18 modules / 73440 B） |
 | **S9** | 真机端到端探针 `spikes/m2/ssh-exit-demo/` | probe.ts | 与 M1 `p352` 同构（7 项 + 负控 + §7 门禁测量） | [x] 真机 **7/7**（`gcp`）+ 负控失败集逐项相等；产物 `measurements.json` / `measurements.neg.json`。7 项：配置解析 / TOFU / 单 channel 探测 / 引导器装 `@deepseek-ai/dsh@0.2.2-rc.1` / `-L`+`-R` 同连接且远端请求真的回到本机代理 / 经 `-L` 读远端 HTTP 且远端命令与探测一致 / 看门狗回收 + 本地隧道口关闭 |
 
 **出口**：同一套 UI 与语义下，SSH 达到 A1–A8（= A9 达成），且 S1–S8 全部勾选、S9 真机 7/7 + 负控失败集逐项相等。
@@ -109,6 +111,13 @@
 
 ## 4. Context Log
 
+- 2026-11-13：**S10-H 完成 —— 环境档位不再是「有个决策函数没人用」**（真机 11/11，负控失败集逐项相等）。开工前的事实是：`src/local/env-policy/` 里的 `planEnv` 写得很完整，却**产品零引用**（`grep` 只命中注释），也就是说 A4 的「三档至少两档可用」当时一条都不成立：用户没有任何途径换档，面板也什么都不显示。
+  1. **判据必须是「远端进程实际拿到的环境」**。单测只能证明「我们打算传 `DSH_HOME`」；档位没生效时产品照样连得上、照样能跑，只是悄悄用了远端的 `~/.dsh`——这种失败不报错，只能靠读 `/proc/<pid>/environ` 抓。进程按端口定位（`ss -ltnp | grep :8967`），不用 `pgrep -f`（执行它的 shell 自己会命中，恒为 1 条，S9 踩过）。
+  2. **`sync` 明确拒绝而不是回落**。三档里 `sync`（可选插件同步）属 M3；若它悄悄按 `isolated` 办，用户会以为插件被同步了。`planEnvInjection` 直接抛 `remote/env-policy-unavailable`；`extraEnv` 里已有**不同**的 `DSH_HOME` 抛 `remote/env-policy-conflict`（同值放行）——两者都有单测。
+  3. **共享层不能 import 本地半**。快照的线上形状要用 `EnvPolicy`，第一版从 `src/local/env-policy/index.ts` 导入，client 构建立刻报 `src/local/env-policy/probe.ts(18,28): error TS2591: Cannot find name 'node:crypto'`。改成 `src/shared/env-policy.ts` 只放**词表**（三档名字 + 联合类型），本地半 re-export，决策逻辑仍只在本地半。
+  4. **两条后端各修一处「环境传不进去」**：SSH 侧的 `remoteHome` 原本算了却没带出来（`buildInspectScript` 早就打了 `p TELEPORT_HOME "$HOME"`），现在由 `RemoteDshRuntime.remoteHome` 带出；WSL 侧 `spawn` 的 `env` **传不进 distro**（实测为空），只能在看门狗那行脚本前面拼 `NAME=value`，为此新增 `shellWord` 与 `envAssignments`（名字走 `^[A-Za-z_][A-Za-z0-9_]*$`，值含换行/NUL 直接抛）。
+  5. **本文件早先条目里的两条「仍未销账」已关闭**（不改写历史，在此记账）：`describeAnchor` 已接进 `GET /teleport/api/anchors`（S10-F）；浏览器里点 SSH 面板已有点击证据（S10-G，`spikes/m2/ssh-panel/probe.cjs` 7/7）。
+  6. **工具教训**：`tools.edit` 传相同的 old/new 会抛 `invalid arguments`，而**同一个 `run_code` 里后续语句不再执行**——本轮因此漏掉 `api.ts` 的一处 import，靠复查 `grep` 才发现。批量改文件后必须复查而不是相信「没报错＝都改了」。
 - 2026-11-13：**S10-G 完成 —— SSH 侧第一次在原生 GUI 里被点出来**（真机 7/7，负控 3/7 且失败集逐项相等）。此前 SSH 的全部证据都是进程内直调产品函数（`createLiveConnect` / `ProjectionService`），M1 的面板点击证据则只覆盖 WSL。这一片补的正是「同一套 UI」这半句。
   1. **首跑 2/7 是探针错，不是产品错**。面板的「接入」按钮 disabled，`blocked: 点不到「接入 SSH 远端」按钮`。原因是探针起宿主时只给了 `DSH_HOME`，没给 `DSH_TELEPORT_REMOTE_ROOT` / `DSH_TELEPORT_PORT` —— `panel.ts` 的 `planSshAttach` **故意不猜**检出根（猜出来的路径会让工作区建在不存在的地方还不报错）。探针照产品的方式给配置后 7/7。教训：**探针不许绕过按钮自己拼请求**，按钮 disabled 时先读它的 `title`（那里写着原因）。
   2. **接入计时只能 Node 侧打点，且必须标明来源**。接入成功会让官方 workspace owner 自己导航到新工作区，瞬移面板被卸载，页内 rAF 谓词再也读不到 `[data-teleport='projected']`。做法：`attachMeasured` 在 Node 侧取起止，每轮先把面板点回来再判定，落盘 `source: "node"` —— 门禁口径（§7.1 的 rAF 打点）只在 `ssh-e2e/probe.ts` 里成立，不在这里冒充。实测 16729 ms（含远端引导），新会话 1338 ms、取证 2331 ms、断开 13 ms、重连 1865 ms。

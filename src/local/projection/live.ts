@@ -33,6 +33,8 @@ import { launchSshDsh } from '../backend/ssh/launch.ts'
 import { resolveRemoteDsh, type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts'
 import type { SshAuth } from '../backend/ssh/transport.ts'
 import { launchRemoteDsh } from '../backend/wsl/launch.ts'
+import { runInDistro } from '../backend/wsl/exec.ts'
+import { planEnvInjection, resolveEnvPolicy, type EnvPolicy } from '../env-policy/index.ts'
 import type { ConnectTarget, RemoteConnection, SshConnectTarget } from './service.ts'
 import { RemoteRpc } from './remote.ts'
 
@@ -86,6 +88,13 @@ export interface LiveConnectOptions {
   readonly launchTimeoutMs?: number
   /** SSH 后端材料；没配就只支持 WSL 目标（点 SSH 会得到结构化错误）。 */
   readonly ssh?: LiveSshOptions
+  /**
+   * 环境档位（`reuse` / `isolated` / `sync`）。缺省 `reuse`。
+   *
+   * 收**原始字符串**而不是解析后的值：档位来自配置/环境变量，写错时必须让用户
+   * 在「点连接」那一刻看到结构化错误，而不是插件加载时就崩掉、连面板都开不出来。
+   */
+  readonly envPolicy?: string | undefined
 }
 
 /**
@@ -100,15 +109,58 @@ export function createLiveConnect(
 ): (target: ConnectTarget) => Promise<RemoteConnection> {
   return async (target) => {
     if (target.backend === 'ssh') return connectSsh(target, options)
-    const handle = await launchRemoteDsh({
-      ...(options.executable === undefined ? {} : { executable: options.executable }),
-      distro: target.distro,
-      remoteRoot: target.remoteRoot,
-      port: target.port,
-      ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
-    })
-    return openConnection(handle)
+    return connectWsl(target, options)
   }
+}
+
+/**
+ * WSL：起远端 dsh，按环境档位决定要不要注入 `DSH_HOME`。
+ *
+ * 隔离档必须**先问远端自己的 `$HOME`**：`wsl.exe` 里的 `$HOME` 与 Windows 侧的
+ * `userprofile` 不是一回事（可能是 `/home/hui`，也可能不是），猜错就会把 dsh
+ * 装到/读到不存在的地方——而且还能「成功」跑起来，只是用的是别处的环境。
+ */
+async function connectWsl(target: ConnectTarget & { readonly backend: 'wsl' }, options: LiveConnectOptions): Promise<RemoteConnection> {
+  const policy = resolvePolicy(options.envPolicy)
+  const home = policy === 'isolated' ? await wslHome(options.executable, target.distro) : ''
+  const injection = planEnvInjection(policy, { home, hostKey: 'wsl:' + target.distro })
+  const handle = await launchRemoteDsh({
+    ...(options.executable === undefined ? {} : { executable: options.executable }),
+    distro: target.distro,
+    remoteRoot: target.remoteRoot,
+    port: target.port,
+    ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
+    ...(injection.env === undefined ? {} : { env: injection.env }),
+  })
+  return openConnection(handle, policy)
+}
+
+/** 档位字符串 → 枚举；写错时给结构化错误，不静默回落到 `reuse`。 */
+function resolvePolicy(raw: string | undefined): EnvPolicy {
+  try {
+    return resolveEnvPolicy(raw)
+  } catch (error) {
+    throw new TeleportError({
+      code: 'remote/env-policy-invalid',
+      detail: error instanceof Error ? error.message : String(error),
+      nextActions: ['把环境档位改成 reuse 或 isolated', '清空该配置即回到默认档 reuse'],
+      cause: error,
+    })
+  }
+}
+
+/** 隔离档要拼远端 home；拿不到就停在这里，不猜一个「大概是 /home/xxx」。 */
+async function wslHome(executable: string | undefined, distro: string): Promise<string> {
+  const result = await runInDistro(executable ?? 'wsl.exe', distro, ['sh', '-c', 'printf %s "$HOME"'])
+  const home = result.stdoutText.trim()
+  if (result.exitCode !== 0 || home === '') {
+    throw new TeleportError({
+      code: 'remote/probe-incomplete',
+      detail: '读不到 WSL 发行版 ' + distro + ' 的 $HOME（退出码 ' + String(result.exitCode) + '，stderr ' + result.stderrText.trim().slice(-200) + '）',
+      nextActions: ['确认该发行版里有 sh', '改用 reuse 档，或改连 SSH 目标'],
+    })
+  }
+  return home
 }
 
 /**
@@ -172,6 +224,10 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
   })
   // 端口可以在连的时候才定：代理与「连远端」是两条独立生命期，插件入口先起代理、
   // 用户点连接时才读端口。读晚了没关系，读到 undefined 就是不挂 `-R`（下表已写清后果）。
+  // 环境档位在**解析完远端 dsh** 之后才算：隔离档要拼远端 `$HOME`，而那个值只有
+  // `resolveRemoteDsh` 同一条检查脚本能拿到（本地 home 拼出来的一定不对）。
+  const policy = resolvePolicy(options.envPolicy)
+  const injection = planEnvInjection(policy, { home: runtime.remoteHome, hostKey: 'ssh:' + target.alias }, ssh.extraEnv)
   const proxyPort = typeof ssh.proxyPort === 'function' ? ssh.proxyPort() : ssh.proxyPort
   const handle = await launchSshDsh({
     homeDir: ssh.homeDir,
@@ -184,13 +240,13 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
     ...(ssh.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: ssh.connectTimeoutMs }),
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
     ...(proxyPort === undefined || proxyPort <= 0 ? {} : { proxyPort }),
-    ...(ssh.extraEnv === undefined ? {} : { extraEnv: ssh.extraEnv }),
+    ...(injection.env === undefined ? {} : { extraEnv: injection.env }),
   })
-  return openConnection(handle)
+  return openConnection(handle, policy)
 }
 
 /** 握手 + 打包成 `RemoteConnection`；启动器只负责给出一个可连的句柄。 */
-async function openConnection(handle: RemoteDshHandle): Promise<RemoteConnection> {
+async function openConnection(handle: RemoteDshHandle, envPolicy: EnvPolicy): Promise<RemoteConnection> {
   const endpoint = handle.endpoint
   let rpc: RemoteRpc
   try {
@@ -206,6 +262,7 @@ async function openConnection(handle: RemoteDshHandle): Promise<RemoteConnection
       return rpc
     },
     remoteProxyPort: handle.remoteProxyPort,
+    envPolicy,
     /**
      * 只换传输：关掉旧 socket 与 WS，用**同一个** endpoint 再握一次手。
      *

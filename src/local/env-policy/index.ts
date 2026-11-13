@@ -8,6 +8,8 @@
  * 两者都零 IO 依赖（探针脚本只是**生成**源码，不执行），真正的执行在 Backend。
  */
 
+export { planEnvInjection, type EnvInjection } from './apply.ts'
+
 export {
   assertHostKey,
   assertRemoteHome,

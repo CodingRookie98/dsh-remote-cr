@@ -119,6 +119,9 @@ export function apply(ctx: TeleportPluginContext): TeleportMount {
       // SSH 走 `ssh` 自己的认证（密钥 / agent / ssh_config 里的 IdentityFile）；
       // 本插件不碰密码，也不把任何凭据存在远端或浏览器里。
       ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }), proxyPort: () => proxy?.port },
+      // 环境档位从宿主环境读**原始字符串**：写错时要在「点连接」那一刻给出结构化错误，
+      // 而不是在插件加载时崩掉（那会让面板都开不出来）。
+      envPolicy: process.env['TELEPORT_ENV_POLICY'],
     }),
   })
 

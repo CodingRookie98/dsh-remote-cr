@@ -11,6 +11,7 @@
 
 import type { FlowState } from './flow.ts'
 import type { WorkspaceSource } from './choices.ts'
+import type { EnvPolicy } from './env-policy.ts'
 import type { LinkPhase } from './reconnect.ts'
 
 /** 宿主半挂载的路由前缀（`docs/design/architecture.md` 组件图）。 */
@@ -188,6 +189,12 @@ export interface ProjectionSnapshotInfo {
    * 光有 `connected:false` 时，用户分不清是「没连过」还是「掉线正在重试」。
    */
   readonly link: LinkPhase
+  /**
+   * 这次连接用的环境档位（`reuse` / `isolated`）；没连过时 `null`。
+   *
+   * 面板必须能显示它：用户选了隔离档却静默按复用档跑，是这一档最糟的失败形态。
+   */
+  readonly envPolicy: EnvPolicy | null
   /**
    * 接入默认值（端口 + 远端检出根）。
    *
