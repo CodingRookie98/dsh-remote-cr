@@ -14,6 +14,14 @@ test('parseBaselineFrame：baseline 的 items 解析成行，坏条目跳过', (
   assert.equal(rows[0]?.path, '/home/hui/workspace')
 })
 
+test('parseBaselineFrame：解包流帧的 item 外壳（真机形状）', () => {
+  const rows = parseBaselineFrame({
+    type: 'item',
+    value: { type: 'baseline', value: { items: [row('w1', '/a')], archivedSessionIds: [], pinnedSessionIds: [] } },
+  })
+  assert.deepEqual(rows.map((item) => item.workspaceId), ['w1'])
+})
+
 test('parseBaselineFrame：不是 baseline / 缺 items 一律空（宁缺勿错）', () => {
   assert.deepEqual(parseBaselineFrame({ type: 'upsert', workspace: row('w1', '/a') }), [])
   assert.deepEqual(parseBaselineFrame({ type: 'baseline', value: {} }), [])

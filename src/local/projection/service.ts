@@ -482,9 +482,21 @@ export class ProjectionService {
         nextActions: ['先在面板里接入一个远端'],
       })
     }
-    const stream = live.connection.rpc.openStream('workspace/follow', {})
+    // 远端 RPC 的信封是 `{ args }`（网关要求「payload 里恰好一个 plain-object args 字段」）；
+    // 直接传 `{}` 会得到 gateway/internal，而流里只会来一帧 error —— 表现为「列表为空」。
+    const stream = live.connection.rpc.openStream('workspace/follow', { args: {} })
     try {
-      const rows = parseBaselineFrame(await firstFrame(stream, 10_000))
+      const first = await firstFrame(stream, 10_000)
+      // 首帧可能是错误帧（网关/远端拒绝）：吞掉会变成「列表为空」，用户查不出原因。
+      const failure = readFrameError(first)
+      if (failure !== undefined) {
+        throw new TeleportError({
+          code: 'remote/tunnel-unavailable',
+          detail: '读 workspace/follow 被远端拒绝：' + failure,
+          nextActions: ['重试一次', '确认远端版本支持 workspace/follow'],
+        })
+      }
+      const rows = parseBaselineFrame(first)
       // 只返回「本地还没有的」：列表里出现已接入的条目会诱导用户重复导入。
       return planImport(
         rows,
@@ -803,6 +815,17 @@ export function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
   if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro === right.distro
   if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias === right.alias
   return false
+}
+
+
+/** 读流帧里的错误（网关/远端拒绝）；不是错误帧就 undefined。 */
+function readFrameError(frame: unknown): string | undefined {
+  if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) return undefined
+  const record = frame as Record<string, unknown>
+  if (record['type'] !== 'error') return undefined
+  const code = typeof record['code'] === 'string' ? record['code'] : 'error'
+  const message = typeof record['message'] === 'string' ? record['message'] : ''
+  return message === '' ? code : code + ': ' + message
 }
 
 /** 取一条流的第一帧；超时抛 `remote/tunnel-unavailable`（面板据此提示重试）。 */

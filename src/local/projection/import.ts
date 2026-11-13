@@ -30,8 +30,15 @@ export interface RemoteWorkspaceRow {
 
 /** 解析 follow 流的首帧；不是 baseline 或形状不对都返回空（宁缺勿错）。 */
 export function parseBaselineFrame(frame: unknown): readonly RemoteWorkspaceRow[] {
-  const record = asRecord(frame)
+  let record = asRecord(frame)
   if (record === undefined) return []
+  // 真机实测：流会给每一帧再包一层 `{ type: 'item', value: <frame> }`。
+  // 不脱这层壳的话恒返回空，表现为「远端明明有工作区，导入列表却是空的」。
+  if (asString(record['type']) === 'item') {
+    const inner = asRecord(record['value'])
+    if (inner === undefined) return []
+    record = inner
+  }
   if (asString(record['type']) !== 'baseline') return []
   const value = asRecord(record['value'])
   if (value === undefined) return []

@@ -185,7 +185,9 @@ export function importWorkspaces(
   paths: readonly string[],
   fetchImpl?: typeof fetch,
 ): Promise<{ readonly imported: number }> {
-  return callApi('/workspace/import', { method: 'POST', body: JSON.stringify({ paths }) }, fetchImpl)
+  // 注意：`callApi` 自己会 `JSON.stringify(init.body)`（api.ts:64）。这里再 stringify 一次
+  // 就是双重编码——后端读到的是字符串，`body.paths` 为 undefined，导入必失败。
+  return callApi('/workspace/import', { method: 'POST', body: { paths } }, fetchImpl)
 }
 
 /** 在一个已接入的远端工作区里新建会话（远端 `session/create`）。 */
