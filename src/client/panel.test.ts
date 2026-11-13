@@ -110,7 +110,11 @@ test('未确认远端执行时，报告与摘要都必须带上原因', () => {
 test('时间格式化：解析不了就原样返回，绝不拿本地时钟编一个', () => {
   assert.equal(formatUpdatedAt(undefined), '时间未知')
   assert.equal(formatUpdatedAt('not-a-date'), 'not-a-date')
-  assert.equal(formatUpdatedAt('2026-10-31T09:05:06.789Z'), '2026-10-31 09:05:06Z')
+  assert.equal(formatUpdatedAt('2026-10-31T09:05:06.789Z', Date.parse('2026-10-31T09:05:30.000Z')), '刚刚')
+assert.equal(formatUpdatedAt('2026-10-31T09:05:06.789Z', Date.parse('2026-10-31T09:35:06.789Z')), '30 分钟前')
+assert.equal(formatUpdatedAt('2026-10-31T09:05:06.789Z', Date.parse('2026-10-31T12:05:06.789Z')), '3 小时前')
+// 更久远的一律本地日期（不写 Z）：具体值依赖运行时的时区，只断言形状。
+assert.match(formatUpdatedAt('2026-10-31T09:05:06.789Z', Date.parse('2026-11-05T00:00:00.000Z')), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
 })
 
 function snapshot(overrides: Partial<ProjectionSnapshotInfo> = {}): ProjectionSnapshotInfo {

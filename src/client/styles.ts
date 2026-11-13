@@ -55,7 +55,11 @@ export const PANEL_CSS = `
 }
 [data-teleport='panel'] button[data-teleport='stop-remote'] { color: ${COLORS.danger}; border-color: #ffcecb; }
 
-[data-teleport='panel'] [data-teleport='ssh-aliases'] { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+[data-teleport='panel'] [data-teleport='ssh-aliases'] {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0;
+  /* 主机多时给一块固定高度 + 滚动：不隐藏任何一条（隐藏会让「找不到我的主机」变成真问题）。 */
+  max-height: 96px; overflow-y: auto;
+}
 [data-teleport='panel'] [data-teleport='ssh-alias'] { border-radius: 999px; }
 
 [data-teleport='panel'] [data-teleport='projected'] {

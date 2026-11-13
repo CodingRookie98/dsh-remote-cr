@@ -230,9 +230,20 @@ export function disconnectPlan(snapshot: ProjectionSnapshotInfo | null): ButtonP
  * 远端给的是 ISO-8601；解析不了就原样返回，**不拿本地时钟编一个**——
  * 编出来的时间会让「这条会话是旧的」这种判断变成假的。
  */
-export function formatUpdatedAt(iso: string | undefined): string {
+export function formatUpdatedAt(iso: string | undefined, now: number = Date.now()): string {
   if (iso === undefined) return '时间未知'
   const at = Date.parse(iso)
   if (Number.isNaN(at)) return iso
-  return new Date(at).toISOString().replace('T', ' ').slice(0, 19) + 'Z'
+  // 相对时间只覆盖「一小时内」：再久远的写「37 小时前」反而要用户心算。
+  const delta = now - at
+  if (delta >= 0 && delta < 60_000) return '刚刚'
+  if (delta >= 60_000 && delta < 3_600_000) return String(Math.floor(delta / 60_000)) + ' 分钟前'
+  if (delta >= 3_600_000 && delta < 86_400_000) return String(Math.floor(delta / 3_600_000)) + ' 小时前'
+  // 本地时区、精确到分钟：UTC 的 `Z` 后缀在面板上纯属噪音（读者按本地时间理解一切）。
+  const local = new Date(at)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return (
+    String(local.getFullYear()) + '-' + pad(local.getMonth() + 1) + '-' + pad(local.getDate()) +
+    ' ' + pad(local.getHours()) + ':' + pad(local.getMinutes())
+  )
 }

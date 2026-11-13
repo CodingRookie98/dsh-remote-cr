@@ -1,28 +1,6 @@
 {
-  "at": "2026-11-13T14:54:18.274Z",
+  "at": "2026-11-13T14:58:07.223Z",
   "negative": false,
   "measurements": [],
-  "results": [
-    {
-      "id": "M4-1-list",
-      "ok": true,
-      "detail": {
-        "before": 1,
-        "opened": "clicked",
-        "listed": {
-          "count": 1,
-          "first": "/home/hui/workspace-import"
-        }
-      }
-    },
-    {
-      "id": "M4-1-import",
-      "ok": true,
-      "detail": {
-        "imported": "clicked",
-        "before": 1,
-        "after": 2
-      }
-    }
-  ]
+  "results": []
 }

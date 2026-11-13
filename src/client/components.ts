@@ -884,6 +884,8 @@ export function TeleportPanel(): unknown {
           h(
             'div',
             { 'data-teleport': 'ssh-aliases' },
+            // 不隐藏任何主机：折叠会把 gcp 这类排后面的主机藏起来（探针与用户都找不到）。
+            // 视觉上由 CSS 的 max-height + 滚动控制。
             ...sshHosts.map((host) =>
               h(
                 'button',
@@ -1128,7 +1130,11 @@ export function TeleportPanel(): unknown {
     h(
       'div',
       { 'data-teleport': 'panel-workspaces' },
-      ...(addRows.length === 0 ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有添加目录')] : addRows),
+      // 只有「既没有手工目录、也没有投影工作区」时才显示空态：
+      // 否则会出现「明明侧栏里有工作区，这里却说还没有添加目录」的自相矛盾。
+      ...(addRows.length === 0 && projectedRows.length === 0
+        ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有添加目录')]
+        : addRows),
     ),
     h(
       'div',
