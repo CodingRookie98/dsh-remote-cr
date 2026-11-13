@@ -1,0 +1,101 @@
+{
+  "at": "2026-11-13T09:35:00.673Z",
+  "negative": false,
+  "measurements": [],
+  "results": [
+    {
+      "id": "G-A5-2",
+      "ok": true,
+      "detail": {
+        "cancelClicked": true,
+        "cancelCalls": "[{\"status\":200,\"body\":\"{\\\"ok\\\":true,\\\"value\\\":{\\\"cancelled\\\":true}}\"}]",
+        "cancelPhase": "bootstrap",
+        "sawBusy": false,
+        "progressGone": true,
+        "errorAfterCancel": false,
+        "portFreed": true,
+        "portFreeMs": 62589,
+        "timeline": [
+          {
+            "phase": "probe",
+            "at": 343
+          },
+          {
+            "phase": "bootstrap",
+            "at": 3633
+          }
+        ]
+      }
+    },
+    {
+      "id": "G-A5-1",
+      "ok": true,
+      "detail": {
+        "phases": [
+          "probe",
+          "bootstrap",
+          "launch",
+          "tunnel",
+          "attach"
+        ],
+        "sawCancelButton": true,
+        "online": true,
+        "linkPhase": "connected",
+        "timeline": [
+          {
+            "phase": "probe",
+            "at": 343
+          },
+          {
+            "phase": "bootstrap",
+            "at": 3633
+          }
+        ]
+      }
+    },
+    {
+      "id": "G-A5-3",
+      "ok": true,
+      "detail": {
+        "online": true,
+        "linkPhase": "connected"
+      }
+    },
+    {
+      "id": "G-A8-1",
+      "ok": true,
+      "detail": {
+        "code": "remote/workspace-invalid-path",
+        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794562491668\": ENOENT: no such file or direc",
+        "next": [
+          "查看远端日志",
+          "重试"
+        ]
+      }
+    },
+    {
+      "id": "G-A8-2",
+      "ok": true,
+      "detail": {
+        "hasCopy": true
+      }
+    },
+    {
+      "id": "G-A8-3",
+      "ok": true,
+      "detail": {
+        "retried": true,
+        "recovered": true
+      }
+    },
+    {
+      "id": "G-CLEAN",
+      "ok": true,
+      "detail": {
+        "remotePort": 8961,
+        "hadRemote": true,
+        "busyAfter": false
+      }
+    }
+  ]
+}

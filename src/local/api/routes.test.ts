@@ -163,13 +163,14 @@ function rig(
   }
 }
 
-test('十三条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('十四条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
     [
       '/teleport/api/anchors GET',
       '/teleport/api/attach POST',
+      '/teleport/api/attach/cancel POST',
       '/teleport/api/disconnect POST',
       '/teleport/api/flow GET',
       '/teleport/api/flow/cancel POST',
@@ -183,6 +184,12 @@ test('十三条路由全部挂载在 /teleport/api 下，且各自声明允许�
       '/teleport/api/workspaces GET',
     ],
   )
+})
+
+test('没有接入在进行时点取消：回 200 且 cancelled=false，不当成错误', async () => {
+  const result = await rig().call({ path: '/attach/cancel', method: 'POST' })
+  assert.equal(result.status, 200)
+  assert.deepEqual((result.json as { value: { cancelled: boolean } }).value, { cancelled: false })
 })
 
 test('/sources 回四选一 + 可点清单；探测失败也回 200（灰显不是错误）', async () => {

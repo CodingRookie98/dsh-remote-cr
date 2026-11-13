@@ -1,0 +1,122 @@
+{
+  "at": "2026-11-13T09:33:03.538Z",
+  "negative": true,
+  "measurements": [],
+  "results": [
+    {
+      "id": "G-A5-2",
+      "ok": false,
+      "detail": {
+        "cancelClicked": false,
+        "cancelCalls": "[]",
+        "cancelPhase": null,
+        "sawBusy": false,
+        "progressGone": null,
+        "errorAfterCancel": false,
+        "portFreed": false,
+        "portFreeMs": null,
+        "timeline": [
+          {
+            "phase": "probe",
+            "at": 342
+          },
+          {
+            "phase": "bootstrap",
+            "at": 4280
+          },
+          {
+            "phase": "launch",
+            "at": 7254
+          },
+          {
+            "phase": "tunnel",
+            "at": 15926
+          },
+          {
+            "phase": "attach",
+            "at": 16862
+          }
+        ]
+      }
+    },
+    {
+      "id": "G-A5-1",
+      "ok": true,
+      "detail": {
+        "phases": [
+          "probe",
+          "bootstrap",
+          "launch",
+          "tunnel",
+          "attach"
+        ],
+        "sawCancelButton": true,
+        "online": true,
+        "linkPhase": "connected",
+        "timeline": [
+          {
+            "phase": "probe",
+            "at": 342
+          },
+          {
+            "phase": "bootstrap",
+            "at": 4280
+          },
+          {
+            "phase": "launch",
+            "at": 7254
+          },
+          {
+            "phase": "tunnel",
+            "at": 15926
+          },
+          {
+            "phase": "attach",
+            "at": 16862
+          }
+        ]
+      }
+    },
+    {
+      "id": "G-A5-3",
+      "ok": true,
+      "detail": {
+        "online": true,
+        "linkPhase": "connected"
+      }
+    },
+    {
+      "id": "G-A8-1",
+      "ok": false,
+      "detail": {
+        "code": null,
+        "detail": null,
+        "next": null
+      }
+    },
+    {
+      "id": "G-A8-2",
+      "ok": false,
+      "detail": {
+        "hasCopy": null
+      }
+    },
+    {
+      "id": "G-A8-3",
+      "ok": false,
+      "detail": {
+        "retried": false,
+        "recovered": false
+      }
+    },
+    {
+      "id": "G-CLEAN",
+      "ok": true,
+      "detail": {
+        "remotePort": 8961,
+        "hadRemote": true,
+        "busyAfter": false
+      }
+    }
+  ]
+}

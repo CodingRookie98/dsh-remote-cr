@@ -444,6 +444,9 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     return service
   }
 
+  /** 进行一次接入；同一时刻只允许一个（远端端口只有一个，并发接入只会互相踩）。 */
+  let attaching: AbortController | undefined
+
   /** 快照的线上形状。三条路由（读面板 / 断开 / 重连）共用，避免字段各写一遍。 */
   const snapshotInfo = (service: ProjectionService): ProjectionSnapshotInfo => {
     const snapshot = service.snapshot()
@@ -454,6 +457,10 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       target: snapshot.target === null ? null : toTargetInfo(snapshot.target),
       link: snapshot.link,
       envPolicy: snapshot.envPolicy,
+      attach:
+        snapshot.attach === null
+          ? null
+          : { phase: snapshot.attach.phase, startedAt: snapshot.attach.startedAt },
       defaults: readDefaults(),
     }
   }
@@ -465,16 +472,45 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   mount('/attach', ['POST'], async (req, res) => {
     const service = requireProjection()
     const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
-    const result = await service.attach(input.target, {
-      remotePath: input.remotePath,
-      localPath: input.localPath,
-      ...(input.title === undefined ? {} : { title: input.title }),
-    })
+    // 取消要能真的打断「起进程/建隧道」这一段，否则按钮只是个装饰。
+    const controller = new AbortController()
+    attaching = controller
+    let result
+    try {
+      result = await service.attach(
+        input.target,
+        {
+          remotePath: input.remotePath,
+          localPath: input.localPath,
+          ...(input.title === undefined ? {} : { title: input.title }),
+        },
+        { signal: controller.signal },
+      )
+    } catch (error) {
+      // 用户自己取消不算故障：把它回成 cancelled，面板就不会把红字摆出来。
+      if (controller.signal.aborted) {
+        throw new TeleportError({
+          code: 'remote/cancelled',
+          detail: '已取消这次接入',
+          nextActions: ['重新点一次「接入」', '换个目标再试'],
+        })
+      }
+      throw error
+    } finally {
+      if (attaching === controller) attaching = undefined
+    }
     sendJson(res, 200, okEnvelope<AttachOutcome>({
       workspace: toWorkspaceInfo(result.workspace),
       sessions: result.sessions.map(toSessionInfo),
       created: result.created,
     }))
+  })
+
+  mount('/attach/cancel', ['POST'], async (_req, res) => {
+    const controller = attaching
+    controller?.abort()
+    // 没有正在进行的接入时回 false 而不是报错：按钮可能比请求晚到一帧，这不是故障。
+    sendJson(res, 200, okEnvelope({ cancelled: controller !== undefined }))
   })
 
   mount('/session', ['POST'], async (req, res) => {

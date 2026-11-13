@@ -13,6 +13,7 @@ import type { FlowState } from './flow.ts'
 import type { WorkspaceSource } from './choices.ts'
 import type { EnvPolicy } from './env-policy.ts'
 import type { LinkPhase } from './reconnect.ts'
+import type { AttachPhase } from './phases.ts'
 
 /** 宿主半挂载的路由前缀（`docs/design/architecture.md` 组件图）。 */
 export const API_PREFIX = '/teleport/api'
@@ -195,6 +196,13 @@ export interface ProjectionSnapshotInfo {
    * 面板必须能显示它：用户选了隔离档却静默按复用档跑，是这一档最糟的失败形态。
    */
   readonly envPolicy: EnvPolicy | null
+  /**
+   * 正在进行中的接入：阶段 + 起始时间；没有在接入时是 null。
+   *
+   * 面板靠它把「接入中…」换成「正在启动远端 dsh…」，并在旁边给一个能真取消的按钮。
+   * 阶段词表来自 shared/phases.ts（浏览器半不能 import 宿主半）。
+   */
+  readonly attach: { readonly phase: AttachPhase; readonly startedAt: number } | null
   /**
    * 接入默认值（端口 + 远端检出根）。
    *

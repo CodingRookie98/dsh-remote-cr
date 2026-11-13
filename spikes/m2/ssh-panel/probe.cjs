@@ -20,8 +20,12 @@ const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
 
 const NEG = process.env.NEGATIVE_CONTROL === '1'
+const GATE = process.env.GATE ?? ''
 const ALIAS = process.env.SSH_ALIAS ?? 'gcp'
-const REMOTE_ROOT = NEG ? '' : (process.env.SSH_ROOT ?? '/home/hui/workspace')
+// A5/A8 闸门的负控不能靠「路径留空」：那会把接入按钮直接按灰，探针连第一枪都开不出来，
+// 只剩一条 S2P-FATAL —— 证明不了任何断言不是空洞为真。闸门负控改成**在页面里拆产品的脸**:
+// 错误框退化成一行纯文本、取消按钮换成没挂处理器的克隆（见 installGateSabotage）。
+const REMOTE_ROOT = GATE === 'a5a8' ? (process.env.SSH_ROOT ?? '/home/hui/workspace') : NEG ? '' : (process.env.SSH_ROOT ?? '/home/hui/workspace')
 const HOST_PORT = Number(process.env.HOST_PORT ?? '3131')
 const REMOTE_PORT = Number(process.env.REMOTE_PORT ?? '8961')
 const CDP_PORT = Number(process.env.CDP_PORT ?? '9337')
@@ -33,8 +37,12 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const SCRATCH = path.join(ROOT, '.tmp-spike/ssh-panel')
 const DSH_HOME = path.join(SCRATCH, 'home')
 const PROFILE_DIR = path.join(SCRATCH, 'chrome-profile')
-const MEASUREMENTS = path.join(__dirname, NEG ? 'measurements.neg.json' : 'measurements.json')
-const NEG_EXPECTED_FAILURES = ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
+const MEASUREMENTS = path.join(
+  __dirname,
+  GATE === 'a5a8' ? (NEG ? 'measurements.a5a8.neg.json' : 'measurements.a5a8.json') : NEG ? 'measurements.neg.json' : 'measurements.json',
+)
+const NEG_EXPECTED_FAILURES =
+  GATE === 'a5a8' ? ['G-A5-2', 'G-A8-1', 'G-A8-2', 'G-A8-3'] : ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
 
 const results = []
 const measurements = []
@@ -166,40 +174,131 @@ function stopHost() {
 
 let chrome = null
 
-function startChrome() {
+/**
+ * 把抢着 `CDP_PORT` 的进程清掉，并等到端口真的空出来。
+ *
+ * 不这么做的后果是**静默连到已经死掉的旧 Chrome**：`waitForChrome` 拿到的 ws 地址来自
+ * 上一轮残留进程，`Page.navigate` 永远不返回，整轮探针只剩一条 `S2P-FATAL`，
+ * 看起来像产品/环境坏了。真机上连踩两次（9337 被上一轮的 chrome 攥着）。
+ */
+function freePort(port) {
+  const out = spawnSync('netstat', ['-ano'], { encoding: 'utf8' }).stdout ?? ''
+  const pids = new Set()
+  for (const line of out.split(/\r?\n/)) {
+    if (line.indexOf('LISTENING') < 0) continue
+    if (!line.includes(':' + String(port) + ' ')) continue
+    const parts = line.trim().split(/\s+/)
+    const pid = parts[parts.length - 1]
+    if (/^\d+$/.test(pid) && pid !== '0') pids.add(pid)
+  }
+  for (const pid of pids) spawnSync('taskkill', ['/PID', pid, '/T', '/F'], { windowsHide: true })
+  return [...pids]
+}
+
+async function waitPortFree(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (freePort(port).length === 0) return true
+    await sleep(300)
+  }
+  return false
+}
+
+let profileDir = PROFILE_DIR
+
+/**
+ * 准备一个**真的能写**的 profile 目录。
+ *
+ * 上一轮的 chrome 若还攥着 `--user-data-dir`，`rmSync` 只会 EPERM，而拿这个目录再起
+ * Chrome 会直接退出（`waitForChrome` 于是 30s 超时）。所以删不掉就换一个新目录名 ——
+ * 目录名对判定没有意义，能起来才有意义。
+ */
+function prepareProfileDir() {
   try {
     fs.rmSync(PROFILE_DIR, { recursive: true, force: true })
+    profileDir = PROFILE_DIR
   } catch {
-    /* 上一轮残留的 chrome 还没退干净，留着由 Chrome 自己接管 */
+    profileDir = PROFILE_DIR + '-r' + String(Date.now())
+    console.log('  · 旧 profile 目录删不掉（被上一轮 chrome 攥着），改用 ' + profileDir)
   }
-  chrome = spawn(
-    CHROME,
-    [
-      '--headless=new',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--remote-debugging-port=' + String(CDP_PORT),
-      '--user-data-dir=' + PROFILE_DIR,
-      'about:blank',
-    ],
-    { stdio: 'ignore' },
-  )
+  return profileDir
+}
+
+let chromeLog = ''
+
+async function startChrome() {
+  const squashed = freePort(CDP_PORT)
+  if (squashed.length > 0) console.log('  · 清掉占着 CDP 端口的旧进程：' + squashed.join(','))
+  // 端口必须真空才起：残留实例攥着端口时，「端点有应答」反而是陷阱（连上旧 Chrome 后
+  // `Page.navigate` 永不返回）。归属问题在这里解决，而不是靠端点自证。
+  if (!(await waitPortFree(CDP_PORT, 10_000))) {
+    throw new Error('CDP 端口 ' + String(CDP_PORT) + ' 清不干净，先手动关掉占着它的进程')
+  }
+  const dir = prepareProfileDir()
+  // Chrome 的 stderr 不许丢：起不来时它是唯一说清原因的东西（profile 被攥着、已有实例
+  // 抢走命令行、策略禁 headless… 都只写在 stderr 里）。上一版 `stdio: 'ignore'` 的代价
+  // 是「30s 没就绪」这种无信息失败，判不了是环境还是产品。
+  fs.mkdirSync(SCRATCH, { recursive: true })
+  chromeLog = path.join(SCRATCH, 'chrome-' + String(CDP_PORT) + '.log')
+  const fd = fs.openSync(chromeLog, 'w')
+  try {
+    chrome = spawn(
+      CHROME,
+      [
+        '--headless=new',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--remote-debugging-port=' + String(CDP_PORT),
+        '--user-data-dir=' + dir,
+        'about:blank',
+      ],
+      { stdio: ['ignore', fd, fd] },
+    )
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+/** CDP 没就绪时的现场：进程活着没有、日志说了什么。 */
+function chromeDiagnosis() {
+  const parts = ['profile=' + profileDir, 'log=' + chromeLog]
+  if (chrome !== null) {
+    parts.push('pid=' + String(chrome.pid), 'exitCode=' + String(chrome.exitCode), 'killed=' + String(chrome.killed))
+  }
+  try {
+    const text = fs.readFileSync(chromeLog, 'utf8').trim()
+    parts.push('stderr=' + (text === '' ? '(空)' : text.split(/\r?\n/).slice(-12).join(' | ')))
+  } catch {
+    parts.push('stderr=(日志读不到)')
+  }
+  return parts.join(' ')
 }
 
 async function waitForChrome() {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
+    let body = null
     try {
       const response = await fetch('http://127.0.0.1:' + String(CDP_PORT) + '/json/version')
-      const body = await response.json()
-      if (typeof body.webSocketDebuggerUrl === 'string') return body.webSocketDebuggerUrl
+      body = await response.json()
     } catch {
       /* 还没起来 */
     }
+    if (body !== null && typeof body.webSocketDebuggerUrl === 'string') {
+      // 归属判据不能用 `chrome.exitCode`：Windows 的 chrome.exe 是启动器，把工作交给子进程
+      // 后自己以 0 退出，`exitCode !== null` 因此**恒真**；上一版又把它写在 try 里，被
+      // `catch {}` 一并吞掉 —— 端点明明就绪，却只能等满 30s 超时（S10-J 负控两跑都栽在这）。
+      // 现在归属由「起之前 waitPortFree 清空端口」保证，端点自报必须是 headless 实例。
+      const ua = String(body['User-Agent'] ?? '')
+      if (ua.indexOf('Headless') < 0) {
+        throw new Error('CDP 端口 ' + String(CDP_PORT) + ' 上应答的不是 headless 实例：' + ua + '（先清端口再跑）')
+      }
+      return body.webSocketDebuggerUrl
+    }
     await sleep(200)
   }
-  throw new Error('Chrome 的 CDP 端点 30s 内没有就绪')
+  throw new Error('Chrome 的 CDP 端点 30s 内没有就绪（' + chromeDiagnosis() + '）')
 }
 
 function connectCdp(url) {
@@ -217,13 +316,30 @@ function connectCdp(url) {
       else entry.resolve(msg.result)
     })
     ws.addEventListener('error', (event) => reject(new Error('CDP WebSocket 出错：' + String(event))))
+    // 连接断掉时必须把在途调用全部拒掉：否则 `await` 永远不会落地，探针会安静地卡死
+    // （实测卡过 10 分钟，日志一个字都不再增长，看起来像产品挂起，其实是探针自己）。
+    ws.addEventListener('close', () => {
+      for (const [entryId, entry] of pending) {
+        pending.delete(entryId)
+        entry.reject(new Error('CDP 连接已关闭（' + String(pending.size) + ' 个在途调用）'))
+      }
+    })
     ws.addEventListener('open', () => {
       resolve({
         send(method, params = {}, sessionId) {
           return new Promise((res, rej) => {
             id += 1
-            pending.set(id, { resolve: res, reject: rej })
-            ws.send(JSON.stringify({ id, method, params, ...(sessionId === undefined ? {} : { sessionId }) }))
+            const callId = id
+            // 每个调用都带超时：卡住要说清是哪个方法卡住，而不是让整个探针无声停摆。
+            const timer = setTimeout(() => {
+              if (!pending.delete(callId)) return
+              rej(new Error('CDP 调用超时 30s：' + method))
+            }, 30_000)
+            pending.set(callId, {
+              resolve: (value) => { clearTimeout(timer); res(value) },
+              reject: (error) => { clearTimeout(timer); rej(error) },
+            })
+            ws.send(JSON.stringify({ id: callId, method, params, ...(sessionId === undefined ? {} : { sessionId }) }))
           })
         },
         close() {
@@ -435,6 +551,428 @@ async function attachMeasured(cdp, sessionId, timeoutMs, label) {
   throw new Error('接入超时（' + String(timeoutMs) + 'ms）\n--- 页面现场 ---\n' + JSON.stringify(dom, null, 2))
 }
 
+// ── A5 / A8 闸门（GATE=a5a8）────────────────────────────────────────────────
+//
+// A5 要求「分阶段进度 + 取消」，A8 要求「结构化错误码 + 可复制日志 + 重试入口」。
+// 这两条都只能在浏览器里点出来，所以复用同一套宿主 / Chrome 夹具，只换场景。
+// 顺序是刻意的：先取消（冷路径，阶段跑得慢，来得及看见），再真接入（热路径），
+// 最后用「远端不存在的目录」逼出一个宿主侧失败，再从错误框点重试连回好路径。
+
+function gateMeasurementsFile() {
+  return path.join(__dirname, (NEG ? 'measurements.a5a8.neg.json' : 'measurements.a5a8.json'))
+}
+
+async function readProgress(cdp, sid) {
+  return evaluate(
+    cdp,
+    sid,
+    '(() => { const el = ' + q('attach-progress') + ';' +
+      ' if (!el) return null;' +
+      ' return { phase: el.getAttribute("data-phase"), text: el.textContent || "" } })()',
+  )
+}
+
+async function gateLooksOnline(cdp, sid) {
+  return evaluate(
+    cdp,
+    sid,
+    '(() => ' + qa('projected') + '.some(r => r.getAttribute("data-availability") === "online" &&' +
+      ' (r.querySelector("' + sel('projected-path') + '")?.textContent ?? "") === ' + JSON.stringify(REMOTE_ROOT) + '))()',
+  )
+}
+
+/**
+ * 负控注入：把 S10-J 新做的那两块 UI 拆掉，回到「只有一行字」的老样子。
+ *
+ * - `panel-error` 保留盒子但清空码与全部子节点 ⇒ A8-1（结构化码）、A8-2（复制按钮）、
+ *   A8-3（重试按钮）都必须转红；
+ * - `attach-cancel` 换成**没挂 React 处理器**的克隆 ⇒ 点击仍然成功（按钮在、可点），
+ *   但取消不会发生，A5-2 必须转红。而 A5-1 / A5-3 / G-CLEAN 仍应通过 —— 负控只拆这两块。
+ *
+ * 用 50ms 定时器持续施加：面板每 300ms 会因快照轮询重渲染，一次性改动会被 React 覆盖回去。
+ */
+async function installGateSabotage(cdp, sid) {
+  await evaluate(
+    cdp,
+    sid,
+    '(() => {' +
+      ' const strip = () => {' +
+      '  for (const box of Array.from(document.querySelectorAll("' + sel('panel-error') + '"))) {' +
+      '   if (box.getAttribute("data-error-code") !== null) box.setAttribute("data-error-code", "");' +
+      '   for (const child of Array.from(box.children)) child.remove()' +
+      '  }' +
+      '  for (const b of Array.from(document.querySelectorAll("' + sel('attach-cancel') + '"))) {' +
+      '   if (b.getAttribute("data-sabotaged") === "1") continue;' +
+      '   const clone = b.cloneNode(true); clone.setAttribute("data-sabotaged", "1"); b.replaceWith(clone)' +
+      '  }' +
+      ' }' +
+      ' strip(); window.__GATE_SABOTAGE__ = setInterval(strip, 50); return true })()',
+  )
+}
+
+async function gateFillPath(cdp, sid, value) {
+  const applied = await evaluate(
+    cdp,
+    sid,
+    '(() => { const el = ' + q('ssh-path') + '; if (!el) return "missing";' +
+      ' const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;' +
+      ' setter.call(el, ' + JSON.stringify(value) + ');' +
+      ' el.dispatchEvent(new Event("input", { bubbles: true })); return el.value })()',
+  )
+  await sleep(300)
+  return applied === value
+}
+
+/** 不抛的 waitFor：用来做「先看有没有、没有才按重试」这类轮询。 */
+async function waitForQuiet(cdp, sessionId, expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const value = await evaluate(cdp, sessionId, expression)
+    if (value === true) return true
+    await sleep(250)
+  }
+  return false
+}
+
+/**
+ * 等 SSH 主机清单。`/sources` 偶尔整条失败（面板此时显示原因 + 「重试读取」），
+ * 探针按产品给的按钮再拉，最多四轮 —— 探针不替产品做静默重试。
+ */
+async function gateEnsureHosts(cdp, sid) {
+  for (let round = 1; round <= 4; round += 1) {
+    if (await waitForQuiet(cdp, sid, qa('ssh-alias') + '.length >= 1', 20_000)) return round
+    const state = await evaluate(
+      cdp,
+      sid,
+      '(() => { const e = ' + q('ssh-empty') + '; const b = ' + q('ssh-reload') + ';' +
+        ' if (!e) return "(没有 ssh 块)";' +
+        ' if (b) b.click();' +
+        ' return (e.textContent || "") + (b ? " [已点重试]" : " [没有重试按钮]") })()',
+    )
+    // 页面此刻自己还能不能拉到 /sources：把「面板状态」与「接口状态」分开记，
+    // 否则分不清是产品没重试、还是接口根本不通。
+    const raw = await evaluate(
+      cdp,
+      sid,
+      '(async () => { const t0 = performance.now(); try {' +
+        ' const r = await fetch("/teleport/api/sources", { credentials: "include" });' +
+        ' const text = await r.text();' +
+        ' return { ms: Math.round(performance.now() - t0), status: r.status, head: text.slice(0, 120) } }' +
+        ' catch (e) { return { ms: Math.round(performance.now() - t0), err: String(e) } } })()',
+    )
+    console.log('  · 主机清单第 ' + String(round) + ' 轮未就绪：' + JSON.stringify(state))
+    console.log('  · 页面直取 /sources：' + JSON.stringify(raw))
+    await sleep(1200)
+  }
+  throw new Error('SSH 主机清单四轮都未就绪')
+}
+/**
+ * 点「接入」。按钮在 `busy !== null` 时是 disabled（上一次请求还没落定），
+ * 这不是失败，所以等一会儿再点——单次点击会把竞态误报成产品缺陷。
+ */
+async function gateClickAttach(cdp, sid) {
+  const deadline = Date.now() + 15_000
+  let last = { ok: false, why: '还没读到按钮' }
+  while (Date.now() < deadline) {
+    last = await evaluate(
+      cdp,
+      sid,
+      '(() => { const b = ' + q('ssh-attach') + '; if (!b) return { ok: false, why: "按钮不存在" };' +
+        ' if (b.disabled) return { ok: false, why: "disabled: " + (b.getAttribute("title") || "") };' +
+        ' b.click(); return { ok: true } })()',
+    )
+    if (last !== null && last.ok === true) return last
+    await sleep(300)
+  }
+  return last
+}
+
+async function runGateA5A8() {
+  console.log('== M2-EXIT A5/A8 · SSH 面板 · ALIAS=' + ALIAS + ' · REMOTE_ROOT=' + JSON.stringify(REMOTE_ROOT))
+  killRemoteOnPort(REMOTE_PORT)
+  if (!(await hostPortFree())) throw new Error('宿主端口 ' + String(HOST_PORT) + ' 已被占用：先关掉上一个 dsh web')
+  ensureProfile()
+  const url = await startHost()
+  console.log('宿主已起：' + url.replace(/token=[^&]+/, 'token=***'))
+  await startChrome()
+  const cdp = await connectCdp(await waitForChrome())
+  const created = await cdp.send('Target.createTarget', { url: 'about:blank' })
+  const attached = await cdp.send('Target.attachToTarget', { targetId: created.targetId, flatten: true })
+  const sid = attached.sessionId
+  const watchdog = armWatchdog(cdp, sid, 10 * 60_000)
+  try {
+  await cdp.send('Runtime.enable', {}, sid)
+  await cdp.send('Page.enable', {}, sid)
+  await cdp.send('Page.navigate', { url }, sid)
+  await waitFor(cdp, sid, SEL_TELEPORT + ' !== null', 120_000, '侧栏出现「瞬移」')
+  await openPanel(cdp, sid)
+  await waitFor(cdp, sid, q('ssh') + ' !== null', 120_000, 'SSH 表单出现')
+  // /sources 是异步拉的：表单先出现、主机列表后到。不等到行就点，会把加载竞态报成「别名不存在」。
+  // 整条请求失败时面板给「重试读取」，探针按它重拉（第几轮成功写进日志，便于区分偶发）。
+  const hostRound = await gateEnsureHosts(cdp, sid)
+  console.log('  · SSH 主机清单第 ' + String(hostRound) + ' 轮就绪')
+
+  const picked = await evaluate(
+    cdp,
+    sid,
+    '(() => { const rows = ' + qa('ssh-alias') + ';' +
+      ' const hit = rows.find(r => (r.textContent || "").indexOf(' + JSON.stringify(ALIAS + ' ·') + ') === 0);' +
+      ' if (!hit) return "missing"; hit.click(); return "clicked" })()',
+  )
+  if (picked !== 'clicked') throw new Error('别名 ' + ALIAS + ' 不在面板主机列表里：' + String(picked))
+  if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('远端路径填不进去')
+  // 负控：先把产品这两块脸拆掉，再去点接入。必须在第一次点击之前装。
+  if (NEG) {
+    await installGateSabotage(cdp, sid)
+    console.log('  · 负控注入完成：错误框退化为一行文本、取消按钮摘掉处理器')
+  }
+
+  // ── A5：阶段进度 + 取消（冷路径，先取消再真接入） ──────────────────────
+  const phases = []
+  const timeline = []
+  let sawCancelButton = false
+  let cancelClicked = false
+  let cancelAt = 0
+  let cancelPhase = null
+  let sawBusy = false
+  // 取消到底有没有打到宿主？按钮点了只证明「点了」。把页面里所有 `/attach/cancel` 的
+  // 响应记下来：`{cancelled:false}` 说明宿主侧没有在接入（面板的拒绝是静默的），
+  // `true` 说明命令到了、剩下的问题在服务端。
+  await evaluate(
+    cdp,
+    sid,
+    '(() => { if (window.__TELEPORT_CANCEL__) return true; window.__TELEPORT_CANCEL__ = [];' +
+      ' const original = window.fetch;' +
+      ' window.fetch = async (...args) => { const res = await original(...args);' +
+      '   try { const url = String(args[0]); if (url.indexOf("/attach/cancel") >= 0) {' +
+      '     const clone = res.clone(); window.__TELEPORT_CANCEL__.push({ status: res.status, body: await clone.text() }) } } catch (e) {}' +
+      '   return res };' +
+      ' return true })()',
+  )
+  const firstClick = await gateClickAttach(cdp, sid)
+  if (firstClick.ok !== true) throw new Error('点不到接入按钮：' + JSON.stringify(firstClick.why))
+  const attachStart = Date.now()
+  const deadline = attachStart + 300_000
+  let firstOnline = false
+  const notePhase = (progress) => {
+    if (progress === null || typeof progress.phase !== 'string') return
+    if (!phases.includes(progress.phase)) phases.push(progress.phase)
+    const last = timeline.length === 0 ? null : timeline[timeline.length - 1]
+    if (last === null || last.phase !== progress.phase) {
+      timeline.push({ phase: progress.phase, at: Date.now() - attachStart })
+      // 阶段是这一片的核心证据：每变一次都打出来，卡住时一眼看出停在哪段。
+      console.log('  · 阶段 ' + progress.phase + ' @' + String(Date.now() - attachStart) + 'ms')
+    }
+  }
+  while (Date.now() < deadline) {
+    const progress = await readProgress(cdp, sid)
+    notePhase(progress)
+    if (progress !== null && !sawCancelButton) {
+      sawCancelButton = (await evaluate(cdp, sid, q('attach-cancel') + ' !== null')) === true
+    }
+    if (NEG) {
+      if (progress === null && (await gateLooksOnline(cdp, sid)) === true) { firstOnline = true; break }
+    } else if (!cancelClicked) {
+      // 取消要在**远端已经开始启动**之后点：在 `probe` 段点，远端进程根本还没起，
+      // 「取消后没有残留」就成了空洞为真（老探针踩过）。所以等 `bootstrap` 或更后。
+      if (progress !== null && progress.phase !== 'probe') {
+        const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
+        cancelClicked = clicked === true
+        if (cancelClicked) {
+          cancelAt = Date.now()
+          cancelPhase = progress.phase
+        }
+      }
+    } else if (cancelAt > 0 && Date.now() - cancelAt > 500) {
+      if ((await readProgress(cdp, sid)) === null) break
+    }
+    await sleep(60)
+  }
+
+  // 取消之后：进度行消失、没有错误框（取消不是失败）、远端子进程被真收掉。
+  let progressGone = null
+  if (cancelClicked) {
+    const goneDeadline = Date.now() + 15_000
+    while (Date.now() < goneDeadline) {
+      if ((await readProgress(cdp, sid)) === null) { progressGone = true; break }
+      await sleep(100)
+    }
+    if (progressGone === null) progressGone = false
+  }
+  const errorAfterCancel = await evaluate(cdp, sid, q('panel-error') + ' !== null')
+  let portFreeMs = null
+  if (cancelClicked) {
+    const freeDeadline = Date.now() + 60_000
+    let quietRounds = 0
+    while (Date.now() < freeDeadline) {
+      // 记下「取消后远端确实起来过」：起来过又释放，才叫回收；从没起过只是没跑到那步。
+      if (remotePortBusy(REMOTE_PORT)) { sawBusy = true; quietRounds = 0 }
+      else if (sawBusy) { portFreeMs = Date.now() - cancelAt; break }
+      else {
+        // 远端一次都没起来（取消落在 bootstrap 早期，远端 dsh 还没监听）：等下去也不会有
+        // 变化，白等 60s 只是拖长整轮。连查 12 次都空就按「已释放」收工，并保留 sawBusy:false。
+        quietRounds += 1
+        if (quietRounds >= 12) { portFreeMs = Date.now() - cancelAt; break }
+      }
+      await sleep(500)
+    }
+    // 一次都没起来也算通过，但要在 detail 里写明（评审据此判断这次取消落在多早）。
+    if (portFreeMs === null && !sawBusy) portFreeMs = Date.now() - cancelAt
+  }
+  const portFreed = portFreeMs !== null
+  // 取消必须落在「远端已经开始启动」之后（`cancelPhase !== 'probe'`），否则后面那句
+  // 「取消后没有残留」是空洞为真 —— 那时远端进程压根还没起。
+  const cancelledMidFlight = cancelClicked && cancelPhase !== null && cancelPhase !== 'probe'
+  const cancelCalls = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_CANCEL__ ?? [])')
+  record('G-A5-2', cancelledMidFlight && progressGone === true && errorAfterCancel !== true && portFreed, {
+    cancelClicked,
+    cancelCalls,
+    cancelPhase,
+    sawBusy,
+    progressGone,
+    errorAfterCancel,
+    portFreed,
+    portFreeMs,
+    timeline,
+  })
+
+  // ── A5：真正接进来（这次不取消） ────────────────────────────────────
+  if (!firstOnline) {
+    await openPanel(cdp, sid)
+    const secondClick = await gateClickAttach(cdp, sid)
+    if (secondClick.ok !== true) throw new Error('取消后再点接入点不到：' + JSON.stringify(secondClick.why))
+    const onlineDeadline = Date.now() + 300_000
+    while (Date.now() < onlineDeadline) {
+      const progress = await readProgress(cdp, sid)
+      if (progress !== null && typeof progress.phase === 'string' && !phases.includes(progress.phase)) phases.push(progress.phase)
+      if (progress === null && (await gateLooksOnline(cdp, sid)) === true) { firstOnline = true; break }
+      await sleep(200)
+    }
+  }
+  const linkPhase = await evaluate(cdp, sid, '(' + q('panel-connected') + ')?.getAttribute("data-link") ?? ""')
+  record('G-A5-1', firstOnline === true && phases.length >= 2 && phases.includes('probe') && sawCancelButton, {
+    phases,
+    sawCancelButton,
+    online: firstOnline,
+    linkPhase,
+    timeline,
+  })
+  record('G-A5-3', firstOnline === true && linkPhase === 'connected', { online: firstOnline, linkPhase })
+
+  return { cdp, sid, phases, cancelClicked, online: firstOnline }
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+// ── A8：结构化失败 + 可复制日志 + 重试入口 ──────────────────────────────
+//
+// 逼出宿主侧失败的办法：填一个远端不存在的目录。取消 / 空路径都只能得到面板
+// 自己的拒绝（`teleport/not-ready`），那证不了「宿主给的错误码被结构化呈现」。
+async function gateErrorBox(cdp, sid) {
+  return evaluate(
+    cdp,
+    sid,
+    '(() => { const box = ' + q('panel-error') + ';' +
+      ' if (!box) return null;' +
+      ' const next = Array.from(box.querySelectorAll("' + sel('panel-error-next') + ' li")).map(li => li.textContent || "");' +
+      ' return {' +
+      '   code: box.getAttribute("data-error-code"),' +
+      '   detail: (box.querySelector("' + sel('panel-error-detail') + '")?.textContent ?? ""),' +
+      '   next,' +
+      '   hasCopy: box.querySelector("' + sel('panel-error-copy') + '") !== null,' +
+      '   hasRetry: box.querySelector("' + sel('panel-error-retry') + '") !== null } })()',
+  )
+}
+
+async function runGateA8(cdp, sid, phases) {
+  const badRoot = '/home/hui/teleport-gate-a8-missing-' + String(Date.now())
+  if (!(await gateFillPath(cdp, sid, badRoot))) throw new Error('坏路径填不进去')
+  let box = null
+  if (!NEG) {
+    const clicked = await gateClickAttach(cdp, sid)
+    if (clicked.ok !== true) throw new Error('点不到接入按钮（坏路径）：' + JSON.stringify(clicked.why))
+    const deadline = Date.now() + 300_000
+    while (Date.now() < deadline) {
+      box = await gateErrorBox(cdp, sid)
+      if (box !== null && typeof box.code === 'string' && box.code !== '') break
+      await sleep(200)
+    }
+  }
+  const code = box === null ? null : box.code
+  const hostCode = typeof code === 'string' && code !== '' && code !== 'teleport/not-ready' && code !== 'teleport/client-failed'
+  record('G-A8-1', hostCode && typeof box.detail === 'string' && box.detail.length > 0 && Array.isArray(box.next) && box.next.length >= 1, {
+    code,
+    detail: box === null ? null : String(box.detail).slice(0, 160),
+    next: box === null ? null : box.next,
+  })
+  record('G-A8-2', box !== null && box.hasCopy === true, { hasCopy: box === null ? null : box.hasCopy })
+
+  // 重试入口必须真的重跑上一次动作：把路径改回好的，点重试应当连回来。
+  if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('好路径填不回去')
+  let retried = false
+  if (box !== null && box.hasRetry === true) {
+    retried = (await evaluate(cdp, sid, '(() => { const b = ' + q('panel-error-retry') + '; if (!b) return false; b.click(); return true })()')) === true
+  }
+  let recovered = false
+  if (retried) {
+    const deadline = Date.now() + 300_000
+    const startedAt = Date.now()
+    let lastReport = 0
+    while (Date.now() < deadline) {
+      // 重试成功同样会触发官方 workspace owner 导航、把瞬移面板卸载掉。不先把面板点回来，
+      // 页面上根本没有 `attach-progress` / `projected` 这些抓手 —— 判据会永远为假。
+      await openPanel(cdp, sid)
+      const progress = await readProgress(cdp, sid)
+      if (progress !== null && typeof progress.phase === 'string' && !phases.includes(progress.phase)) phases.push(progress.phase)
+      const stillBox = await gateErrorBox(cdp, sid)
+      if (progress === null && stillBox === null && (await gateLooksOnline(cdp, sid)) === true) { recovered = true; break }
+      // 每 15s 打一次现场：重试到底有没有真的再跑一次接入，靠这几行分辨。
+      if (Date.now() - lastReport > 15_000) {
+        lastReport = Date.now()
+        console.log('  · 重试中 ' + String(Date.now() - startedAt) + 'ms phase=' + String(progress === null ? 'null' : progress.phase) +
+          ' box=' + String(stillBox === null ? 'null' : stillBox.code) + ' online=' + String(await gateLooksOnline(cdp, sid)))
+      }
+      await sleep(200)
+    }
+  }
+  record('G-A8-3', retried && recovered, { retried, recovered })
+}
+// ── A5/A8 闸门的总装 ────────────────────────────────────────────────────────
+
+/**
+ * 兜底看门狗：真机流程一旦卡在某个 CDP 调用上（页面被导航掉、宿主半死不活），
+ * 探针会永远不返回。到点就把现场打出来并以失败退出——卡住必须是**可见的失败**，
+ * 而不是一个永远 running 的后台任务。
+ */
+function armWatchdog(cdp, sid, ms) {
+  return setTimeout(() => {
+    void (async () => {
+      console.log('WATCHDOG：流程卡住超过 ' + String(Math.round(ms / 1000)) + 's，转储页面现场')
+      try {
+        console.log(JSON.stringify(await snapshotDom(cdp, sid)))
+      } catch (error) {
+        console.log('现场也读不到：' + String(error))
+      }
+      try { stopHost() } catch { /* 已经没了 */ }
+      process.exit(1)
+    })()
+  }, ms)
+}
+
+async function runGate() {
+  const ctx = await runGateA5A8()
+  await runGateA8(ctx.cdp, ctx.sid, ctx.phases)
+  const hadRemote = remotePortBusy(REMOTE_PORT)
+  stopHost()
+  let reaped = false
+  const deadline = Date.now() + 40_000
+  while (Date.now() < deadline) {
+    if (!remotePortBusy(REMOTE_PORT)) { reaped = true; break }
+    await sleep(500)
+  }
+  record('G-CLEAN', reaped && (hadRemote || NEG), { remotePort: REMOTE_PORT, hadRemote, busyAfter: !reaped })
+  return { phases: ctx.phases, cancelClicked: ctx.cancelClicked, online: ctx.online }
+}
 // ── 主流程 ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -446,7 +984,7 @@ async function main() {
 
   const url = await startHost()
   console.log('宿主已起：' + url.replace(/token=[^&]+/, 'token=***'))
-  startChrome()
+  await startChrome()
   const cdp = await connectCdp(await waitForChrome())
   const target = await cdp.send('Target.createTarget', { url: 'about:blank' })
   const attached = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true })
@@ -607,7 +1145,9 @@ async function main() {
   return { attachMs, sessionId, disconnectMs, reconnectMs }
 }
 
-main()
+const running = GATE === 'a5a8' ? runGate() : main()
+
+running
   .then((outcome) => {
     console.log('测量：' + JSON.stringify(outcome))
   })
@@ -621,6 +1161,7 @@ main()
       // 只 kill 主进程会留下 renderer/gpu 攥着 --user-data-dir，下次 rmSync 报 EPERM。
       try {
         spawnSync('taskkill', ['/PID', String(chrome.pid), '/T', '/F'], { windowsHide: true })
+        freePort(CDP_PORT)
       } catch {
         /* 已经死了 */
       }

@@ -252,8 +252,12 @@ export class RemoteRpc {
 
     const result = readResult(envelope, endpoint, rpcId)
     if (!result.ok) {
+      // 远端拒绝要**带着它自己的错误码**上来。以前一律 `remote/unknown`，用户看到的是
+      // 「未知错误」，而真正的答案（`workspace/invalid-path`）只埋在 detail 一句话里；
+      // 面板按 code 做判定的地方也就无从下手。这里把远端码规整成本地码：
+      // `workspace/invalid-path` → `remote/workspace-invalid-path`（非 `[a-z0-9-]` 一律折成 `-`）。
       throw new TeleportError({
-        code: 'remote/unknown',
+        code: rejectionCode(result.error.code),
         detail: 'RPC ' + endpoint + ' 被远端拒绝：' + result.error.code + ' ' + result.error.message,
         nextActions: ['查看远端日志', '重试'],
       })
@@ -427,6 +431,20 @@ export class RemoteRpc {
 }
 
 /** 校验一元响应信封；rpcId 对不上说明响应串了，必须报错而不是猜。 */
+/** 远端拒绝 → 本地错误码。映射规则集中一处，改映射表时只动这里。 */
+export function rejectionCode(code: string): string {
+  const slug = slugOf(code)
+  return slug === '' ? 'remote/rejected' : 'remote/' + slug
+}
+
+/** 把远端的错误码折成能挂在本地 `remote/<x>` 上的片段；空串表示远端没给码。 */
+export function slugOf(code: string): string {
+  return code
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function readResult(envelope: unknown, endpoint: string, rpcId: string): RemoteResult<unknown> {
   if (typeof envelope !== 'object' || envelope === null) {
     throw new TeleportError({

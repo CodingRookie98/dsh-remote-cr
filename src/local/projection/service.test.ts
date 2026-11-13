@@ -393,3 +393,51 @@ test('取证预热窗口按后端给缺省值，SSH 目标不等待', () => {
   assert.equal(defaultWarmupMs(TARGET), TERMINAL_WARMUP_MS, 'WSL 仍然要等 ble.sh')
   assert.equal(defaultWarmupMs(null), TERMINAL_WARMUP_MS, '还没连上时按保守值，不能因为不知道就清零')
 })
+
+test('接入过程逐段上报阶段，且每次上报时快照里的阶段与它一致（A5 的进度来源）', async () => {
+  const store = new ProjectionStore()
+  const rpc = fakeRpc()
+  const service = new ProjectionService({
+    store,
+    timers: fakeTimers(),
+    async connect(_target, control) {
+      control?.onPhase?.('bootstrap')
+      control?.onPhase?.('launch')
+      return { rpc, dispose() {} }
+    },
+  })
+  const seen: string[] = []
+  await service.attach(TARGET, ATTACH, {
+    onPhase(phase) {
+      seen.push(phase)
+      // 上报与快照必须同源：面板只看快照，两边一旦分叉，用户看到的就是错的阶段。
+      assert.equal(service.snapshot().attach?.phase, phase)
+    },
+  })
+  assert.deepEqual(seen, ['bootstrap', 'launch', 'attach'])
+  assert.equal(service.snapshot().attach, null, '接入结束（成功也算）必须清掉进度，否则面板永远停在接入中')
+})
+
+test('取消接入：signal 递给连接层，失败后进度归 null 且连接相位不变', async () => {
+  const controller = new AbortController()
+  const seen: Array<AbortSignal | undefined> = []
+  const service = new ProjectionService({
+    store: new ProjectionStore(),
+    timers: fakeTimers(),
+    async connect(_target, control) {
+      seen.push(control?.signal)
+      controller.abort()
+      throw new TeleportError({ code: 'remote/cancelled', detail: '已取消这次接入', nextActions: ['重新点一次「接入」'] })
+    },
+  })
+  const caught = await service.attach(TARGET, ATTACH, { signal: controller.signal }).then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  assert.ok(caught instanceof TeleportError, '取消要如实抛错，不能静默成功')
+  assert.equal((caught as TeleportError).code, 'remote/cancelled')
+  assert.deepEqual(seen, [controller.signal], 'signal 必须真的递到连接层，否则取消只是把按钮变灰')
+  assert.equal(service.attachProgress, null)
+  assert.equal(service.connected, false)
+  assert.equal(service.link, 'idle')
+})

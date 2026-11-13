@@ -75,6 +75,7 @@ export interface SshLaunchStream {
   off?(event: 'data', listener: (chunk: { toString(encoding?: string): string }) => void): unknown
 }
 
+
 export interface SshLaunchChild {
   readonly stdin: { write(chunk: string): unknown; end(): unknown } | null
   readonly stdout: SshLaunchStream | null
@@ -133,6 +134,13 @@ export interface SshLaunchOptions {
   readonly askpassPath?: string
   readonly connectTimeoutMs?: number
   readonly signal?: AbortSignal
+  /**
+   * 阶段回调：只报**观察得到的**边界，不伪造更细的段。
+   *   `bootstrap` = ssh 会话已建立、远端脚本开始跑（装 dsh 或直接起 dsh 都在这里）
+   *   `launch`    = 远端第一个字节回来了（脚本确实在跑）
+   * 隧道可用由调用方在拿到句柄时报（那时 `-L` 才真的能连）。
+   */
+  readonly onStage?: ((stage: 'bootstrap' | 'launch') => void) | undefined
   readonly spawn?: SshLaunchSpawn
 }
 
@@ -361,8 +369,10 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   const spawnProcess = options.spawn ?? defaultSpawn
   const timeoutMs = options.timeoutMs ?? 90_000
 
+  options.onStage?.('bootstrap')
   const child = spawnProcess(invocation.executable, invocation.args, invocation.env)
   let buffer = ''
+  let announcedLaunch = false
   let remoteProxyPort: number | undefined
   let portSent = false
   let exited = false
@@ -388,6 +398,10 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
 
   const digest = (chunk: { toString(encoding?: string): string }): void => {
     const text = chunk.toString('utf8')
+    if (!announcedLaunch && text !== '') {
+      announcedLaunch = true
+      options.onStage?.('launch')
+    }
     buffer += text
     scanMarks(text)
   }

@@ -29,6 +29,7 @@
  */
 
 import { TeleportError } from '../backend/errors.ts'
+import type { ConnectionPhase } from '../backend/errors.ts'
 import type { EnvPolicy } from '../env-policy/index.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
 import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
@@ -89,10 +90,35 @@ export interface SshConnectTarget {
 
 export type ConnectTarget = WslConnectTarget | SshConnectTarget
 
+/**
+ * 一次接入的可控面：**中途取消**与**阶段上报**。
+ *
+ * A5 要的是「有分阶段进度与取消」。这两件事必须由连接层上报而不是面板猜：
+ * 面板只看得到一个「接入中…」的按钮，用户点取消时总得有人真的把子进程杀掉。
+ *
+ * 可选：不给就退化成原来的行为（单测与既有调用点不用改）。
+ */
+export interface AttachControl {
+  readonly signal?: AbortSignal | undefined
+  readonly onPhase?: ((phase: ConnectionPhase) => void) | undefined
+}
+
+/** 正在进行的接入：面板据此显示「正在启动远端 dsh…」而不是干等。 */
+export interface AttachProgress {
+  readonly phase: ConnectionPhase
+  /** 开始时间（epoch ms），面板用来显示已经过了多久。 */
+  readonly startedAt: number
+  readonly target: ConnectTarget
+}
+
 export interface ProjectionServiceOptions {
   readonly store: ProjectionStore
-  /** 建立连接；真实实现是 launch + handshake，测试注入假实现。 */
-  connect(target: ConnectTarget): Promise<RemoteConnection>
+  /**
+   * 建立连接；真实实现是 launch + handshake，测试注入假实现。
+   *
+   * control 是可选的：连接层用它上报阶段、接收取消信号。忽略它的实现照样能用。
+   */
+  connect(target: ConnectTarget, control?: AttachControl): Promise<RemoteConnection>
   /** 重连定时器接缝；单测注入假定时器，生产用全局 `setTimeout`。 */
   readonly timers?: ReconnectTimers
 }
@@ -105,14 +131,21 @@ export interface ProjectionSnapshot {
   readonly target: ConnectTarget | null
   /** 连接相位：`idle` / `connected` / `retrying` / `offline`。 */
   readonly link: LinkPhase
-  /** 当前连接的环境档位；从没连过（或档位未知）时是 `null`。 */
+  /** 当前连接的环境档位；从没连过（或档位未知）时是 null。 */
   readonly envPolicy: EnvPolicy | null
+  /**
+   * 正在进行中的接入（阶段 + 起始时间）；没有在接入时是 null。
+   *
+   * 放在快照里而不是单开一条流：面板本来就在轮询 /snapshot，多一条流只多一种
+   * 「两个状态源不一致」的失败形态。
+   */
+  readonly attach: AttachProgress | null
 }
 
 /** 投影服务对外的一整套动作。 */
 export class ProjectionService {
   readonly #store: ProjectionStore
-  readonly #connect: (target: ConnectTarget) => Promise<RemoteConnection>
+  readonly #connect: (target: ConnectTarget, control?: AttachControl) => Promise<RemoteConnection>
   readonly #timers: ReconnectTimers | undefined
   #live: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
   /**
@@ -131,6 +164,8 @@ export class ProjectionService {
    * 那 52ms 的便宜路径，回到 9–20s 冷启动。
    */
   #detached: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
+  /** 正在进行的接入。成功/失败/取消都会清掉——清不掉就会永远显示「接入中」。 */
+  #attach: AttachProgress | undefined
 
   constructor(options: ProjectionServiceOptions) {
     this.#store = options.store
@@ -160,11 +195,23 @@ export class ProjectionService {
    * 已经连着**同一个 target** 时复用连接：重复 `/connect` 不该把远端隧道重开一遍
    * （那会换 cookie，让上一批 WS 全部失效）。target 变了才重建。
    */
-  async attach(target: ConnectTarget, request: AttachRequest): Promise<AttachResult> {
-    const connection = await this.#ensure(target)
-    return this.#guardTransport(() =>
-      attachWorkspace(attachDeps(target, connection.rpc, this.#store), request),
-    )
+  async attach(target: ConnectTarget, request: AttachRequest, control: AttachControl = {}): Promise<AttachResult> {
+    const startedAt = Date.now()
+    this.#attach = { phase: 'probe', startedAt, target }
+    const phase = (next: ConnectionPhase): void => {
+      this.#attach = { phase: next, startedAt, target }
+      control.onPhase?.(next)
+    }
+    try {
+      const connection = await this.#ensure(target, { ...control, onPhase: phase })
+      phase('attach')
+      return await this.#guardTransport(() =>
+        attachWorkspace(attachDeps(target, connection.rpc, this.#store), request),
+      )
+    } finally {
+      // 成功、失败、取消三条路都要清：清不掉面板会永远停在「接入中」。
+      this.#attach = undefined
+    }
   }
 
   /**
@@ -219,6 +266,15 @@ export class ProjectionService {
     return this.#guardTransport(() => runSessionProbe({ rpc: connection.rpc }, sessionId, withDefaults))
   }
 
+  /**
+   * 正在进行的接入；面板轮询快照即可显示阶段。
+   *
+   * 单独一个 getter 而不是只藏在 snapshot() 里：路由要在接入进行中回答 /snapshot，
+   * 而单测要能直接断言「阶段有没有被上报」。
+   */
+  get attachProgress(): AttachProgress | null {
+    return this.#attach ?? null
+  }
   /** 面板数据：投影表 + 连接状态。 */
   snapshot(): ProjectionSnapshot {
     const workspaces = this.#store.workspaces()
@@ -231,6 +287,7 @@ export class ProjectionService {
       target: this.target,
       link: this.link,
       envPolicy: this.envPolicy,
+      attach: this.attachProgress,
     }
   }
 
@@ -427,7 +484,7 @@ export class ProjectionService {
     return this.#connect(target)
   }
 
-  async #ensure(target: ConnectTarget): Promise<RemoteConnection> {
+  async #ensure(target: ConnectTarget, control?: AttachControl): Promise<RemoteConnection> {
     const live = this.#live
     if (live !== undefined && sameTarget(live.target, target)) return live.connection
     const detached = this.#detached
@@ -436,6 +493,8 @@ export class ProjectionService {
       const rehandshake = detached.connection.rehandshake
       if (typeof rehandshake === 'function') {
         try {
+          // 救回留存连接也是「隧道这一阶段」：面板上不该停在上一句「正在启动远端 dsh」。
+          control?.onPhase?.('tunnel')
           await rehandshake.call(detached.connection)
           this.#detached = undefined
           this.#live = { target, connection: detached.connection }
@@ -450,7 +509,7 @@ export class ProjectionService {
       }
     }
     if (live !== undefined) this.disconnect()
-    const connection = await this.#connect(target)
+    const connection = await this.#connect(target, control)
     this.#live = { target, connection }
     this.#lastTarget = target
     this.#stopDriver()

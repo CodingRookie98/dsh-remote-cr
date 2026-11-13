@@ -26,7 +26,7 @@
  */
 
 import { join } from 'node:path'
-import { TeleportError } from '../backend/errors.ts'
+import { TeleportError, type ConnectionPhase } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
 import { launchSshDsh } from '../backend/ssh/launch.ts'
@@ -35,7 +35,7 @@ import type { SshAuth } from '../backend/ssh/transport.ts'
 import { launchRemoteDsh } from '../backend/wsl/launch.ts'
 import { runInDistro } from '../backend/wsl/exec.ts'
 import { planEnvInjection, resolveEnvPolicy, type EnvPolicy } from '../env-policy/index.ts'
-import type { ConnectTarget, RemoteConnection, SshConnectTarget } from './service.ts'
+import type { AttachControl, ConnectTarget, RemoteConnection, SshConnectTarget } from './service.ts'
 import { RemoteRpc } from './remote.ts'
 
 /** SSH 后端需要的宿主侧材料；不给就明确报错，不猜默认值。 */
@@ -106,10 +106,12 @@ export interface LiveConnectOptions {
  */
 export function createLiveConnect(
   options: LiveConnectOptions = {},
-): (target: ConnectTarget) => Promise<RemoteConnection> {
-  return async (target) => {
-    if (target.backend === 'ssh') return connectSsh(target, options)
-    return connectWsl(target, options)
+): (target: ConnectTarget, control?: AttachControl) => Promise<RemoteConnection> {
+  return async (target, control) => {
+    const signal = control?.signal
+    const onPhase = control?.onPhase
+    if (target.backend === 'ssh') return connectSsh(target, options, { signal, onPhase })
+    return connectWsl(target, options, { signal, onPhase })
   }
 }
 
@@ -120,10 +122,36 @@ export function createLiveConnect(
  * `userprofile` 不是一回事（可能是 `/home/hui`，也可能不是），猜错就会把 dsh
  * 装到/读到不存在的地方——而且还能「成功」跑起来，只是用的是别处的环境。
  */
-async function connectWsl(target: ConnectTarget & { readonly backend: 'wsl' }, options: LiveConnectOptions): Promise<RemoteConnection> {
+/** 连接层收到的控制面：取消信号 + 阶段回调（`ProjectionService.attach` 传下来的）。 */
+interface LiveControl {
+  readonly signal?: AbortSignal | undefined
+  readonly onPhase?: ((phase: ConnectionPhase) => void) | undefined
+}
+
+/**
+ * 取消要落到**正在进行的那一步**上，而不是只在结束后回一句「已取消」。
+ * 阶段之间各查一次：`launchSshDsh` 自己认 `signal`，但前面的远端检查不认，
+ * 那里只能靠边界检查尽早退出。
+ */
+function abortIfCancelled(signal?: AbortSignal): void {
+  if (signal === undefined || !signal.aborted) return
+  throw new TeleportError({
+    code: 'remote/cancelled',
+    detail: '已取消这次接入',
+    nextActions: ['重新点一次「接入」', '换个目标再试'],
+  })
+}
+async function connectWsl(
+  target: ConnectTarget & { readonly backend: 'wsl' },
+  options: LiveConnectOptions,
+  control: LiveControl,
+): Promise<RemoteConnection> {
   const policy = resolvePolicy(options.envPolicy)
+  control.onPhase?.('probe')
   const home = policy === 'isolated' ? await wslHome(options.executable, target.distro) : ''
+  abortIfCancelled(control.signal)
   const injection = planEnvInjection(policy, { home, hostKey: 'wsl:' + target.distro })
+  control.onPhase?.('launch')
   const handle = await launchRemoteDsh({
     ...(options.executable === undefined ? {} : { executable: options.executable }),
     distro: target.distro,
@@ -131,7 +159,9 @@ async function connectWsl(target: ConnectTarget & { readonly backend: 'wsl' }, o
     port: target.port,
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
     ...(injection.env === undefined ? {} : { env: injection.env }),
+    ...(control.signal === undefined ? {} : { signal: control.signal }),
   })
+  control.onPhase?.('tunnel')
   return openConnection(handle, policy)
 }
 
@@ -170,8 +200,13 @@ async function wslHome(executable: string | undefined, distro: string): Promise<
  * 里面**不能**有主机名、用户名、私钥路径（铁律 3「凭据不出本机」）。别名是用户自己
  * 起的名，不含身份信息；真目标只在这一层存在。
  */
-async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions): Promise<RemoteConnection> {
+async function connectSsh(
+  target: SshConnectTarget,
+  options: LiveConnectOptions,
+  control: LiveControl,
+): Promise<RemoteConnection> {
   const ssh = options.ssh
+  abortIfCancelled(control.signal)
   if (ssh === undefined) {
     throw new TeleportError({
       code: 'remote/ssh-target-unresolved',
@@ -226,6 +261,9 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
   // 用户点连接时才读端口。读晚了没关系，读到 undefined 就是不挂 `-R`（下表已写清后果）。
   // 环境档位在**解析完远端 dsh** 之后才算：隔离档要拼远端 `$HOME`，而那个值只有
   // `resolveRemoteDsh` 同一条检查脚本能拿到（本地 home 拼出来的一定不对）。
+  // 远端检查（可能装了东西、也可能只是 stat）走完才看取消：那一步不认 signal，
+  // 只能在这里尽早退出，别让它白连着往下起进程。
+  abortIfCancelled(control.signal)
   const policy = resolvePolicy(options.envPolicy)
   const injection = planEnvInjection(policy, { home: runtime.remoteHome, hostKey: 'ssh:' + target.alias }, ssh.extraEnv)
   const proxyPort = typeof ssh.proxyPort === 'function' ? ssh.proxyPort() : ssh.proxyPort
@@ -241,7 +279,10 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
     ...(proxyPort === undefined || proxyPort <= 0 ? {} : { proxyPort }),
     ...(injection.env === undefined ? {} : { extraEnv: injection.env }),
+    ...(control.signal === undefined ? {} : { signal: control.signal }),
+    onStage: (stage) => control.onPhase?.(stage),
   })
+  control.onPhase?.('tunnel')
   return openConnection(handle, policy)
 }
 

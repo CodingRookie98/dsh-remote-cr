@@ -151,6 +151,17 @@ export function attachWorkspace(
   return callApi('/attach', { method: 'POST', body: input }, fetchImpl)
 }
 
+/**
+ * 取消正在进行的接入。
+ *
+ * 取消是**真的打断**：宿主半持有一个 AbortController，`/attach` 的那条请求在
+ * 起进程/建隧道处收到 signal 就会杀掉子进程。没有正在进行的接入时回
+ * `cancelled: false` 而不是报错——按钮可能比请求晚到一帧，那不是故障。
+ */
+export function cancelAttach(fetchImpl?: typeof fetch): Promise<{ readonly cancelled: boolean }> {
+  return callApi('/attach/cancel', { method: 'POST' }, fetchImpl)
+}
+
 /** 在一个已接入的远端工作区里新建会话（远端 `session/create`）。 */
 export function createRemoteSession(
   input: { workspaceId: string; agentPreset?: string | undefined },

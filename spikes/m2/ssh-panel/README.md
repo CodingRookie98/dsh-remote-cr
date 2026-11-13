@@ -18,11 +18,40 @@
 正向 **7/7**。负控 `NEGATIVE_CONTROL=1`（远端路径留空）→ **3/7**，失败集恰为
 `["S2P-3","S2P-4","S2P-5","S2P-6"]`，输出 `NEGATIVE CONTROL OK`。
 
+## A5 / A8 闸门（`GATE=a5a8`）
+
+同一套宿主 / Chrome 夹具，只换场景：先取消一次接入（冷路径，阶段跑得慢、来得及看见），
+再真接入一次，最后用「远端不存在的目录」逼出宿主侧失败，再从错误框点重试连回好路径。
+
+| 项 | 断言 | 结果 |
+| --- | --- | --- |
+| G-A5-1 | 向导按阶段推进（`data-phase`）、取消按钮可见、最终 online | PASS `["probe","bootstrap","launch","tunnel","attach"]`，`sawCancelButton=true`，`linkPhase=connected` |
+| G-A5-2 | 点「取消」**真的打到宿主**（不是只点了按钮） | PASS 页面内抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`；进度条消失、无错误框残留、远端 `:8961` 释放（62589 ms） |
+| G-A5-3 | 取消之后重来仍能接入 | PASS `online=true` |
+| G-A8-1 | 失败给结构化码 + detail + nextActions | PASS `remote/workspace-invalid-path`，detail 带远端原文，next=`["查看远端日志","重试"]` |
+| G-A8-2 | 错误框有复制按钮 | PASS `hasCopy=true` |
+| G-A8-3 | 点「重试」能回到好路径 | PASS `retried=true`，`recovered=true` |
+| G-CLEAN | 关宿主后远端不留孤儿 | PASS `hadRemote=true`，`busyAfter=false` |
+
+正向 **7/7**（`measurements.a5a8.json`）。负控 = **在页面里拆产品的脸**（错误框退化成一行文本、
+取消按钮换成没挂 React 处理器的克隆，50 ms 定时器持续施加，因为面板每 300 ms 会重渲染）：
+**3/7**，失败集恰为 `["G-A5-2","G-A8-1","G-A8-2","G-A8-3"]`（`measurements.a5a8.neg.json`），
+输出 `NEGATIVE CONTROL OK`；`G-A5-1` / `G-A5-3` / `G-CLEAN` 仍绿——负控只拆这两块，不误伤接入本身。
+
+**口径**：`G-A5-1` 看到的是**热路径**的五个阶段（远端已就绪，`verify` / `barrier` 没出现）；
+A5 的「二次连接 ≤5s」**不在这里量**，它由 `spikes/m2/ssh-e2e/probe.ts` 的 §7.1 热组门禁负责
+（手动重连 P50 1664 ms / P90 2094 ms，限 5000 ms，见 `spikes/m2/ssh-e2e/measurements.json`）。
+本闸门只证明「有进度、可取消、失败可读、可重试」。
+
 ## 跑法
 
 ```bash
 MSYS_NO_PATHCONV=1 node spikes/m2/ssh-panel/probe.cjs
 MSYS_NO_PATHCONV=1 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.cjs
+
+# A5 / A8 闸门
+MSYS_NO_PATHCONV=1 GATE=a5a8 node spikes/m2/ssh-panel/probe.cjs
+MSYS_NO_PATHCONV=1 GATE=a5a8 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.cjs
 ```
 
 可用环境变量覆盖：`SSH_ALIAS`（默认 `gcp`）、`SSH_ROOT`（默认 `/home/hui/workspace`）、
@@ -42,6 +71,15 @@ MSYS_NO_PATHCONV=1 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.cjs
    残留判定一律 `ss -ltn` / `netstat -ltn` 看 `:<port>`。
 5. **Chrome 清理必须 `taskkill /T`**：只 kill 主进程会留下 renderer/gpu 攥着
    `--user-data-dir`，下次 `rmSync` 报 EPERM。
+6. **Chrome 的 `exitCode` 不能用来判「端点是不是我起的」**：Windows 的 `chrome.exe` 是启动器，
+   把活交给子进程后自己以 0 退出，`exitCode !== null` 因此**恒真**；上一版据此判定「端口上是
+   别的 Chrome」，而那句 `throw` 又写在 `try` 里被 `catch {}` 吞掉——CDP 明明已就绪，却只能等满
+   30 s 超时（A5/A8 负控两跑都栽在这，一个断言都没跑起来）。现在的做法：起之前 `waitPortFree`
+   把端口清空（归属在那里解决），端点自报 `Headless` 才算数；Chrome 的 stderr 落
+   `.tmp-spike/ssh-panel/chrome-<port>.log`，超时时把 pid / exitCode / 日志尾部一起打进错误。
+7. **负控不能靠「把输入留空」**：A5/A8 若沿用老路（`SSH_ROOT=''`），接入按钮直接 disabled，
+   探针连第一枪都开不出来，只剩一条 `S2P-FATAL`——那就什么都证明不了。要拆就在页面里拆：
+   错误框退化成纯文本、取消按钮换成克隆，正向该绿的地方继续绿。
 
 ## 未验证
 

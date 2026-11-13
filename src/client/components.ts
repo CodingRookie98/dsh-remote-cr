@@ -31,6 +31,7 @@ import type {
 import { canCancel, describeFlow, FLOW_PHASE_LABELS, type FlowState } from '../shared/flow.ts'
 import {
   attachWorkspace,
+  cancelAttach,
   cancelFlow,
   createRemoteSession,
   disconnectRemote,
@@ -42,6 +43,7 @@ import {
   readProjection,
   reconnectRemote,
   startWorkspace,
+  TeleportApiError,
 } from './api.ts'
 import {
   addInputOf,
@@ -66,6 +68,7 @@ import {
   type WizardState,
 } from './state.ts'
 import {
+  attachPhaseText,
   disconnectPlan,
   formatUpdatedAt,
   envPolicyLine,
@@ -91,6 +94,60 @@ function readFunction<T>(props: AnyProps, name: string): T | undefined {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * 面板上的失败。A8 要求「结构化错误码 + 可复制日志 + 重试入口」，
+ * 所以这里存的不是一句话，而是那三件东西本身。
+ *
+ * `report` 是给用户粘到 issue 里的整份文本：错误码、原因、下一步、以及原始异常；
+ * 它必须自足——只复制错误码，收到的人还得回来问细节。
+ */
+export interface PanelFailure {
+  readonly code: string
+  readonly detail: string
+  readonly nextActions: readonly string[]
+  readonly report: string
+}
+
+/** 把任何异常折成可展示的失败；宿主给的 `TeleportApiError` 四字段原样透出。 */
+function failureOf(error: unknown): PanelFailure {
+  if (error instanceof TeleportApiError) {
+    const report = [
+      '瞬移接入失败',
+      '错误码：' + error.code,
+      '原因：' + error.detail,
+      '下一步：' + (error.nextActions.length === 0 ? '（宿主没给）' : error.nextActions.join(' / ')),
+      '原始信息：' + error.message,
+    ].join('\n')
+    return { code: error.code, detail: error.detail, nextActions: error.nextActions, report }
+  }
+  const detail = messageOf(error)
+  return {
+    code: 'teleport/client-failed',
+    detail,
+    nextActions: ['重试一次', '还不行就看宿主日志'],
+    report: '瞬移面板操作失败\n原因：' + detail,
+  }
+}
+
+/**
+ * 取消不是失败：用户自己按的取消不该被当成错误记一笔，所以回 `null` 让错误框清空。
+ * 其余异常照常结构化。
+ */
+function cancelledOrNull(error: unknown): PanelFailure | null {
+  const failure = failureOf(error)
+  return failure.code === 'remote/cancelled' ? null : failure
+}
+
+/** 面板自己拒绝时的失败（例如目标还没选）：不是宿主故障，但同样要能复制与重试。 */
+function refusalOf(reason: string): PanelFailure {
+  return {
+    code: 'teleport/not-ready',
+    detail: reason,
+    nextActions: ['按上面这句补齐再点一次'],
+    report: '瞬移还没准备好：' + reason,
+  }
 }
 
 /** 更新 store 并返回新状态（读旧值会拿到上一帧，容易写出差一帧的 bug）。 */
@@ -456,18 +513,37 @@ export function TeleportIcon(): unknown {
  *
  * 铁律 4：每个不能点的按钮都带 \`title\` 说明为什么不能点。
  */
+/**
+ * 失败框「重试」按钮要重跑的那件事。
+ *
+ * 存意图、不存闭包：闭包会把失败那一刻的表单值一起冻住，用户改完路径点重试仍是旧路径；
+ * 而且同一个失败框可能在组件重挂后被点到，闭包里的 `setState` 属于已卸载的实例。
+ */
+type RetryIntent =
+  | { readonly kind: 'attach'; readonly record: WorkspaceRecord }
+  | { readonly kind: 'ssh-attach' }
+  | { readonly kind: 'create-session'; readonly workspaceId: string }
+  | { readonly kind: 'link'; readonly action: 'disconnect' | 'reconnect' }
+  | { readonly kind: 'probe'; readonly sessionId: string }
+
 export function TeleportPanel(): unknown {
   const state = useWizard()
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
   const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<PanelFailure | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [probe, setProbe] = useState<ProbeOutcome | null>(null)
   const [activeSession, setActiveSession] = useState<string | null>(null)
   // SSH 接入：主机清单来自 /sources（只含 alias / 端口 / 有无密钥），路径由用户手输。
   const [ssh, setSsh] = useState<SshSourceReport | null>(null)
+  const [sshError, setSshError] = useState<string | null>(null)
   const [sshAlias, setSshAlias] = useState<string>('')
   const [sshPath, setSshPath] = useState<string>('')
+  // 重试入口要记住「上一次想做什么」：面板上有五种动作，失败框只有一个重试按钮。
+  //
+  // 存的是**意图**而不是当时那个闭包：用户改了远端路径再点重试，期待的是用新路径重来；
+  // 存闭包会用旧路径再失败一次（表单值变了、错误却一模一样，看起来像重试没反应）。
+  const retryRef = useRef<RetryIntent | null>(null)
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
@@ -477,30 +553,60 @@ export function TeleportPanel(): unknown {
         setSnapshot(projected)
         setError(null)
       } catch (caught) {
-        setError(messageOf(caught))
+        setError(failureOf(caught))
+      }
+    },
+    [],
+  )
+
+  /**
+   * 接入结束后再拉一次快照，直到服务端确认「没有接入在进行中」。
+   *
+   * 为什么不能只 `refresh()` 一次：取消/失败时，客户端的 promise 先落地，服务端清掉
+   * `attach` 要晚一点点。去掉轮询的那一刻如果最后一帧还写着「引导远端…」，进度行会
+   * **永久**留在面板上——用户看到的是一次取消之后界面卡死。
+   */
+  const settleSnapshot = useMemo(
+    () => async (): Promise<void> => {
+      const deadline = Date.now() + 3_000
+      try {
+        const current = await readProjection()
+        setSnapshot(current)
+        if (current.attach === null) return
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          const next = await readProjection()
+          setSnapshot(next)
+          if (next.attach === null) return
+        }
+      } catch (caught) {
+        setError(failureOf(caught))
       }
     },
     [],
   )
 
   // SSH 主机清单：面板一打开就要有，不能等用户点开向导才知道有哪些别名。
-  // 读失败不算错（/sources 自己会带原因），SSH 块显示成空即可——面板其余部分照常可用。
-  useEffect(() => {
-    let alive = true
-    void (async () => {
+  // 读失败不算致命（面板其余部分照常可用），但**必须说出来并给重试**：
+  // 静默显示成「还没读到」会让一次网络抖动看起来像用户的配置文件是空的。
+  const loadSsh = useMemo(
+    () => async (): Promise<void> => {
       try {
         const payload = await loadSources()
-        if (!alive) return
         setSsh(payload.ssh)
+        setSshError(null)
         setSshAlias((current) => (current === '' ? (payload.ssh.targets[0]?.alias ?? '') : current))
-      } catch {
-        if (alive) setSsh(null)
+      } catch (caught) {
+        setSsh(null)
+        setSshError(failureOf(caught).detail)
       }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
+    },
+    [],
+  )
+
+  useEffect(() => {
+    void loadSsh()
+  }, [loadSsh])
 
   // 向导落终态时重读一次：刚添加的目录应当立刻出现在「本机已添加」里。
   useEffect(() => {
@@ -513,7 +619,7 @@ export function TeleportPanel(): unknown {
         setSnapshot(projected)
         setError(null)
       } catch (caught) {
-        if (alive) setError(messageOf(caught))
+        if (alive) setError(failureOf(caught))
       }
     })()
     return () => {
@@ -525,18 +631,23 @@ export function TeleportPanel(): unknown {
     const defaults = snapshot?.defaults ?? state.defaults
     const plan = planAttach(record, defaults)
     if (!plan.ok) {
-      setError(plan.reason)
+      setError(refusalOf(plan.reason))
       return
     }
+    retryRef.current = { kind: 'attach', record }
     setBusy(record.localPath)
+    // 接入期间每 300ms 读一次快照：阶段进度是快照上的字段，不轮询就永远停在「探测远端」。
+    const timer = setInterval(() => void refresh(), 300)
     try {
       const outcome = await attachWorkspace(plan.input)
       setError(null)
       await refresh()
-      setActiveSession(outcome.sessions[0]?.sessionId ?? null)
+      setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
     } catch (caught) {
-      setError(messageOf(caught))
+      setError(cancelledOrNull(caught))
     } finally {
+      clearInterval(timer)
+      await settleSnapshot()
       setBusy(null)
     }
   }
@@ -544,23 +655,40 @@ export function TeleportPanel(): unknown {
   const onSshAttach = async (): Promise<void> => {
     const plan = planSshAttach({ alias: sshAlias, remotePath: sshPath }, defaults)
     if (!plan.ok) {
-      setError(plan.reason)
+      setError(refusalOf(plan.reason))
       return
     }
+    retryRef.current = { kind: 'ssh-attach' }
     setBusy('ssh-attach')
+    const timer = setInterval(() => void refresh(), 300)
     try {
       const outcome = await attachWorkspace(plan.input)
       setError(null)
       await refresh()
-      setActiveSession(outcome.sessions[0]?.sessionId ?? null)
+      setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
     } catch (caught) {
-      setError(messageOf(caught))
+      setError(cancelledOrNull(caught))
     } finally {
+      clearInterval(timer)
+      await settleSnapshot()
       setBusy(null)
     }
   }
 
+  /** A5：取消接入。取消**不是**失败，所以清掉错误框而不是显示一条红字。 */
+  const onCancelAttach = async (): Promise<void> => {
+    try {
+      await cancelAttach()
+      setError(null)
+      // 取消回来之后立刻把「接入中」那一帧换掉：只清错误不清快照，进度行会一直挂着。
+      await settleSnapshot()
+    } catch (caught) {
+      setError(failureOf(caught))
+    }
+  }
+
   const onCreateSession = async (workspaceId: string): Promise<void> => {
+    retryRef.current = { kind: 'create-session', workspaceId }
     setBusy('session:' + workspaceId)
     try {
       const created = await createRemoteSession({ workspaceId })
@@ -568,7 +696,7 @@ export function TeleportPanel(): unknown {
       setActiveSession(created.sessionId)
       await refresh()
     } catch (caught) {
-      setError(messageOf(caught))
+      setError(failureOf(caught))
     } finally {
       setBusy(null)
     }
@@ -582,19 +710,21 @@ export function TeleportPanel(): unknown {
    * 重连失败要**看到原因**，所以错误照样进 `panel-error`。
    */
   const onLink = async (action: 'disconnect' | 'reconnect'): Promise<void> => {
+    retryRef.current = { kind: 'link', action }
     setBusy(action)
     try {
       const next = action === 'disconnect' ? await disconnectRemote() : await reconnectRemote()
       setSnapshot(next)
       setError(null)
     } catch (caught) {
-      setError(messageOf(caught))
+      setError(failureOf(caught))
     } finally {
       setBusy(null)
     }
   }
 
   const onProbe = async (sessionId: string): Promise<void> => {
+    retryRef.current = { kind: 'probe', sessionId }
     setBusy('probe:' + sessionId)
     try {
       const outcome = await probeRemoteSession(sessionId)
@@ -602,9 +732,37 @@ export function TeleportPanel(): unknown {
       setActiveSession(sessionId)
       setError(null)
     } catch (caught) {
-      setError(messageOf(caught))
+      setError(failureOf(caught))
     } finally {
       setBusy(null)
+    }
+  }
+
+  /** 重试 = 用**当前**表单/选择重跑上一次动作；没有失败过（意图为空）就什么都不做。 */
+  const onRetry = async (): Promise<void> => {
+    const intent = retryRef.current
+    if (intent === null) return
+    try {
+      switch (intent.kind) {
+        case 'attach':
+          await onAttach(intent.record)
+          return
+        case 'ssh-attach':
+          await onSshAttach()
+          return
+        case 'create-session':
+          await onCreateSession(intent.workspaceId)
+          return
+        case 'link':
+          await onLink(intent.action)
+          return
+        case 'probe':
+          await onProbe(intent.sessionId)
+      }
+    } catch (caught) {
+      // 重试本身抛出来（表单还没就绪、默认值没读到）也必须变成看得见的失败：
+      // `void onRetry()` 会把这个 rejection 吞掉，面板上就表现为「点了重试什么都没发生」。
+      setError(failureOf(caught))
     }
   }
 
@@ -613,6 +771,25 @@ export function TeleportPanel(): unknown {
   const defaults = snapshot?.defaults ?? state.defaults
   const sshHosts = ssh?.targets ?? []
   const sshPlan = sshAttachPlan(sshHosts, { alias: sshAlias, remotePath: sshPath }, defaults)
+  // A5：接入进行中要有阶段行与取消按钮。阶段来自快照（`snapshot.attach`），不是本地计时。
+  const attachProgress = snapshot?.attach ?? null
+  const attachBox =
+    attachProgress === null
+      ? null
+      : h(
+          'div',
+          { 'data-teleport': 'attach-progress', 'data-phase': attachProgress.phase },
+          h('span', { 'data-teleport': 'attach-phase-text' }, attachPhaseText(attachProgress.phase)),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-teleport': 'attach-cancel',
+              onClick: () => void onCancelAttach(),
+            },
+            '取消接入',
+          ),
+        )
   const reconnect = reconnectPlan(snapshot)
   const disconnect = disconnectPlan(snapshot)
 
@@ -631,9 +808,16 @@ export function TeleportPanel(): unknown {
       ? h(
           'div',
           { 'data-teleport': 'ssh-empty' },
-          ssh === null
-            ? '还没读到 ~/.ssh/config'
-            : (ssh.problems[0]?.message ?? '~/.ssh/config 里没有可用的主机：写一个 Host 块后刷新'),
+          sshError !== null
+            ? '读 ~/.ssh/config 失败：' + sshError
+            : ssh === null
+              ? '还没读到 ~/.ssh/config'
+              : (ssh.problems[0]?.message ?? '~/.ssh/config 里没有可用的主机：写一个 Host 块后刷新'),
+          h(
+            'button',
+            { type: 'button', 'data-teleport': 'ssh-reload', onClick: () => void loadSsh() },
+            sshError !== null ? '重试读取' : '重新读取',
+          ),
         )
       : h(
           'div',
@@ -781,6 +965,7 @@ export function TeleportPanel(): unknown {
       { 'data-teleport': 'panel-env', 'data-env-policy': snapshot?.envPolicy ?? 'unknown' },
       envPolicyLine(snapshot),
     ),
+    attachBox,
     h(
       'div',
       { 'data-teleport': 'panel-link-actions' },
@@ -830,7 +1015,29 @@ export function TeleportPanel(): unknown {
         : sessionRows),
     ),
     probeBox,
-    error === null ? null : h('div', { 'data-teleport': 'panel-error' }, error),
+    error === null
+      ? null
+      : h(
+          'div',
+          { 'data-teleport': 'panel-error', 'data-error-code': error.code },
+          h('div', { 'data-teleport': 'panel-error-code' }, error.code),
+          h('div', { 'data-teleport': 'panel-error-detail' }, error.detail),
+          h(
+            'ul',
+            { 'data-teleport': 'panel-error-next' },
+            ...error.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
+          ),
+          h(
+            'button',
+            { type: 'button', 'data-teleport': 'panel-error-copy', onClick: () => void copyText(error.report) },
+            '复制日志',
+          ),
+          h(
+            'button',
+            { type: 'button', 'data-teleport': 'panel-error-retry', onClick: () => void onRetry() },
+            '重试',
+          ),
+        ),
   )
 }
 

@@ -17,6 +17,7 @@ import type {
   SshTargetInfo,
   WorkspaceRecord,
 } from '../shared/api.ts'
+import type { AttachPhase } from '../shared/phases.ts'
 import { describeLink } from '../shared/reconnect.ts'
 
 /** 接入计划：能接就给出完整入参，不能接就给出人话原因。 */
@@ -178,6 +179,20 @@ export function envPolicyLine(snapshot: ProjectionSnapshotInfo | null): string {
   if (policy === 'reuse') return '环境：复用远端已有 ~/.dsh'
   if (policy === 'isolated') return '环境：隔离（不碰远端已有 ~/.dsh）'
   return '环境：sync（M3 才落地）'
+}
+
+/**
+ * 接入阶段的人话。A5 要求「分阶段进度」对用户可见——只显示「接入中…」等于没给进度。
+ * 阶段词的真相源是 `src/shared/phases.ts`，这里只负责翻译，不新增阶段。
+ */
+export function attachPhaseText(phase: AttachPhase): string {
+  if (phase === 'probe') return '探测远端（ssh 通道 / node / 插件检出）'
+  if (phase === 'bootstrap') return '引导远端（装 dsh）'
+  if (phase === 'verify') return '校验远端产物'
+  if (phase === 'launch') return '启动远端 dsh'
+  if (phase === 'tunnel') return '建隧道 / 抓凭据端口'
+  if (phase === 'barrier') return '同步屏障'
+  return '接入工作区'
 }
 
 export function linkLine(snapshot: ProjectionSnapshotInfo | null): string {

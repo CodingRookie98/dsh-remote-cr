@@ -7,16 +7,10 @@
  * `nextActions` 是给人看的可执行选项。
  */
 
+import { ATTACH_PHASES } from '../../shared/phases.ts'
+
 /** 添加/连接一个远端要经过的阶段，顺序即 UI 进度条顺序。 */
-export const CONNECTION_PHASES = [
-  'probe',
-  'bootstrap',
-  'verify',
-  'launch',
-  'tunnel',
-  'barrier',
-  'attach',
-] as const
+export const CONNECTION_PHASES = ATTACH_PHASES
 
 export type ConnectionPhase = (typeof CONNECTION_PHASES)[number]
 

@@ -8,6 +8,7 @@ import type {
   WorkspaceRecord,
 } from '../shared/api.ts'
 import {
+  attachPhaseText,
   basenameOf,
   disconnectPlan,
   formatUpdatedAt,
@@ -120,6 +121,7 @@ function snapshot(overrides: Partial<ProjectionSnapshotInfo> = {}): ProjectionSn
     target: null,
     link: 'idle',
     envPolicy: null,
+    attach: null,
     defaults: DEFAULTS,
     ...overrides,
   }
@@ -210,4 +212,16 @@ test('负控：把「有主机」判成恒真，SSH 按钮的没主机文案必�
   const plan = sshAttachPlan(NEG ? SSH_HOSTS : [], { alias: '', remotePath: '' }, DEFAULTS)
   assert.equal(plan.ok, false)
   if (!plan.ok) assert.ok(plan.reason.includes('.ssh/config'), plan.reason)
+})
+
+test('接入阶段逐条给人话，且七个阶段各不相同（A5 的进度不能只是「接入中…」）', () => {
+  const phases = ['probe', 'bootstrap', 'verify', 'launch', 'tunnel', 'barrier', 'attach'] as const
+  const texts = phases.map((phase) => attachPhaseText(phase))
+  for (const text of texts) {
+    assert.ok(text.length >= 4, text)
+    assert.equal(text.includes('接入中'), false, '不能退化成不区分阶段的文案：' + text)
+  }
+  assert.equal(new Set(texts).size, phases.length, '每个阶段都要有自己的话')
+  assert.ok(attachPhaseText('tunnel').includes('隧道'))
+  assert.ok(attachPhaseText('bootstrap').includes('引导'))
 })

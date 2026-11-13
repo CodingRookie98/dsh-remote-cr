@@ -88,8 +88,10 @@
 | 上传 SFTP → `cat >` exec 管道回退（含失败瞬间 unpipe+destroy） | 跳板机场景可上传；无虚假进度日志 |
 | dispose 后迟到 ready/error 双检 | 取消连接后不复活；不产生 uncaughtException |
 | 引导器：远端 Node/dsh 安装（镜像测速、缓存、断点、上传前 `tar` 预检、私有 staging 不放 `/tmp`） | 首次 ≤ 可接受时间且可取消；二次秒级 |
+| **A5 首连体验（SSH 向导）：分阶段进度 + 取消** | 阶段要按顺序出现在 UI 上；取消要**真的打到宿主**（不是只点按钮）；「二次连接 ≤5s」只对热组成立。✅ **真机取证（2026-11-13，`gcp`，`spikes/m2/ssh-panel/probe.cjs` `GATE=a5a8` 正向 7/7 + 负控失败集逐项相等）**：`data-phase` 依次 `probe → bootstrap → launch → tunnel → attach`（热路径，`verify` / `barrier` 未出现）；取消按钮可见，点击后页面里抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`，进度条消失且无错误残留，远端 `:8961` 在 62589 ms 后释放；二次连接 ≤5s 见 `spikes/m2/ssh-e2e/measurements.json`（热组重连 P50 1664 ms / P90 2094 ms，限 5000 ms） |
+| **A8 失败可诊断（SSH 向导）：结构化码 + 可复制日志 + 重试入口** | 失败要给可读的码与下一步，能在 GUI 内复制、点重试恢复，且不出现「远端不可用却本地执行」。✅ **真机取证（同上 7/7；负控失败集恰为 `G-A8-1/2/3`）**：用远端不存在的目录 ⇒ `remote/workspace-invalid-path` + detail（含远端 `workspace/invalid-path` 原文）+ nextActions `["查看远端日志","重试"]`；错误框有复制按钮；点「重试」换回好路径后 `recovered=true`；关宿主后远端 `:8961` 无孤儿 |
 
-**出口**：同一套 UI 与语义下，SSH 达到 A1–A8。
+**出口**：同一套 UI 与语义下，SSH 达到 A1–A8。**2026-11-13 状态**：A1–A8 在 SSH 上逐条都有真机证据（本表各行的 ✅ + 计划文档 §3 的 S10-A…S10-J），逐条对证据的签署归档见 [`reviews/2026-11-13-m2-exit-signoff`](../project/reviews/2026-11-13-m2-exit-signoff/README.md)；**终审裁决「未定」**——R1 红队穿透在本环境无法派发（`list_subagent_models` = `(no LLM providers)`，与 M1 签署同源），Lead 自查不能替代 R1。**签署完成前不得写成「M2 已出口」，也不得写成 A9 已达成**（A9 还要求 WSL 轮的签署，而 M1 的终审同样是「未定」）。
 
 ## M3 · 「丝滑」打磨（2–3 周）
 
