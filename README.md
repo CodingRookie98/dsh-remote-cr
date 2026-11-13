@@ -6,7 +6,7 @@
 
 - 项目名：**dsh-remote-cr**（曾用名 `dsh-teleport` / 中文代号「瞬移」；2026-11-13 改名）
 - **命名分层**：包名与插件 id 是 `dsh-remote-cr`；**运行时标识保留 `teleport`**（`~/.dsh-teleport` 锚点与 staging、`DSH_TELEPORT_*` 环境变量、`/teleport` API 前缀、`data-teleport` DOM 属性）—— 改名不该作废既有锚点、staging 与已部署的环境变量
-- 状态：**调研完成，UI/功能设计完成，M0 已关闭**（2026-10-31）；**M1 进行中**——ADR-0003 两层阈值（T5 跨机字节 / T6 跨机失败可见）已运行时取证通过，产品代码尚未开始（计划：[`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](./docs/project/plans/2026-10-31-m1-wsl-closed-loop.md)）
+- 状态：**M0 已关闭**（2026-10-31）；**M1（WSL）与 M2（SSH）已交付**——两条链路的 A1–A8 均有真机证据（560 条单测 + 7 套带负控的真机探针），**2026-11-13 按「有条件签署」放行**（A5 的取消能力分级、已知限制与未验证清单见 [`签署归档`](./docs/project/reviews/2026-11-13-m2-exit-signoff/README.md)）；**M3（长任务 / 丝滑）待开**（计划：[`2026-11-13-m3-long-task.md`](./docs/project/plans/2026-11-13-m3-long-task.md)）
 - 目标平台：Windows 上的 DSH Desktop / dsh web + 本机 WSL2 发行版 / 任意 POSIX SSH 主机
 - 后端交付顺序：**WSL2（M1）→ SSH（M2）→ Docker（M5）**
 - 非目标（v1）：完整 IDE（LSP/Monaco）、多人协作、headless-only 部署；Docker 可用链路排到 M5
@@ -20,7 +20,20 @@
 1. **社区现有的 WSL/SSH 插件绝大多数是「远端执行」模型（A 型）**：宿主、插件、会话、模型调用全留在 Windows，只把 bash 与文件读写派发到远端。因此 WSL 里 `~/.dsh` 的插件（例如 hindsight）**永远不会被加载**。
 2. **「宿主在远端」模型（B 型）的底层已经被证明可行**：`dsh-ssh-workspace`（SSH，iframe + companion）、`dsh-remote-explorer`（SSH + WSL，远端装 dsh + 隧道 + 反向凭据代理）、官方 Tauri 桌面内置 remote。我们实测跑通了 `dsh-remote-explorer` 的 WSL 链路：远端 dsh 0.2.1-rc.2 在 WSL 内运行，模型推理经反向隧道回到本机完成（真实 key 不出本机）。
 
-但 **B 型现有实现的「集成层」都不够丝滑**：独立网页/浮动窗口、首次连接要下载约 1.4 GB、隔离的 DSH_HOME 导致远端已有插件/技能/配置不共享、账号/用量面板被上游 WAF 拦、本地与远端两套会话/历史。这正是 `dsh-teleport` 的机会：**B 型的底层 + A 型/native 的集成体验**。
+但 **B 型现有实现的「集成层」都不够丝滑**：独立网页/浮动窗口、首次连接要下载约 1.4 GB、隔离的 DSH_HOME 导致远端已有插件/技能/配置不共享、账号/用量面板被上游 WAF 拦、本地与远端两套会话/历史。这正是本项目的切入点：**B 型的底层 + A 型/native 的集成体验**。
+
+### 和 A 型「远程执行」插件的区别
+
+| 能力 | A 型（DSH 插件市场现有 8 个） | **dsh-remote-cr（B 型）** |
+|---|---|---|
+| agent loop / 工具 / 会话在哪 | 本地 | **远端** |
+| 远端要装什么 | 零安装 | dsh 宿主（首次引导约 1.4 GB / ~3 分钟） |
+| 远端已装的插件能被 agent 用吗 | 不能（插件在本地） | **能**（真机：远端工具表 32→38） |
+| 断网 / 关电脑后任务还活着吗 | 不能 | **能**（2s 档自动重连 18340 ms 连回） |
+| 真实 API key 落在哪 | 本地（天然满足） | **本地**（远端只有占位令牌，代理侧有替换日志） |
+| 适合谁 | 只想在远端跑命令 | 长任务、远端必须是完整 agent 宿主、需要会话持久 |
+
+> 一句话：**A 型把命令送去远端，B 型把整个 agent 搬到远端、只把画面和钥匙留在本地。** 完整调研与价值评估见 [`docs/research/05-ecosystem-and-value-2026-11.md`](./docs/research/05-ecosystem-and-value-2026-11.md)。
 
 ## 「丝滑」的验收定义（产品基准）
 
@@ -44,6 +57,7 @@
 | [`docs/research/02-competitive-landscape.md`](./docs/research/02-competitive-landscape.md) | 市场调研：7 个截图内插件 + 4 个补充参照 + 官方能力，逐个核实并给出证据 |
 | [`docs/research/03-hands-on-findings.md`](./docs/research/03-hands-on-findings.md) | 本次实测全记录：multi-remote、remote-explorer 的安装/踩坑/数据/结论 |
 | [`docs/research/04-dsh-extension-points.md`](./docs/research/04-dsh-extension-points.md) | DSH 宿主可用的扩展接缝与硬限制（含证据来源） |
+| [`docs/research/05-ecosystem-and-value-2026-11.md`](./docs/research/05-ecosystem-and-value-2026-11.md) | **生态与价值评估（2026-11）**：DSH 插件市场 8 个 A 型远程插件的对照、非 DSH 参照系、场景胜率与路线建议 |
 | [`docs/research/zcode-remote/01-overview.md`](./docs/research/zcode-remote/01-overview.md) | **参考实现精读**：ZCode 3.16.2（`vendor/zcode` submodule）的 remote 全链路——三 transport、两代连接链路、三层身份、10 态状态机、资产管线 |
 | [`docs/research/zcode-remote/02-ssh-backend.md`](./docs/research/zcode-remote/02-ssh-backend.md) | SSH 后端：连接参数、认证错误四分类、单 channel probe、上传双路径、direct-tcpip、dispose 防复活 |
 | [`docs/research/zcode-remote/03-wsl-docker-backend.md`](./docs/research/zcode-remote/03-wsl-docker-backend.md) | WSL / Docker 后端：`--exec` 陷阱、UTF-16LE、UNC 双候选、proxy-stdio、容器名白名单 |
