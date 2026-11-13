@@ -1,6 +1,19 @@
 {
-  "at": "2026-11-13T14:29:55.681Z",
+  "at": "2026-11-13T14:44:43.673Z",
   "negative": false,
   "measurements": [],
-  "results": []
+  "results": [
+    {
+      "id": "M4-1-list",
+      "ok": true,
+      "detail": {
+        "before": 1,
+        "opened": "clicked",
+        "listed": {
+          "count": 0,
+          "first": null
+        }
+      }
+    }
+  ]
 }

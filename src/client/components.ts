@@ -1052,6 +1052,9 @@ export function TeleportPanel(): unknown {
         : h(
             'div',
             { 'data-teleport': 'import-list' },
+            importable.length === 0
+              ? h('div', { 'data-teleport': 'import-empty' }, '远端没有其它可导入的工作区')
+              : null,
             ...importable.map((item: ImportableWorkspaceInfo) =>
               h(
                 'label',

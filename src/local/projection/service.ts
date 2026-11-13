@@ -34,7 +34,7 @@ import type { EnvPolicy } from '../env-policy/index.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
 import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
-import { parseBaselineFrame, type RemoteWorkspaceRow } from './import.ts'
+import { parseBaselineFrame, planImport, type RemoteWorkspaceRow } from './import.ts'
 import type { ProbeOptions, ProbeResult } from './probe.ts'
 import { TERMINAL_WARMUP_MS, preheatProbe, runSessionProbe } from './probe.ts'
 import type { ProjectionRpc, StreamHandle } from './remote.ts'
@@ -484,7 +484,12 @@ export class ProjectionService {
     }
     const stream = live.connection.rpc.openStream('workspace/follow', {})
     try {
-      return parseBaselineFrame(await firstFrame(stream, 10_000))
+      const rows = parseBaselineFrame(await firstFrame(stream, 10_000))
+      // 只返回「本地还没有的」：列表里出现已接入的条目会诱导用户重复导入。
+      return planImport(
+        rows,
+        this.#store.workspaces().map((item) => ({ workspaceId: item.id, remotePath: item.remotePath })),
+      ).candidates
     } finally {
       stream.cancel()
     }

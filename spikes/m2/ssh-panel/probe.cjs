@@ -1258,6 +1258,69 @@ async function runGateShots() {
   }
 }
 
+// ── M4-1：导入远端已有工作区的真机验证 ──────────────────────────────────
+//
+// 判据两条：列表能读出来（行数 + 首条路径）；勾一条导入后侧栏多出一个投影条目。
+// 若列表为空，那是**合法的负控**（远端只有已接入的那一个），记录行数即可。
+async function runGateImport() {
+  killRemoteOnPort(REMOTE_PORT)
+  if (!(await hostPortFree())) throw new Error('宿主端口 ' + String(HOST_PORT) + ' 已被占用')
+  ensureProfile()
+  const url = await startHost()
+  await startChrome()
+  const cdp = await connectCdp(await waitForChrome())
+  const created = await cdp.send('Target.createTarget', { url: 'about:blank' })
+  const attached = await cdp.send('Target.attachToTarget', { targetId: created.targetId, flatten: true })
+  const sid = attached.sessionId
+  const watchdog = armWatchdog(cdp, sid, 10 * 60_000)
+  try {
+    await cdp.send('Runtime.enable', {}, sid)
+    await cdp.send('Page.enable', {}, sid)
+    await cdp.send('Page.navigate', { url }, sid)
+    await waitFor(cdp, sid, SEL_TELEPORT + ' !== null', 120_000, '侧栏出现「瞬移」')
+    await openPanel(cdp, sid)
+    await waitFor(cdp, sid, q('ssh') + ' !== null', 120_000, 'SSH 表单出现')
+    await gateEnsureHosts(cdp, sid)
+    const picked = await evaluate(
+      cdp, sid,
+      '(() => { const rows = ' + qa('ssh-alias') + ';' +
+        ' const hit = rows.find(r => (r.textContent || "").indexOf(' + JSON.stringify(ALIAS + ' ·') + ') === 0);' +
+        ' if (!hit) return "missing"; hit.click(); return "clicked" })()',
+    )
+    if (picked !== 'clicked') throw new Error('别名 ' + ALIAS + ' 不在列表')
+    if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('远端路径填不进去')
+    const clicked = await gateClickAttach(cdp, sid)
+    if (clicked.ok !== true) throw new Error('点不到接入：' + JSON.stringify(clicked.why))
+    await waitFor(cdp, sid, q('projected') + ' !== null', 300_000, '投影条目出现')
+    const before = await evaluate(cdp, sid, qa('projected') + '.length')
+
+    const opened = await evaluate(cdp, sid, '(() => { const b = ' + q('import-open') + '; if (!b) return "missing"; b.click(); return "clicked" })()')
+    await waitFor(cdp, sid, q('import-list') + ' !== null', 30_000, '导入列表出现')
+    const listed = await evaluate(
+      cdp, sid,
+      '(() => { const rows = ' + qa('import-row') + ';' +
+        ' return { count: rows.length, first: rows.length > 0 ? (rows[0].textContent || "") : null } })()',
+    )
+    record('M4-1-list', opened === 'clicked' && listed !== null, { before, opened, listed })
+
+    if (listed !== null && listed.count > 0) {
+      await evaluate(cdp, sid, '(() => { const box = ' + q('import-check') + '; if (!box) return false; box.click(); return true })()')
+      await sleep(200)
+      const imported = await evaluate(cdp, sid, '(() => { const b = ' + q('import-go') + '; if (!b || b.disabled) return "blocked"; b.click(); return "clicked" })()')
+      let after = before
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        after = await evaluate(cdp, sid, qa('projected') + '.length')
+        if (typeof after === 'number' && typeof before === 'number' && after > before) break
+        await sleep(500)
+      }
+      record('M4-1-import', imported === 'clicked' && after === before + 1, { imported, before, after })
+    }
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+
 async function main() {
   console.log('== M2-EXIT ' + (NEG ? '负控' : '正向') + ' · SSH 面板 · ALIAS=' + ALIAS + ' · REMOTE_ROOT=' + JSON.stringify(REMOTE_ROOT))
 
@@ -1428,7 +1491,7 @@ async function main() {
   return { attachMs, sessionId, disconnectMs, reconnectMs }
 }
 
-const running = GATE === 'a5a8' ? runGate() : GATE === 'stop' ? runGateStop() : GATE === 'shots' ? runGateShots() : main()
+const running = GATE === 'a5a8' ? runGate() : GATE === 'stop' ? runGateStop() : GATE === 'shots' ? runGateShots() : GATE === 'import' ? runGateImport() : main()
 
 running
   .then((outcome) => {
