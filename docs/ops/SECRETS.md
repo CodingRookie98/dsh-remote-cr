@@ -32,13 +32,19 @@ git grep -I -E '10\.19\.121|192\.168\.5|34\.92\.25|ssy_|id_ed25519' -- .
 - 删除了 `docs/ops/wsl-test-target.md`（那是一份带真实主机、IP、防火墙 GUID 的运维记录，改为本地保存）。
 - 删除了 `config.test.ts` 里一条「本机真实 `~/.ssh/config` 有 14 个 Host」的断言——它测的是某台机器的配置，不是代码行为。
 
-## 5. 历史遗留（重要）
+## 5. 历史（2026-11-14 已重写）
 
-**工作树干净 ≠ 历史干净。** 上面的脱敏只改了当前文件；早先的提交（含 `287d1ab`、`e88c89a` 等）里仍带着原始值。开源前必须二选一：
+已用 `git filter-repo --replace-text` 重写**全部 118 个提交**，现在 `git log -S '<真实网段前缀>'` 与 `git log -S '<LAN 网段前缀>'` 均为 0。
+
+- **所有 commit hash 已变化**：协作者不要 `git pull` 硬合，重新 clone。
+- 重写前备份：`D:\workspace\backups\dsh-remote-cr-20261114.bundle`（本地，不进仓库）。
+- 再引入敏感串时：只在 HEAD 就 `git commit --amend`；已进入更早提交就再跑一次 `filter-repo`。
+
+以下是当时的两条可选路径（保留作参考）：
 
 1. **重写历史**（保留提交结构）：
    ```bash
-   git filter-repo --replace-text <(printf '203.0.113.9==>203.0.113.9\n')   # 逐条替换
+   git filter-repo --replace-text <pairs.txt>   # 每行 `原文==>占位符`
    ```
 2. **重建仓库**（最简单，丢弃历史）：`git checkout --orphan clean && git add -A && git commit`，然后以 `clean` 为初始分支推送。
 
