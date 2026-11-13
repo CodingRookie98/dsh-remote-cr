@@ -53,6 +53,7 @@ function handle(clean: boolean): SshRemoteHandle & { disposed: number } {
     keepAlive: async () => {
       // 驻留模式：不回收，什么都不做。
     },
+    remotePid: null,
   }
   return h
 }

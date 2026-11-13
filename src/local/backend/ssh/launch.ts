@@ -163,6 +163,8 @@ export interface SshRemoteHandle extends RemoteDshHandle {
   readonly remotePort: number
   /** `-R` 实际分配到服务端的端口；没挂 `-R` 或没解析到就是 undefined。 */
   readonly remoteProxyPort: number | undefined
+  /** 远端 dsh 的 pid（从看门狗 PID 标记解析）；没见到标记时 null。写实例登记要用。 */
+  readonly remotePid: number | null
   /**
    * 驻留：让远端 dsh 在本地离开后继续跑（不去 kill 它）。
    *
@@ -415,6 +417,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   let exited = false
   let killedMarkSeen = false
   let pidMarkSeen = false
+  let remotePid: number | null = null
   /** 上一块日志的尾巴，用来拼回被切断的标记。 */
   let markTail = ''
   /** dispose 在等 KILLED 时挂在这里：标记一到就不再耗满收尾窗口。 */
@@ -429,7 +432,13 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
       killedMarkSeen = true
       notifyKilled?.()
     }
-    if (window.includes(WATCHDOG_PID_MARK)) pidMarkSeen = true
+    if (window.includes(WATCHDOG_PID_MARK)) {
+      pidMarkSeen = true
+      // 顺带把 pid 值解析出来：实例登记要用它（回收 / 复用判定），只记布尔不够。
+      const rest = window.slice(window.indexOf(WATCHDOG_PID_MARK) + WATCHDOG_PID_MARK.length)
+      const parsed = Number((rest.split(/\r?\n/)[0] ?? '').trim())
+      if (Number.isFinite(parsed) && parsed > 0) remotePid = parsed
+    }
     markTail = window.slice(-MARK_WINDOW)
   }
 
@@ -552,6 +561,9 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     // 用 getter 而不是快照：-R 的端口可能比访问 URL 晚一行到达，快照会把它丢掉。
     get remoteProxyPort(): number | undefined {
       return remoteProxyPort
+    },
+    get remotePid(): number | null {
+      return remotePid
     },
     log: () => buffer,
     keepAlive: async () => {

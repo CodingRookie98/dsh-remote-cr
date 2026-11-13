@@ -1,17 +1,22 @@
 {
-  "at": "2026-11-13T13:01:05.454Z",
+  "at": "2026-11-13T13:22:20.501Z",
   "alias": "gcp",
   "remotePort": 8946,
   "waitSeconds": 30,
   "keepRemote": true,
-  "attachMs": 34843,
+  "attachMs": 36040,
   "workspaceId": "a5650020-af32-4add-8724-e75dfc2fb275",
-  "sessionId": "session-a7ea8d4d-bd59-41c5-b63f-e4de2c842aa7",
-  "dshPidBeforeDispose": 117362,
+  "sessionId": "session-4db5b212-847f-4c74-92b6-cc1da59f167f",
+  "dshPidBeforeDispose": 118417,
   "dshAliveAfterWait": true,
   "portBusyAfterWait": true,
   "longTaskAlive": true,
   "reattach": {
-    "skipped": true
+    "workspaceId": "",
+    "sessions": 0,
+    "sessionKept": false,
+    "dshPid": null,
+    "sameInstance": false,
+    "error": "remote/tunnel-unavailable"
   }
 }

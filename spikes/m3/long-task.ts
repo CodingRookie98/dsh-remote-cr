@@ -123,17 +123,22 @@ if (process.env['NO_REATTACH'] === '1') {
   console.log('落盘：' + join(HERE, 'measurements.long-task.json'))
   process.exit(0)
 }
-let reattached: { workspaceId: string; sessions: number; sessionKept: boolean; error: string | null } = {
+let reattached: { workspaceId: string; sessions: number; sessionKept: boolean; dshPid: number | null; sameInstance: boolean; error: string | null } = {
   workspaceId: '',
   sessions: 0,
   sessionKept: false,
+  dshPid: null,
+  sameInstance: false,
   error: null,
 }
 try {
   const again = await service2.attach(target, { remotePath: anchor.remotePath, localPath: anchor.localPath })
   const snap = service2.snapshot()
+  const pidAfterReattach = dshPid()
   reattached = {
     workspaceId: again.workspace.id,
+    dshPid: pidAfterReattach,
+    sameInstance: pidAfterReattach !== null && pidAfterReattach === pidBefore,
     sessions: snap.sessions.length,
     sessionKept: snap.sessions.some((item) => item.sessionId === session.sessionId),
     error: null,

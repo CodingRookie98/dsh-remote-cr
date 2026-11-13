@@ -26,12 +26,16 @@
  */
 
 import { join } from 'node:path'
+import { shellQuote } from '../backend/posix-probe.ts'
 import { TeleportError, type ConnectionPhase } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
-import { launchSshDsh } from '../backend/ssh/launch.ts'
+import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
+import { INSTANCE_VERSION, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
+import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
+import { launchSshDsh, openSshTunnel } from '../backend/ssh/launch.ts'
 import { resolveRemoteDsh, type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts'
-import type { SshAuth } from '../backend/ssh/transport.ts'
+import { runSsh, type SshAuth } from '../backend/ssh/transport.ts'
 import { launchRemoteDsh } from '../backend/wsl/launch.ts'
 import { runInDistro } from '../backend/wsl/exec.ts'
 import { planEnvInjection, resolveEnvPolicy, type EnvPolicy } from '../env-policy/index.ts'
@@ -271,6 +275,52 @@ async function connectSsh(
   const policy = resolvePolicy(options.envPolicy)
   const injection = planEnvInjection(policy, { home: runtime.remoteHome, hostKey: 'ssh:' + target.alias }, ssh.extraEnv)
   const proxyPort = typeof ssh.proxyPort === 'function' ? ssh.proxyPort() : ssh.proxyPort
+  // ── 驻留实例复用（M3-2b）─────────────────────────────────────────────────
+  // 先看有没有「上一进程留下的、还活着的」实例：命中就只建隧道、不启动新进程。
+  // 没有它，驻留模式只会留下实例却接不回来（新启动必然撞端口）。
+  const anchorId = anchorIdFor(anchorTargetOf(resolved.target))
+  const instanceFile = instancePath(runtime.remoteHome, anchorId)
+  const known = await readRemoteInstance({
+    homeDir: ssh.homeDir,
+    target: resolved.target,
+    auth,
+    remotePort: target.port,
+    path: instanceFile,
+    ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+  })
+  if (known !== null && known.portListening && !isInstanceExpired(known.instance, Date.now())) {
+    abortIfCancelled(control.signal)
+    control.onPhase?.('tunnel')
+    const tunnel = await openSshTunnel({
+      homeDir: ssh.homeDir,
+      target: resolved.target,
+      auth,
+      remotePort: target.port,
+      ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+    })
+    let reused: RemoteRpc | undefined
+    try {
+      reused = await RemoteRpc.open(
+        { host: '127.0.0.1', port: tunnel.localPort },
+        known.instance.token,
+        control.signal === undefined ? {} : { signal: control.signal },
+      )
+    } catch {
+      await tunnel.dispose()
+      reused = undefined
+    }
+    if (reused !== undefined) {
+      const rpc = reused
+      return {
+        get rpc() {
+          return rpc
+        },
+        envPolicy: policy,
+        dispose: async () => tunnel.dispose(),
+      }
+    }
+  }
+
   const handle = await launchSshDsh({
     homeDir: ssh.homeDir,
     target: resolved.target,
@@ -287,7 +337,72 @@ async function connectSsh(
     onStage: (stage) => control.onPhase?.(stage),
   })
   control.onPhase?.('tunnel')
+  // 登记（fire-and-forget）：给「下一个进程」留一条回来的路。
+  void writeRemoteInstance({
+    homeDir: ssh.homeDir,
+    target: resolved.target,
+    auth,
+    path: instanceFile,
+    instance: {
+      version: INSTANCE_VERSION,
+      pid: handle.remotePid ?? 0,
+      port: target.port,
+      token: handle.endpoint.token,
+      startedAt: new Date().toISOString(),
+      argvPrefix: runtime.argvPrefix.join(' '),
+    },
+    ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+  })
   return openConnection(handle, policy, control.signal)
+}
+
+/** 读远端实例登记（一条 ssh；任何失败都当作「没有」——复用是优化，不是正确性）。 */
+async function readRemoteInstance(options: {
+  readonly homeDir: string
+  readonly target: SshTarget
+  readonly auth: SshAuth
+  readonly remotePort: number
+  readonly path: string
+  readonly sshExecutable?: string
+}): Promise<ReturnType<typeof parseInstanceOutput>> {
+  try {
+    const result = await runSsh({
+      target: options.target,
+      knownHostsFile: knownHostsPath(options.homeDir),
+      auth: options.auth,
+      command: ['sh', '-c', shellQuote(buildReadInstanceScript(options.path, options.remotePort))],
+      allowFailure: true,
+      deadlineMs: 15_000,
+      ...(options.sshExecutable === undefined ? {} : { sshExecutable: options.sshExecutable }),
+    })
+    return parseInstanceOutput(result.stdout, options.remotePort)
+  } catch {
+    return null
+  }
+}
+
+/** 写远端实例登记。失败只影响「下次能不能复用」，不许拖垮本次连接。 */
+async function writeRemoteInstance(options: {
+  readonly homeDir: string
+  readonly target: SshTarget
+  readonly auth: SshAuth
+  readonly path: string
+  readonly instance: RemoteInstance
+  readonly sshExecutable?: string
+}): Promise<void> {
+  try {
+    await runSsh({
+      target: options.target,
+      knownHostsFile: knownHostsPath(options.homeDir),
+      auth: options.auth,
+      command: ['sh', '-c', shellQuote(buildWriteInstanceScript(options.path, options.instance))],
+      allowFailure: true,
+      deadlineMs: 15_000,
+      ...(options.sshExecutable === undefined ? {} : { sshExecutable: options.sshExecutable }),
+    })
+  } catch {
+    // 登记失败不影响本次连接；TTL 与「端口不监听」会让下次接入回落到正常启动。
+  }
 }
 
 /** 握手 + 打包成 `RemoteConnection`；启动器只负责给出一个可连的句柄。 */
