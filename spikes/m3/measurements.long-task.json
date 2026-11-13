@@ -1,19 +1,17 @@
 {
-  "at": "2026-11-13T12:40:20.821Z",
+  "at": "2026-11-13T13:01:05.454Z",
   "alias": "gcp",
   "remotePort": 8946,
-  "waitSeconds": 60,
-  "attachMs": 42384,
+  "waitSeconds": 30,
+  "keepRemote": true,
+  "attachMs": 34843,
   "workspaceId": "a5650020-af32-4add-8724-e75dfc2fb275",
-  "sessionId": "session-f857ceaf-a17c-428d-993e-8048354a69a9",
-  "dshPidBeforeDispose": 115448,
-  "dshAliveAfterWait": false,
-  "portBusyAfterWait": false,
+  "sessionId": "session-a7ea8d4d-bd59-41c5-b63f-e4de2c842aa7",
+  "dshPidBeforeDispose": 117362,
+  "dshAliveAfterWait": true,
+  "portBusyAfterWait": true,
   "longTaskAlive": true,
   "reattach": {
-    "workspaceId": "a5650020-af32-4add-8724-e75dfc2fb275",
-    "sessions": 24,
-    "sessionKept": true,
-    "error": null
+    "skipped": true
   }
 }

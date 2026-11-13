@@ -50,6 +50,9 @@ function handle(clean: boolean): SshRemoteHandle & { disposed: number } {
       h.disposed += 1
       return clean
     },
+    keepAlive: async () => {
+      // 驻留模式：不回收，什么都不做。
+    },
   }
   return h
 }

@@ -58,6 +58,8 @@ export interface RemoteConnection {
    */
   readonly envPolicy?: EnvPolicy | undefined
   rehandshake?(): Promise<void>
+  /** 驻留：让远端进程在本地离开后继续跑（与 `dispose` 互斥，先调哪个哪个生效）。 */
+  keepAlive?(): Promise<void>
   /**
    * 回收远端连接（含远端进程）：`false` = 没确认收干净（看门狗未在窗口内退出）。
    *
@@ -127,6 +129,13 @@ export interface ProjectionServiceOptions {
   connect(target: ConnectTarget, control?: AttachControl): Promise<RemoteConnection>
   /** 重连定时器接缝；单测注入假定时器，生产用全局 `setTimeout`。 */
   readonly timers?: ReconnectTimers
+  /**
+   * 驻留模式（M3-2b）：进程退出时**不回收**远端 dsh，而是 `keepAlive()` 放它继续跑。
+   *
+   * 默认 `false` —— 保持 A7「不留孤儿」的语义；打开它的调用方要自己承担「远端会一直占着端口」
+   * 的后果（TTL / 显式结束入口由调用方负责）。
+   */
+  readonly keepRemote?: boolean
 }
 
 /** 面板要的全部投影数据。 */
@@ -153,6 +162,7 @@ export class ProjectionService {
   readonly #store: ProjectionStore
   readonly #connect: (target: ConnectTarget, control?: AttachControl) => Promise<RemoteConnection>
   readonly #timers: ReconnectTimers | undefined
+  readonly #keepRemote: boolean
   #live: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
   /**
    * 上一次成功连上的 target。
@@ -183,6 +193,7 @@ export class ProjectionService {
     this.#store = options.store
     this.#connect = options.connect
     this.#timers = options.timers
+    this.#keepRemote = options.keepRemote === true
   }
 
   get connected(): boolean {
@@ -433,8 +444,19 @@ export class ProjectionService {
     const live = this.#live
     this.#setLive(undefined)
     this.#stopDriver()
-    if (live !== undefined) this.#retire(live.connection)
-    this.#dropDetached()
+    if (live !== undefined) this.#release(live.connection)
+    const detached = this.#detached
+    this.#setDetached(undefined)
+    if (detached !== undefined) this.#release(detached.connection)
+  }
+
+  /** 退出时怎么处理一条连接：默认回收；驻留模式下「放手」（keepAlive）。 */
+  #release(connection: RemoteConnection): void {
+    if (this.#keepRemote && typeof connection.keepAlive === 'function') {
+      void connection.keepAlive()
+      return
+    }
+    this.#retire(connection)
   }
 
   /**

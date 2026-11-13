@@ -324,6 +324,10 @@ async function openConnection(
       rpc.dispose()
       rpc = await RemoteRpc.open(endpoint, endpoint.token)
     },
+    /** 驻留：让远端 dsh 在本地离开后继续跑（M3-2b）；后端不支持时是 no-op。 */
+    keepAlive: async () => {
+      await handle.keepAlive?.()
+    },
     async dispose() {
       rpc.dispose()
       // 把「是否干净」原样带出去：调用方（取消路径）据此决定要不要报 recycle-incomplete。

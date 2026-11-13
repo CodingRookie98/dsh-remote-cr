@@ -27,4 +27,11 @@ export interface RemoteDshHandle {
   log(): string
   /** 回收：只收自己起的那个进程句柄。返回是否干净（有 survivor 即 false）。 */
   dispose(): Promise<boolean>
+  /**
+   * 驻留：让远端进程在本地离开后继续跑（M3-2b）。
+   *
+   * 可选 —— 没有实现它的后端就是不支持驻留（例如 WSL 的 `wsl.exe` 句柄一退就把 distro 侧
+   * 子进程带走）。调用方必须先看这个能力在不在，不能假设。
+   */
+  keepAlive?(): Promise<void>
 }

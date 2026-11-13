@@ -50,6 +50,14 @@ export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
  * 改成写一行明确的控制行，回收就不再依赖 EOF 的语义。
  */
 export const WATCHDOG_EXIT_LINE = 'TELEPORT_WATCHDOG_EXIT'
+/**
+ * 驻留行：本地要走，但**别杀**远端 dsh。
+ *
+ * 与 `WATCHDOG_EXIT_LINE` 是两条相反的语义：EXIT = 回收（A7 的「不留孤儿」），
+ * KEEP = 放手（M3-2b 的「长任务」）。同一行控制字里做分支，而不是靠「关 stdin 还是发信号」
+ * 区分 —— 后者在真机上已经证明不可靠（-R 连接不保证把 EOF 送到远端）。
+ */
+export const WATCHDOG_KEEP_LINE = 'TELEPORT_WATCHDOG_KEEP'
 
 /** 关掉 stdin 之后给远端看门狗多久（含一次远端 kill + 连接拆除）。 */
 const DISPOSE_GRACE_MS = 3_000
@@ -154,6 +162,12 @@ export interface SshRemoteHandle extends RemoteDshHandle {
   readonly remotePort: number
   /** `-R` 实际分配到服务端的端口；没挂 `-R` 或没解析到就是 undefined。 */
   readonly remoteProxyPort: number | undefined
+  /**
+   * 驻留：让远端 dsh 在本地离开后继续跑（不去 kill 它）。
+   *
+   * 与 `dispose()`（回收）互斥：先调哪个哪个生效，后调的是 no-op。
+   */
+  keepAlive(): Promise<void>
 }
 
 /**
@@ -207,6 +221,8 @@ export function buildRemoteLaunchScript(options: {
   // 读到回收行、或读到 EOF（老路径仍然有效）才往下走。
   lines.push('while IFS= read -r _teleport_line; do')
   lines.push('  [ "$_teleport_line" = ' + shellQuote(WATCHDOG_EXIT_LINE) + ' ] && break')
+  // 驻留：脚本自己退出，但**不 kill** 子进程 —— dsh 留在远端继续跑。
+  lines.push('  [ "$_teleport_line" = ' + shellQuote(WATCHDOG_KEEP_LINE) + ' ] && exit 0')
   lines.push('done')
   lines.push('kill "$_teleport_child" 2>/dev/null')
   lines.push("printf '%s\\n' " + JSON.stringify(WATCHDOG_KILLED_MARK))
@@ -537,6 +553,38 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
       return remoteProxyPort
     },
     log: () => buffer,
+    keepAlive: async () => {
+      if (disposed) return
+      disposed = true
+      try {
+        child.stdin?.write(WATCHDOG_KEEP_LINE + '\n')
+      } catch {
+        // 管道已断
+      }
+      try {
+        child.stdin?.end()
+      } catch {
+        // 管道已断
+      }
+      // keep 模式下远端**不会**打 KILLED 标记，所以这里只等通道关闭，超时也不强杀 ——
+      // 强杀就违背了「驻留」的语义。
+      await new Promise<void>((resolve) => {
+        if (exited) {
+          resolve()
+          return
+        }
+        const timer = setTimeout(() => resolve(), options.disposeGraceMs ?? DISPOSE_GRACE_MS)
+        child.on('close', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+        child.on('exit', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+    },
+
     dispose: async () => {
       if (disposed) return true
       disposed = true

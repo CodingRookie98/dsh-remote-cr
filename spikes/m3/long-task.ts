@@ -38,7 +38,12 @@ const anchor = await resolveAnchorPath({ homeDir: HOME, target: resolved.target,
 const target: ConnectTarget = { backend: 'ssh', alias: ALIAS, port: PORT, remoteRoot: anchor.remotePath }
 const connectLive = createLiveConnect({ ssh: { homeDir: HOME, authFor: async () => ({ kind: 'key' as const }) } })
 const makeService = (): ProjectionService =>
-  new ProjectionService({ store: new ProjectionStore(), timers: defaultTimers, connect: async (want: ConnectTarget) => connectLive(want) })
+  new ProjectionService({
+    store: new ProjectionStore(),
+    timers: defaultTimers,
+    keepRemote: process.env['KEEP'] === '1',
+    connect: async (want: ConnectTarget) => connectLive(want),
+  })
 
 const ssh = (script: string, timeoutMs = 30_000): string => {
   const out = spawnSync('ssh', ['-n', '-o', 'BatchMode=yes', ALIAS, script], { encoding: 'utf8', timeout: timeoutMs })
@@ -94,7 +99,30 @@ const busyAfterWait = portBusy()
 const taskAlive = ssh('kill -0 ' + (taskPid === '' ? '0' : taskPid) + ' 2>/dev/null && echo 1 || echo 0').trim() === '1'
 
 // 重新接入，看会话是否还在（数据层面的「长任务」）。
+// 驻留模式下**跳过**重连：旧 dsh 仍占着端口，新启动必然冲突 —— 那属于下一片（实例复用）的验收。
 const service2 = makeService()
+if (process.env['NO_REATTACH'] === '1') {
+  const result = {
+    at: new Date().toISOString(),
+    alias: ALIAS,
+    remotePort: PORT,
+    waitSeconds: WAIT_S,
+    keepRemote: process.env['KEEP'] === '1',
+    attachMs: disposedAt - started,
+    workspaceId,
+    sessionId: session.sessionId,
+    dshPidBeforeDispose: pidBefore,
+    dshAliveAfterWait: pidAfterWait !== null,
+    portBusyAfterWait: busyAfterWait,
+    longTaskAlive: taskAlive,
+    reattach: { skipped: true },
+  }
+  console.log(JSON.stringify(result, null, 2))
+  await mkdir(HERE, { recursive: true })
+  await writeFile(join(HERE, 'measurements.long-task.json'), JSON.stringify(result, null, 2))
+  console.log('落盘：' + join(HERE, 'measurements.long-task.json'))
+  process.exit(0)
+}
 let reattached: { workspaceId: string; sessions: number; sessionKept: boolean; error: string | null } = {
   workspaceId: '',
   sessions: 0,
@@ -119,6 +147,7 @@ const result = {
   alias: ALIAS,
   remotePort: PORT,
   waitSeconds: WAIT_S,
+  keepRemote: process.env['KEEP'] === '1',
   attachMs: disposedAt - started,
   workspaceId,
   sessionId: session.sessionId,
