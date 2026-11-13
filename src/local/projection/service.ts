@@ -58,7 +58,13 @@ export interface RemoteConnection {
    */
   readonly envPolicy?: EnvPolicy | undefined
   rehandshake?(): Promise<void>
-  dispose(): void
+  /**
+   * 回收远端连接（含远端进程）：`false` = 没确认收干净（看门狗未在窗口内退出）。
+   *
+   * 取消路径会 await 它并把结果变成 `remote/recycle-incomplete` —— 没有这条通道，
+   * 「回收干不干净」只能靠猜（R1 #3 M-D）。
+   */
+  dispose(): void | Promise<boolean>
 }
 
 /**
@@ -241,7 +247,15 @@ export class ProjectionService {
           // 本次接入新装上的连接：回收它，并把 `#live` 回滚到接入前的状态。
           // 复用（同一 target）时 `live === liveBefore`，绝不动用户正在用的连接。
           this.#live = liveBefore
-          live.connection.dispose()
+          const clean = await live.connection.dispose()
+          if (clean === false) {
+            // 用户取消了，但远端没收干净：这比「已取消」更需要他知道（A7 要求可回收）。
+            throw new TeleportError({
+              code: 'remote/recycle-incomplete',
+              detail: '已取消这次接入，但远端 dsh 没有确认退出（看门狗未在窗口内回收）',
+              nextActions: ['在远端确认没有残留 dsh', '关掉宿主让看门狗回收', '重试接入'],
+            })
+          }
         }
       }
       // 只清自己这一份：将来若放开并发，先结束者不能把后一次的进度清掉。

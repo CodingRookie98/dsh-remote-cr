@@ -108,7 +108,7 @@
 | **S10-K** | A7 取证：SSH 侧断线可见 + 自动退避 + 投影重建 | `spikes/m2/ssh-e2e/reconnect.ts`（新）+ `measurements.a7{,.neg}.json`（产品零改动） | 判据必须是「不点任何按钮，自动退避自己把远端拉回来」；杀进程只能按端口定位（`ss -ltnp` 在 gcp 上非 root 不给 pid ⇒ 用 `/proc/net/tcp` inode 反查 `/proc/*/fd`）；负控要精确切掉「自动重连」而不是「识别断线」 | [x] 正向 **7/7**：`remote/tunnel-unavailable` → retrying → 全 offline → 18340 ms 自动连回 → 端口 3550 ms 重新监听 → 投影 251 ms 重建、id 不变 → recycle 后 3113 ms 端口释放；负控 **4/7**，失败集恰为 `A7-3/A7-3b/A7-4`，`NEGATIVE CONTROL OK` |
 | **S10-L** | R1 #1 处置：取消贯通、真单飞、阶段语义、重试意图、探针判据 | `live.ts` / `service.ts` / `attach.ts` / `remote.ts` / `runtime.ts` / `launch.ts` / `routes.ts` / `components.ts` + `probe.cjs` + `service.test.ts`（+2） | 取消必须在**每一段**生效且回执不说谎；并发必须显式拒绝而非覆盖；意图必须随错误走；探针判据不许空转（`portFreed` / `recovered`） | [x] A5/A8 正向 **8/8**、负控 **3/8**（失败集 5 条逐项相等）；R1 复现 1/2 转红；双 tsc Exit 0、**558/558**、19 modules / 80635 B |
 | **S10-M** | R1 #2 处置：握手取消、abort 预检、单飞 TOCTOU、stderr 阶段、取消后回收 | `remote.ts` / `transport.ts` / `live.ts` / `service.ts` / `attach.ts` / `routes.ts` / `launch.ts` + `architecture.md` §8.5 + `service.test.ts`（+2） | 取消要能打断**每一段**（含握手）；已 abort 的 signal 必须立刻生效；单飞的检查与置位之间不许有 await；阶段只认 stdout；取消要回滚到接入前状态 | [x] R1 #2 夹具 5/5 转红；**560/560**；A5/A8 正向 8/8、负控 2/8（6 条逐项相等）。**未验证**：取消后远端 dsh 的退出时序（60s 内端口仍在监听） |
-| **S10-N** | R1 #3 处置：取消回滚按连接身份、WSL 握手 signal、认证错误分类、失败降级 | `service.ts` / `live.ts` / `launch.ts` / `attach.ts` / `architecture.md` §8.5 | 判「本次新建」必须比连接对象身份；ssh 自己的拒绝要优先于 dsh 话术；`session/list` 失败不能「远端已建、本地什么都没有」 | [x] 夹具 D1/D2 转红、P1 仍绿；**560/560**；双 tsc Exit 0。**未做/未验证**：`dispose()` 可等待性（M-D）、WSL 握手取消真机、认证失败真机 |
+| **S10-N** | R1 #3 处置：取消回滚按连接身份、WSL 握手 signal、认证错误分类、失败降级 | `service.ts` / `live.ts` / `launch.ts` / `attach.ts` / `architecture.md` §8.5 | 判「本次新建」必须比连接对象身份；ssh 自己的拒绝要优先于 dsh 话术；`session/list` 失败不能「远端已建、本地什么都没有」 | [x] 夹具 D1/D2 转红、P1 仍绿；**560/560**；双 tsc Exit 0。**未验证**：WSL 握手取消真机、认证失败真机（M-D 已做：dispose 可等待 + `remote/recycle-incomplete`） |
 | **S9** | 真机端到端探针 `spikes/m2/ssh-exit-demo/` | probe.ts | 与 M1 `p352` 同构（7 项 + 负控 + §7 门禁测量） | [x] 真机 **7/7**（`gcp`）+ 负控失败集逐项相等；产物 `measurements.json` / `measurements.neg.json`。7 项：配置解析 / TOFU / 单 channel 探测 / 引导器装 `@deepseek-ai/dsh@0.2.2-rc.1` / `-L`+`-R` 同连接且远端请求真的回到本机代理 / 经 `-L` 读远端 HTTP 且远端命令与探测一致 / 看门狗回收 + 本地隧道口关闭 |
 
 **出口**：同一套 UI 与语义下，SSH 达到 A1–A8（= A9 达成），且 S1–S8 全部勾选、S9 真机 7/7 + 负控失败集逐项相等。
@@ -123,7 +123,7 @@
   3. **M-B**：stderr 不再推 `launch` 之后，stderr-only 失败退化成 `remote/startup-failed` +「没有可识别的原因」——`ssh/errors.ts` 那张认证错误表一次都没被调用。`launch.ts` 改成三层分类：隧道 → ssh 拒绝 → dsh 话术。
   4. **M-C**：§8.5 的「取消不承诺端口立刻释放」被用来豁免了一次它管不到的观测（那跑 `hadReusable=false`、dispose 已调用）。措辞收窄成「复用既有连接时不释放；本次新建必须 dispose」；探针的取消点改回 `bootstrap`/`launch`（`tunnel` 窗口约 1s + 300ms 快照延迟，实测会点晚），并加「`/attach` 终态必须是 cancelled」的判据。独立脚本实测 attach 段取消后端口 **3270 ms** 释放。
   5. **M-E**：`session/list` 失败时远端已建、本地一条不写，自动重连也救不回。改成**非取消**失败时写一条 offline 条目再抛错。
-  6. **M-D 未做**：`dispose()` 的返回仍被 `void` 丢弃，取消路径不 await —— 「远端到底退出没有」仍没有证据通道。记账留 R1 #4。
+  6. **M-D**：`dispose()` 的返回改成 `void | Promise<boolean>`，`live` 带出 handle 的 clean 结果，取消路径 `await` 它；`clean === false` 抛 `remote/recycle-incomplete` ——「取消后远端到底退出没有」第一次有了证据通道。
 - 2026-11-13：**S10-M —— R1 #2 判「不是 Zero Blockers」，五条全部处置**（1 BLOCKER + 3 MAJOR + 6 MINOR；R1 的 `round2-probes.test.ts` 由 5/5 绿转 **5/5 红**）。这一轮抓的是**上一轮修得不彻底的地方**：
   1. **握手段没有 signal**：`RemoteRpcOptions` 加 `signal`，`handshakeRemote` 用 `AbortSignal.any([取消, 超时])`，`live.openConnection` 传下去 —— 否则「点取消」最坏要等握手 15s。
   2. **已 abort 的 signal 不会触发 `abort` 事件**：`transport.ts` 只挂监听等于没挂（`authFor` 阶段取消后，远端检查与整段安装会照跑 300s）。加 `signal.aborted` 预检后立刻 `onAbort()`。

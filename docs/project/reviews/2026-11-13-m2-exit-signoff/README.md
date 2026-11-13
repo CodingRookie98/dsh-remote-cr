@@ -84,7 +84,7 @@ R1 #3 判「不是 Zero Blockers」：1 BLOCKER + 5 MAJOR。逐条：
 | **M-A** WSL 握手段无 signal | `live.ts` 的 WSL 分支补 `openConnection(handle, policy, control.signal)` | tsc + 单测；**WSL 侧真机握手取消未跑**（记账） |
 | **M-B** stderr-only 失败退化成 `remote/startup-failed` | `launch.ts` 新增 `classifyFailure`：隧道 → `classifySshFailure`（认证/连接）→ dsh 启动话术；`ssh/errors.ts` 的认证错误表**首次被调用** | 单测全绿；**真机认证失败场景未复跑**（记账） |
 | **M-C** §8.5 的「取消不承诺端口释放」被用来豁免 G-A5-2 | 措辞收窄为「**复用既有连接**时不释放；本次新建的连接必须 dispose」；G-A5-2 取消点改到 `bootstrap`/`launch`（`tunnel` 窗口约 1s，实测会点晚），判据加「`/attach` 终态必须是 cancelled」 | `attachOutcome:"cancelled"`；独立脚本实测 attach 段取消后端口 **3270 ms** 释放 |
-| **M-D** dispose 成败无证据通道 | **未做**：`dispose()` 的返回仍被 `void` 丢弃，取消路径不 await。记账为未验证，留 R1 #4 | — |
+| **M-D** dispose 成败无证据通道 | **已做**：`RemoteConnection.dispose()` 改为 `void \| Promise<boolean>`；`live` 把 `handle.dispose()` 的 clean 结果原样带出；取消路径 `await` 它，`clean === false` 时抛 `remote/recycle-incomplete`（不再把「没收干净」静默成「已取消」） | 双 tsc Exit 0、**560/560**；真机 A5/A8 正向 **8/8** 无回归 |
 | **M-E** `session/list` 失败 ⇒ 远端已建、本地不写 | `attachWorkspace` 在**非取消**的 `session/list` 失败时写一条 **offline** 条目再抛错（重试幂等命中补齐） | 夹具 D2 由绿转红 |
 
 **门禁**：双 tsc Exit 0、`pnpm test` **560/560**、R1 #3 夹具 1 绿 2 红（D1/D2 已修、P1 证明 N1 修复成立）。

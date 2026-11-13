@@ -324,9 +324,10 @@ async function openConnection(
       rpc.dispose()
       rpc = await RemoteRpc.open(endpoint, endpoint.token)
     },
-    dispose() {
+    async dispose() {
       rpc.dispose()
-      void handle.dispose()
+      // 把「是否干净」原样带出去：调用方（取消路径）据此决定要不要报 recycle-incomplete。
+      return await handle.dispose()
     },
   }
 }
