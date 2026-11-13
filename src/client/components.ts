@@ -944,6 +944,12 @@ export function TeleportPanel(): unknown {
         'data-active': String(activeSession === session.sessionId),
       },
       h('span', { 'data-teleport': 'session-id' }, session.sessionId),
+      // M3-2a：远端是否还在跑 —— 只靠「最后活动」看不出任务是不是活着。
+      h(
+        'span',
+        { 'data-teleport': 'session-running', 'data-running': String(session.running) },
+        session.running ? '运行中' : '空闲',
+      ),
       h('span', { 'data-teleport': 'session-updated' }, formatUpdatedAt(session.updatedAt)),
       h(
         'button',

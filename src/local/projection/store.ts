@@ -38,6 +38,8 @@ export interface ProjectedSession {
   readonly workspaceId: string
   readonly title: string
   readonly updatedAt: string | undefined
+  /** 远端是否还有任务在跑（`session/list` 的 `running`）。M3-2a 的可见性靠它。 */
+  readonly running: boolean
   readonly availability: SourceAvailability
 }
 

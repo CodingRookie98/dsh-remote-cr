@@ -195,6 +195,7 @@ export async function attachWorkspace(deps: AttachDeps, request: AttachRequest):
       workspaceId: workspace.id,
       title: summary.sessionId,
       updatedAt: isoOf(summary.updatedAt),
+      running: summary.running,
       availability: 'online',
     }
     store.upsertSession(projected)
@@ -248,6 +249,8 @@ export async function createSession<T>(
     workspaceId,
     title: sessionId,
     updatedAt: undefined,
+    // 刚建的会话还没有任务在跑；下一次 session/list 会纠正它。
+    running: false,
     availability: 'online',
   }
   deps.store.upsertSession(projected)

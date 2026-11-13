@@ -25,7 +25,7 @@ function workspace(id: string, overrides: Partial<ProjectedWorkspace> = {}): Pro
 }
 
 function session(id: string, workspaceId: string, overrides: Partial<ProjectedSession> = {}): ProjectedSession {
-  return { sessionId: id, workspaceId, title: id, updatedAt: '2026-10-31T00:00:00.000Z', availability: 'online', ...overrides }
+  return { sessionId: id, workspaceId, title: id, updatedAt: '2026-10-31T00:00:00.000Z', running: false, availability: 'online', ...overrides }
 }
 
 test('upsert 后按新→旧返回（最后写入的排最前）', () => {

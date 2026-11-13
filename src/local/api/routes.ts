@@ -643,6 +643,7 @@ function toSessionInfo(session: ProjectedSession): ProjectedSessionInfo {
     workspaceId: session.workspaceId,
     title: session.title,
     updatedAt: session.updatedAt,
+    running: session.running,
     availability: session.availability,
   }
 }

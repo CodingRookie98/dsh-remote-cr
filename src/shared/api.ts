@@ -169,6 +169,8 @@ export interface ProjectedWorkspaceInfo {
 /** 一个被投影的远端会话（只读摘要，不含消息正文）。 */
 export interface ProjectedSessionInfo {
   readonly sessionId: string
+  /** 远端是否还有任务在跑（M3-2a：只靠「最后活动」看不出任务是不是活着）。 */
+  readonly running: boolean
   readonly workspaceId: string
   readonly title: string
   /** ISO-8601；远端没给时间就是 undefined（不用本地时钟编造）。 */
