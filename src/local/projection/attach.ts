@@ -16,7 +16,7 @@
  *    绝不把 `undefined` 当空数组塞进投影表（那会显示成「远端什么都没有」）。
  */
 
-import type { TeleportError } from '../backend/errors.ts'
+import { TeleportError } from '../backend/errors.ts'
 import type { ProjectionRpc } from './remote.ts'
 import { asNumber, asRecord, asString, asStringArray, badShape } from './shape.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
@@ -116,6 +116,21 @@ export function readSessionList(value: unknown): RemoteSessionSummary[] {
   return sessions
 }
 
+/**
+ * 取消检查：写投影表之前必须过这一道。
+ *
+ * 放在这里而不是只留在 `service.ts`：真正会「造出在线条目」的是本文件的两个 upsert，
+ * 边界检查只有离写入最近才有意义。
+ */
+export function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal === undefined || !signal.aborted) return
+  throw new TeleportError({
+    code: 'remote/cancelled',
+    detail: '已取消这次接入',
+    nextActions: ['重新点一次「接入」', '换个目标再试'],
+  })
+}
+
 /** 远端毫秒时间戳 → ISO 串；不可用的值保持 `undefined`，**不用本地时钟编造**。 */
 export function isoOf(updatedAt: number): string | undefined {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return undefined
@@ -132,6 +147,7 @@ export function isoOf(updatedAt: number): string | undefined {
  */
 export async function attachWorkspace(deps: AttachDeps, request: AttachRequest): Promise<AttachResult> {
   const { rpc, store } = deps
+  throwIfCancelled(request.signal)
   const created = readWorkspaceCreate(
     await rpc.call<unknown>(
       'workspace/create',
@@ -139,6 +155,11 @@ export async function attachWorkspace(deps: AttachDeps, request: AttachRequest):
       request.signal,
     ),
   )
+  // 写投影表**之前**再查一次：底层若不认 signal（假连接 / 别家实现），这里是最后一道闸。
+  // 没有它的话，「已取消」之后 store 里仍会留下一条 online 工作区 —— 实测现场：
+  // `THREW remote/cancelled` 而 `store workspaces=1 [\"online\"]`（R1 复现 3 的真问题，
+  // 它的 HTTP 断言看不出这件事，因为路由把异常包成 200 + 错误信封）。
+  throwIfCancelled(request.signal)
 
   const workspace: ProjectedWorkspace = {
     id: created.workspace.workspaceId,

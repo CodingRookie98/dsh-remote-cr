@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-13T09:33:03.538Z",
+  "at": "2026-11-13T10:26:29.199Z",
   "negative": true,
   "measurements": [],
   "results": [
@@ -15,28 +15,37 @@
         "errorAfterCancel": false,
         "portFreed": false,
         "portFreeMs": null,
+        "portReclaim": null,
         "timeline": [
           {
             "phase": "probe",
-            "at": 342
+            "at": 330
           },
           {
             "phase": "bootstrap",
-            "at": 4280
+            "at": 8138
           },
           {
             "phase": "launch",
-            "at": 7254
+            "at": 10834
           },
           {
             "phase": "tunnel",
-            "at": 15926
+            "at": 21943
           },
           {
             "phase": "attach",
-            "at": 16862
+            "at": 23478
           }
         ]
+      }
+    },
+    {
+      "id": "G-A5-2b",
+      "ok": false,
+      "detail": {
+        "cancelPhase": "attach",
+        "code": null
       }
     },
     {
@@ -56,23 +65,23 @@
         "timeline": [
           {
             "phase": "probe",
-            "at": 342
+            "at": 330
           },
           {
             "phase": "bootstrap",
-            "at": 4280
+            "at": 8138
           },
           {
             "phase": "launch",
-            "at": 7254
+            "at": 10834
           },
           {
             "phase": "tunnel",
-            "at": 15926
+            "at": 21943
           },
           {
             "phase": "attach",
-            "at": 16862
+            "at": 23478
           }
         ]
       }
@@ -106,7 +115,8 @@
       "ok": false,
       "detail": {
         "retried": false,
-        "recovered": false
+        "recovered": false,
+        "attachCalls": "2→2"
       }
     },
     {

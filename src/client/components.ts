@@ -108,10 +108,17 @@ export interface PanelFailure {
   readonly detail: string
   readonly nextActions: readonly string[]
   readonly report: string
+  /**
+   * 这次失败能用哪个动作重放。
+   *
+   * 与失败**一起**存，而不是另开一个 ref：读取类失败没有可重放的动作，若把「上一次写动作
+   * 的意图」留在旁边，点「重试」就会再跑一次接入 / 再建一个会话（R1-M-3）。
+   */
+  readonly intent?: RetryIntent
 }
 
 /** 把任何异常折成可展示的失败；宿主给的 `TeleportApiError` 四字段原样透出。 */
-function failureOf(error: unknown): PanelFailure {
+function failureOf(error: unknown, intent?: RetryIntent): PanelFailure {
   if (error instanceof TeleportApiError) {
     const report = [
       '瞬移接入失败',
@@ -120,7 +127,13 @@ function failureOf(error: unknown): PanelFailure {
       '下一步：' + (error.nextActions.length === 0 ? '（宿主没给）' : error.nextActions.join(' / ')),
       '原始信息：' + error.message,
     ].join('\n')
-    return { code: error.code, detail: error.detail, nextActions: error.nextActions, report }
+    return {
+      code: error.code,
+      detail: error.detail,
+      nextActions: error.nextActions,
+      report,
+      ...(intent === undefined ? {} : { intent }),
+    }
   }
   const detail = messageOf(error)
   return {
@@ -128,6 +141,7 @@ function failureOf(error: unknown): PanelFailure {
     detail,
     nextActions: ['重试一次', '还不行就看宿主日志'],
     report: '瞬移面板操作失败\n原因：' + detail,
+    ...(intent === undefined ? {} : { intent }),
   }
 }
 
@@ -135,8 +149,8 @@ function failureOf(error: unknown): PanelFailure {
  * 取消不是失败：用户自己按的取消不该被当成错误记一笔，所以回 `null` 让错误框清空。
  * 其余异常照常结构化。
  */
-function cancelledOrNull(error: unknown): PanelFailure | null {
-  const failure = failureOf(error)
+function cancelledOrNull(error: unknown, intent?: RetryIntent): PanelFailure | null {
+  const failure = failureOf(error, intent)
   return failure.code === 'remote/cancelled' ? null : failure
 }
 
@@ -543,7 +557,7 @@ export function TeleportPanel(): unknown {
   //
   // 存的是**意图**而不是当时那个闭包：用户改了远端路径再点重试，期待的是用新路径重来；
   // 存闭包会用旧路径再失败一次（表单值变了、错误却一模一样，看起来像重试没反应）。
-  const retryRef = useRef<RetryIntent | null>(null)
+
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
@@ -553,6 +567,7 @@ export function TeleportPanel(): unknown {
         setSnapshot(projected)
         setError(null)
       } catch (caught) {
+        // 读失败不带意图：错误框的「重试」因此是 disabled（意图随错误一起存）。
         setError(failureOf(caught))
       }
     },
@@ -634,7 +649,6 @@ export function TeleportPanel(): unknown {
       setError(refusalOf(plan.reason))
       return
     }
-    retryRef.current = { kind: 'attach', record }
     setBusy(record.localPath)
     // 接入期间每 300ms 读一次快照：阶段进度是快照上的字段，不轮询就永远停在「探测远端」。
     const timer = setInterval(() => void refresh(), 300)
@@ -644,7 +658,7 @@ export function TeleportPanel(): unknown {
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
     } catch (caught) {
-      setError(cancelledOrNull(caught))
+      setError(cancelledOrNull(caught, { kind: 'attach', record }))
     } finally {
       clearInterval(timer)
       await settleSnapshot()
@@ -658,7 +672,6 @@ export function TeleportPanel(): unknown {
       setError(refusalOf(plan.reason))
       return
     }
-    retryRef.current = { kind: 'ssh-attach' }
     setBusy('ssh-attach')
     const timer = setInterval(() => void refresh(), 300)
     try {
@@ -667,7 +680,7 @@ export function TeleportPanel(): unknown {
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
     } catch (caught) {
-      setError(cancelledOrNull(caught))
+      setError(cancelledOrNull(caught, { kind: 'ssh-attach' }))
     } finally {
       clearInterval(timer)
       await settleSnapshot()
@@ -688,7 +701,6 @@ export function TeleportPanel(): unknown {
   }
 
   const onCreateSession = async (workspaceId: string): Promise<void> => {
-    retryRef.current = { kind: 'create-session', workspaceId }
     setBusy('session:' + workspaceId)
     try {
       const created = await createRemoteSession({ workspaceId })
@@ -696,7 +708,7 @@ export function TeleportPanel(): unknown {
       setActiveSession(created.sessionId)
       await refresh()
     } catch (caught) {
-      setError(failureOf(caught))
+      setError(failureOf(caught, { kind: 'create-session', workspaceId }))
     } finally {
       setBusy(null)
     }
@@ -710,21 +722,19 @@ export function TeleportPanel(): unknown {
    * 重连失败要**看到原因**，所以错误照样进 `panel-error`。
    */
   const onLink = async (action: 'disconnect' | 'reconnect'): Promise<void> => {
-    retryRef.current = { kind: 'link', action }
     setBusy(action)
     try {
       const next = action === 'disconnect' ? await disconnectRemote() : await reconnectRemote()
       setSnapshot(next)
       setError(null)
     } catch (caught) {
-      setError(failureOf(caught))
+      setError(failureOf(caught, { kind: 'link', action }))
     } finally {
       setBusy(null)
     }
   }
 
   const onProbe = async (sessionId: string): Promise<void> => {
-    retryRef.current = { kind: 'probe', sessionId }
     setBusy('probe:' + sessionId)
     try {
       const outcome = await probeRemoteSession(sessionId)
@@ -732,7 +742,7 @@ export function TeleportPanel(): unknown {
       setActiveSession(sessionId)
       setError(null)
     } catch (caught) {
-      setError(failureOf(caught))
+      setError(failureOf(caught, { kind: 'probe', sessionId }))
     } finally {
       setBusy(null)
     }
@@ -740,7 +750,7 @@ export function TeleportPanel(): unknown {
 
   /** 重试 = 用**当前**表单/选择重跑上一次动作；没有失败过（意图为空）就什么都不做。 */
   const onRetry = async (): Promise<void> => {
-    const intent = retryRef.current
+    const intent = error?.intent ?? null
     if (intent === null) return
     try {
       switch (intent.kind) {
@@ -762,7 +772,7 @@ export function TeleportPanel(): unknown {
     } catch (caught) {
       // 重试本身抛出来（表单还没就绪、默认值没读到）也必须变成看得见的失败：
       // `void onRetry()` 会把这个 rejection 吞掉，面板上就表现为「点了重试什么都没发生」。
-      setError(failureOf(caught))
+      setError(failureOf(caught, intent))
     }
   }
 
@@ -867,7 +877,6 @@ export function TeleportPanel(): unknown {
 
   const addRows = records.map((record) => {
     const plan = planAttach(record, defaults)
-    const key = 'attach:' + record.localPath
     return h(
       'div',
       { key: record.localPath, 'data-teleport': 'workspace', 'data-source': record.source },
@@ -879,7 +888,9 @@ export function TeleportPanel(): unknown {
           type: 'button',
           'data-teleport': 'attach',
           'data-ok': String(plan.ok),
-          disabled: !plan.ok || busy === key || busy === record.localPath,
+          // 全局单飞：任何一次接入在进行中，其他行的按钮也必须禁用 —— 否则点下去只会
+          // 收到 `remote/attach-busy`，用户看到的是「按钮能点但报错」（R1-M-1）。
+          disabled: !plan.ok || busy !== null,
           title: plan.ok ? '在远端注册这个工作区并拉取会话' : plan.reason,
           onClick: () => void onAttach(record),
         },
@@ -1034,7 +1045,14 @@ export function TeleportPanel(): unknown {
           ),
           h(
             'button',
-            { type: 'button', 'data-teleport': 'panel-error-retry', onClick: () => void onRetry() },
+            {
+              type: 'button',
+              'data-teleport': 'panel-error-retry',
+              // 没有可重放的动作就禁用：一个点了没反应的按钮比没有按钮更糟（A8）。
+              disabled: error.intent === undefined,
+              title: error.intent === undefined ? '这次失败没有可重放的动作，重新点一次相应操作' : '用当前表单重跑上一次失败的动作',
+              onClick: () => void onRetry(),
+            },
             '重试',
           ),
         ),

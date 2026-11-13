@@ -219,6 +219,15 @@ export class RemoteRpc {
         signal: composed,
       })
     } catch (error) {
+      // 用户取消 ≠ 传输层断：`AbortSignal.any` 让两种原因都落到这里。混在一起的话，
+      // 「点取消」会被 `isTransportLoss()` 判成隧道断，进而触发自动重连（R1-B-1/m-2）。
+      if (signal !== undefined && signal.aborted) {
+        throw new TeleportError({
+          code: 'remote/cancelled',
+          detail: '已取消这次接入（RPC ' + endpoint + '）',
+          nextActions: ['重新点一次「接入」'],
+        })
+      }
       throw new TeleportError({
         code: 'remote/tunnel-unavailable',
         detail: 'RPC ' + endpoint + ' 在 ' + String(Math.round(timeoutMs / 1000)) + 's 内没有完成：'

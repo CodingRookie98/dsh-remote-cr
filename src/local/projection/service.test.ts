@@ -441,3 +441,85 @@ test('取消接入：signal 递给连接层，失败后进度归 null 且连接�
   assert.equal(service.connected, false)
   assert.equal(service.link, 'idle')
 })
+
+test('取消发生在 workspace/create 返回之后：抛 remote/cancelled，且不许把条目写进投影表', async () => {
+  const store = new ProjectionStore()
+  const timers = fakeTimers()
+  const controller = new AbortController()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const rpc = {
+    async call<T>(endpoint: string): Promise<T> {
+      if (endpoint === 'workspace/create') {
+        await gate
+        return {
+          workspace: { workspaceId: 'ws-cancel', path: TARGET.remoteRoot, title: 'w', sessionIds: [], createdAt: '', updatedAt: '' },
+          created: true,
+        } as T
+      }
+      return { items: [] } as T
+    },
+    openStream() {
+      return { cancel() {}, async *[Symbol.asyncIterator]() {} }
+    },
+  }
+  const service = new ProjectionService({
+    store,
+    timers,
+    async connect() {
+      return { rpc: rpc as never, dispose() {} }
+    },
+  })
+  const running = service.attach(
+    TARGET,
+    { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/x' },
+    { signal: controller.signal },
+  )
+  await new Promise((resolve) => setImmediate(resolve))
+  controller.abort()
+  release()
+  await assert.rejects(
+    running,
+    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+  )
+  // 复现 3 的真问题：取消回执说「已取消」，投影表却留下一条 online 工作区。
+  assert.equal(store.workspaces().length, 0, '取消之后不许留下在线条目')
+})
+
+test('并发第二次 attach 被 remote/attach-busy 拒绝，且不覆盖第一次的进度', async () => {
+  const timers = fakeTimers()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const rpc = {
+    async call<T>(endpoint: string): Promise<T> {
+      if (endpoint === 'workspace/create') {
+        await gate
+        return {
+          workspace: { workspaceId: 'ws-busy', path: TARGET.remoteRoot, title: 'w', sessionIds: [], createdAt: '', updatedAt: '' },
+          created: true,
+        } as T
+      }
+      return { items: [] } as T
+    },
+    openStream() {
+      return { cancel() {}, async *[Symbol.asyncIterator]() {} }
+    },
+  }
+  const service = new ProjectionService({
+    store: new ProjectionStore(),
+    timers,
+    async connect() {
+      return { rpc: rpc as never, dispose() {} }
+    },
+  })
+  const first = service.attach(TARGET, { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/x' })
+  await new Promise((resolve) => setImmediate(resolve))
+  await assert.rejects(
+    service.attach({ ...TARGET, distro: 'other' }, { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/y' }),
+    (error: unknown) => error instanceof TeleportError && error.code === 'remote/attach-busy',
+  )
+  assert.notEqual(service.attachProgress, null, '第一次的进度不该被清空')
+  assert.deepEqual(service.attachProgress?.target, TARGET, '进度仍指向第一次的目标')
+  release()
+  await first
+})

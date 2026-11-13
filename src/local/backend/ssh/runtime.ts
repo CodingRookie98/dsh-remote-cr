@@ -88,6 +88,14 @@ export interface ResolveRemoteDshRequest {
   readonly sshExecutable?: string
   readonly askpassPath?: string
   readonly signal?: AbortSignal
+  /**
+   * 阶段回调：只有**真的在装东西**时才报 `bootstrap`。
+   *
+   * 放在这里而不是 `launch.ts`：安装发生在 `runBootstrap`（可能跑满 300s），而 `launch.ts`
+   * 的 spawn 之前 ssh 连没连上都还不知道；把它写在那里会让热路径也喊「引导远端（装 dsh）」
+   * （R1-M-2）。
+   */
+  readonly onPhase?: ((phase: 'bootstrap') => void) | undefined
   /** 执行注入缝（单测用）；缺省走 `runSsh` 的一条 channel。 */
   readonly exec?: RemoteExec
 }
@@ -212,6 +220,8 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     ...(mirror === undefined ? {} : { mirror }),
     dshHome: posix.join(remoteHome, '.dsh'),
   })
+  // 从这里开始才真的在装东西：面板此刻显示「引导远端（装 dsh）」才是真话。
+  request.onPhase?.('bootstrap')
   const outcome = await runBootstrap(plan, async (script): Promise<StepOutcome> => {
     const result = await exec(script, 300_000)
     return { code: result.code, stdout: result.stdout, stderr: result.stderr }

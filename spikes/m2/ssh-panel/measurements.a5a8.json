@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-13T09:35:00.673Z",
+  "at": "2026-11-13T10:25:32.602Z",
   "negative": false,
   "measurements": [],
   "results": [
@@ -13,18 +13,27 @@
         "sawBusy": false,
         "progressGone": true,
         "errorAfterCancel": false,
-        "portFreed": true,
-        "portFreeMs": 62589,
+        "portFreed": false,
+        "portFreeMs": 46384,
+        "portReclaim": null,
         "timeline": [
           {
             "phase": "probe",
-            "at": 343
+            "at": 327
           },
           {
             "phase": "bootstrap",
-            "at": 3633
+            "at": 3653
           }
         ]
+      }
+    },
+    {
+      "id": "G-A5-2b",
+      "ok": true,
+      "detail": {
+        "cancelPhase": "probe",
+        "code": "remote/cancelled"
       }
     },
     {
@@ -44,11 +53,11 @@
         "timeline": [
           {
             "phase": "probe",
-            "at": 343
+            "at": 327
           },
           {
             "phase": "bootstrap",
-            "at": 3633
+            "at": 3653
           }
         ]
       }
@@ -66,7 +75,7 @@
       "ok": true,
       "detail": {
         "code": "remote/workspace-invalid-path",
-        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794562491668\": ENOENT: no such file or direc",
+        "detail": "RPC workspace/create 被远端拒绝：workspace/invalid-path cannot create a Workspace at \"/home/hui/teleport-gate-a8-missing-1794565522705\": ENOENT: no such file or direc",
         "next": [
           "查看远端日志",
           "重试"
@@ -85,7 +94,8 @@
       "ok": true,
       "detail": {
         "retried": true,
-        "recovered": true
+        "recovered": true,
+        "attachCalls": "4→5"
       }
     },
     {

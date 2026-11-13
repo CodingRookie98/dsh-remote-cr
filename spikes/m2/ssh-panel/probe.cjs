@@ -42,7 +42,7 @@ const MEASUREMENTS = path.join(
   GATE === 'a5a8' ? (NEG ? 'measurements.a5a8.neg.json' : 'measurements.a5a8.json') : NEG ? 'measurements.neg.json' : 'measurements.json',
 )
 const NEG_EXPECTED_FAILURES =
-  GATE === 'a5a8' ? ['G-A5-2', 'G-A8-1', 'G-A8-2', 'G-A8-3'] : ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
+  GATE === 'a5a8' ? ['G-A5-2', 'G-A5-2b', 'G-A8-1', 'G-A8-2', 'G-A8-3'] : ['S2P-3', 'S2P-4', 'S2P-5', 'S2P-6']
 
 const results = []
 const measurements = []
@@ -741,11 +741,15 @@ async function runGateA5A8() {
   await evaluate(
     cdp,
     sid,
-    '(() => { if (window.__TELEPORT_CANCEL__) return true; window.__TELEPORT_CANCEL__ = [];' +
+    '(() => { if (window.__TELEPORT_CANCEL__) return true;' +
+      ' window.__TELEPORT_CANCEL__ = []; window.__TELEPORT_ATTACH__ = [];' +
       ' const original = window.fetch;' +
       ' window.fetch = async (...args) => { const res = await original(...args);' +
-      '   try { const url = String(args[0]); if (url.indexOf("/attach/cancel") >= 0) {' +
-      '     const clone = res.clone(); window.__TELEPORT_CANCEL__.push({ status: res.status, body: await clone.text() }) } } catch (e) {}' +
+      '   try { const url = String(args[0]);' +
+      '     if (url.indexOf("/attach/cancel") >= 0) {' +
+      '       const clone = res.clone(); window.__TELEPORT_CANCEL__.push({ status: res.status, body: await clone.text() }) }' +
+      '     else if (url.indexOf("/attach") >= 0) {' +
+      '       const clone = res.clone(); window.__TELEPORT_ATTACH__.push({ status: res.status, body: await clone.text() }) } } catch (e) {}' +
       '   return res };' +
       ' return true })()',
   )
@@ -816,15 +820,19 @@ async function runGateA5A8() {
       }
       await sleep(500)
     }
-    // 一次都没起来也算通过，但要在 detail 里写明（评审据此判断这次取消落在多早）。
+    // 一次都没起来也算「不用再等了」，但**不能算「端口回收了」**：那是把 12 次空查的耗时
+    // 当成回收耗时（R1-B-2 的原始误读：62589ms 其实是 12×500ms 的空等）。
+    // portFreeMs 保留为「空等耗时」，portFreed 收紧成「真的观测到忙过、又释放了」。
     if (portFreeMs === null && !sawBusy) portFreeMs = Date.now() - cancelAt
   }
-  const portFreed = portFreeMs !== null
+  const portFreed = sawBusy && portFreeMs !== null
   // 取消必须落在「远端已经开始启动」之后（`cancelPhase !== 'probe'`），否则后面那句
   // 「取消后没有残留」是空洞为真 —— 那时远端进程压根还没起。
   const cancelledMidFlight = cancelClicked && cancelPhase !== null && cancelPhase !== 'probe'
   const cancelCalls = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_CANCEL__ ?? [])')
-  record('G-A5-2', cancelledMidFlight && progressGone === true && errorAfterCancel !== true && portFreed, {
+  // 判据只看「取消真的发生」：进度消失、不留错误框。端口回收另立 `portReclaim` ——
+  // `sawBusy=false` 时它根本没被测到，既不能当通过条件，也不能当结论（R1-B-2）。
+  record('G-A5-2', cancelledMidFlight && progressGone === true && errorAfterCancel !== true, {
     cancelClicked,
     cancelCalls,
     cancelPhase,
@@ -833,7 +841,59 @@ async function runGateA5A8() {
     errorAfterCancel,
     portFreed,
     portFreeMs,
+    portReclaim: sawBusy ? portFreeMs : null,
     timeline,
+  })
+
+  // ── A5-2b：在 `probe` 段取消，`/attach` 必须落定为「已取消」 ────────────────
+  // 这条是 R1-B-1 的回归：取消曾经只在 `launch` 段真生效，`probe` 段（远端检查 / 安装）
+  // 点取消后 `/attach` 照样 200 建成工作区。判据不看端口，只看**这次请求的终态**。
+  {
+    const until = Date.now() + 20_000
+    while (Date.now() < until) {
+      if ((await readProgress(cdp, sid)) === null) break
+      await sleep(200)
+    }
+  }
+  const attachBefore = Number((await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) ?? 0)
+  const probeClick = await gateClickAttach(cdp, sid)
+  let probeCancelPhase = null
+  if (probeClick.ok === true) {
+    const until = Date.now() + 20_000
+    while (Date.now() < until) {
+      const progress = await readProgress(cdp, sid)
+      if (progress !== null && typeof progress.phase === 'string') {
+        probeCancelPhase = progress.phase
+        const clicked = await evaluate(cdp, sid, '(() => { const b = ' + q('attach-cancel') + '; if (!b) return false; b.click(); return true })()')
+        if (clicked === true) break
+      }
+      await sleep(50)
+    }
+  }
+  let probeOutcome = null
+  {
+    const until = Date.now() + 90_000
+    while (Date.now() < until) {
+      const raw = await evaluate(cdp, sid, 'JSON.stringify(window.__TELEPORT_ATTACH__ ?? [])')
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : []
+      if (parsed.length > attachBefore) { probeOutcome = parsed[parsed.length - 1]; break }
+      await sleep(200)
+    }
+  }
+  let probeOk = false
+  let probeCode = null
+  if (probeOutcome !== null) {
+    try {
+      const body = JSON.parse(String(probeOutcome.body))
+      probeOk = body.ok === false
+      probeCode = typeof body.code === 'string' ? body.code : null
+    } catch (error) {
+      probeOk = false
+    }
+  }
+  record('G-A5-2b', probeOk && probeCode === 'remote/cancelled', {
+    cancelPhase: probeCancelPhase,
+    code: probeCode,
   })
 
   // ── A5：真正接进来（这次不取消） ────────────────────────────────────
@@ -909,6 +969,7 @@ async function runGateA8(cdp, sid, phases) {
 
   // 重试入口必须真的重跑上一次动作：把路径改回好的，点重试应当连回来。
   if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('好路径填不回去')
+  const attachBeforeRetry = Number((await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) ?? 0)
   let retried = false
   if (box !== null && box.hasRetry === true) {
     retried = (await evaluate(cdp, sid, '(() => { const b = ' + q('panel-error-retry') + '; if (!b) return false; b.click(); return true })()')) === true
@@ -925,7 +986,10 @@ async function runGateA8(cdp, sid, phases) {
       const progress = await readProgress(cdp, sid)
       if (progress !== null && typeof progress.phase === 'string' && !phases.includes(progress.phase)) phases.push(progress.phase)
       const stillBox = await gateErrorBox(cdp, sid)
-      if (progress === null && stillBox === null && (await gateLooksOnline(cdp, sid)) === true) { recovered = true; break }
+      const attachNow = Number((await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) ?? 0)
+      // 必须看到**新的一次 /attach**：只清错误框、或靠上一次就成功的在线条目，都不算重试成功
+      // （R1-M-4：那三个条件能被「什么也不做」同时满足）。
+      if (attachNow > attachBeforeRetry && progress === null && stillBox === null && (await gateLooksOnline(cdp, sid)) === true) { recovered = true; break }
       // 每 15s 打一次现场：重试到底有没有真的再跑一次接入，靠这几行分辨。
       if (Date.now() - lastReport > 15_000) {
         lastReport = Date.now()
@@ -935,7 +999,7 @@ async function runGateA8(cdp, sid, phases) {
       await sleep(200)
     }
   }
-  record('G-A8-3', retried && recovered, { retried, recovered })
+  record('G-A8-3', retried && recovered, { retried, recovered, attachCalls: String(attachBeforeRetry) + '→' + String(await evaluate(cdp, sid, '(window.__TELEPORT_ATTACH__ ?? []).length')) })
 }
 // ── A5/A8 闸门的总装 ────────────────────────────────────────────────────────
 

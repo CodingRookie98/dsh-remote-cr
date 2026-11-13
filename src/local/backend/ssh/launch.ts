@@ -136,11 +136,15 @@ export interface SshLaunchOptions {
   readonly signal?: AbortSignal
   /**
    * 阶段回调：只报**观察得到的**边界，不伪造更细的段。
-   *   `bootstrap` = ssh 会话已建立、远端脚本开始跑（装 dsh 或直接起 dsh 都在这里）
-   *   `launch`    = 远端第一个字节回来了（脚本确实在跑）
+   *   `launch` = 远端 stdout 第一个字节回来了（脚本确实在跑）。
+   *
+   * **这里不报 `bootstrap`**：spawn 之前 ssh 还没连上（认证 / host-key / 网络都没过），
+   * spawn 之后第一行 stderr 也可能是 `Permission denied`。`bootstrap` 只在
+   * `resolveRemoteDsh` 真的要走引导器安装时报 —— 那是唯一会发生「装东西」的地方；
+   * 否则热路径会显示「引导远端（装 dsh）」，而实际一个字节都没装（R1-M-2）。
    * 隧道可用由调用方在拿到句柄时报（那时 `-L` 才真的能连）。
    */
-  readonly onStage?: ((stage: 'bootstrap' | 'launch') => void) | undefined
+  readonly onStage?: ((stage: 'launch') => void) | undefined
   readonly spawn?: SshLaunchSpawn
 }
 
@@ -368,8 +372,6 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   const invocation = buildSshInvocation(connectOptions, ['sh', '-c', shellQuote(script)])
   const spawnProcess = options.spawn ?? defaultSpawn
   const timeoutMs = options.timeoutMs ?? 90_000
-
-  options.onStage?.('bootstrap')
   const child = spawnProcess(invocation.executable, invocation.args, invocation.env)
   let buffer = ''
   let announcedLaunch = false

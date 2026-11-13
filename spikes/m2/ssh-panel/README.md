@@ -26,16 +26,17 @@
 | 项 | 断言 | 结果 |
 | --- | --- | --- |
 | G-A5-1 | 向导按阶段推进（`data-phase`）、取消按钮可见、最终 online | PASS `["probe","bootstrap","launch","tunnel","attach"]`，`sawCancelButton=true`，`linkPhase=connected` |
-| G-A5-2 | 点「取消」**真的打到宿主**（不是只点了按钮） | PASS 页面内抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`；进度条消失、无错误框残留、远端 `:8961` 释放（62589 ms） |
+| G-A5-2 | 点「取消」**真的打到宿主**（不是只点了按钮） | PASS 页面内抓到 `/attach/cancel` 响应 `{"ok":true,"value":{"cancelled":true}}`；进度条消失、无错误框残留、**口径**：本跑 `sawBusy:false`（远端端口从未监听）⇒ 端口回收**未测到**，`portReclaim:null`；此前记的「62589 ms 后释放」是 12 次空查的耗时，属误读 |
+| G-A5-2b | 在 `probe` 段（远端检查/安装）取消 ⇒ `/attach` 终态是 `remote/cancelled` | PASS `cancelPhase="probe"`、`code="remote/cancelled"`（修复前这条必然红：取消只在 `launch` 段生效） |
 | G-A5-3 | 取消之后重来仍能接入 | PASS `online=true` |
 | G-A8-1 | 失败给结构化码 + detail + nextActions | PASS `remote/workspace-invalid-path`，detail 带远端原文，next=`["查看远端日志","重试"]` |
 | G-A8-2 | 错误框有复制按钮 | PASS `hasCopy=true` |
-| G-A8-3 | 点「重试」能回到好路径 | PASS `retried=true`，`recovered=true` |
+| G-A8-3 | 点「重试」能回到好路径，且**真的重跑** | PASS `retried=true`、`recovered=true`，探针 hook 到**新的一次 `/attach`**（`attachCalls: 4→5`）—— 不是「只清错误框、页面还在」 |
 | G-CLEAN | 关宿主后远端不留孤儿 | PASS `hadRemote=true`，`busyAfter=false` |
 
-正向 **7/7**（`measurements.a5a8.json`）。负控 = **在页面里拆产品的脸**（错误框退化成一行文本、
+正向 **8/8**（`measurements.a5a8.json`，R1 #1 处置后用最终代码重跑）。负控 = **在页面里拆产品的脸**（错误框退化成一行文本、
 取消按钮换成没挂 React 处理器的克隆，50 ms 定时器持续施加，因为面板每 300 ms 会重渲染）：
-**3/7**，失败集恰为 `["G-A5-2","G-A8-1","G-A8-2","G-A8-3"]`（`measurements.a5a8.neg.json`），
+**3/8**，失败集恰为 `["G-A5-2","G-A5-2b","G-A8-1","G-A8-2","G-A8-3"]`（`measurements.a5a8.neg.json`），
 输出 `NEGATIVE CONTROL OK`；`G-A5-1` / `G-A5-3` / `G-CLEAN` 仍绿——负控只拆这两块，不误伤接入本身。
 
 **口径**：`G-A5-1` 看到的是**热路径**的五个阶段（远端已就绪，`verify` / `barrier` 没出现）；
@@ -58,7 +59,7 @@ MSYS_NO_PATHCONV=1 GATE=a5a8 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.c
 `HOST_PORT`（3131）、`REMOTE_PORT`（8961）、`CDP_PORT`（9337）。
 产物落在同目录 `measurements.json` / `measurements.neg.json`。
 
-## 五条踩过的坑（都在文件里留了注释）
+## 八条踩过的坑（都在文件里留了注释）
 
 1. **宿主必须拿到两个部署事实**：`DSH_TELEPORT_PORT` 与 `DSH_TELEPORT_REMOTE_ROOT`。
    缺了它们，「接入」按钮是 disabled 的（`panel.ts` 的 `planSshAttach` 不猜检出根），
@@ -80,6 +81,11 @@ MSYS_NO_PATHCONV=1 GATE=a5a8 NEGATIVE_CONTROL=1 node spikes/m2/ssh-panel/probe.c
 7. **负控不能靠「把输入留空」**：A5/A8 若沿用老路（`SSH_ROOT=''`），接入按钮直接 disabled，
    探针连第一枪都开不出来，只剩一条 `S2P-FATAL`——那就什么都证明不了。要拆就在页面里拆：
    错误框退化成纯文本、取消按钮换成克隆，正向该绿的地方继续绿。
+8. **判据本身会空转，必须让负控咬住**：第一版 `G-A5-2` 把 `portFreed` 当必要条件，而
+   `sawBusy=false` 时 `portFreed` 恒真（12 次空查的耗时被当成回收耗时）；第一版 `G-A8-3`
+   只看「进度没了 + 错误框没了 + 有个在线条目」，这三件事能被「只清错误、什么都不做」同时
+   满足。现在 `portFreed` 收紧成「真的忙过又释放」（否则 `portReclaim:null`），`G-A8-3`
+   要求 hook 到的 `/attach` 计数增加。两处都由负控验证过会转红。
 
 ## 未验证
 

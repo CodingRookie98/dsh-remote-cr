@@ -196,21 +196,41 @@ export class ProjectionService {
    * （那会换 cookie，让上一批 WS 全部失效）。target 变了才重建。
    */
   async attach(target: ConnectTarget, request: AttachRequest, control: AttachControl = {}): Promise<AttachResult> {
+    // 同一时刻只允许一次：两个接入抢同一个远端端口只会互相踩，而「取消」只能打到其中一个，
+    // 另一次会从此不可取消（R1-M-1）。显式拒绝比静默覆盖诚实。
+    const running = this.#attach
+    if (running !== undefined) {
+      throw new TeleportError({
+        code: 'remote/attach-busy',
+        detail: '已经有一次接入在进行中（阶段 ' + running.phase + '）',
+        nextActions: ['等它结束', '或先点面板上的「取消接入」'],
+      })
+    }
     const startedAt = Date.now()
     this.#attach = { phase: 'probe', startedAt, target }
     const phase = (next: ConnectionPhase): void => {
       this.#attach = { phase: next, startedAt, target }
       control.onPhase?.(next)
     }
+    const signal = control.signal
     try {
+      // 三段边界检查：底层（ssh / 假连接 / 别家实现）未必认 signal，服务层不能因此变成
+      // 「点了取消照样建成工作区」。R1-B-1 的复现 1 就是靠这条兜底转红的。
+      throwIfAborted(signal)
       const connection = await this.#ensure(target, { ...control, onPhase: phase })
+      throwIfAborted(signal)
       phase('attach')
-      return await this.#guardTransport(() =>
-        attachWorkspace(attachDeps(target, connection.rpc, this.#store), request),
+      const withSignal: AttachRequest = signal === undefined ? request : { ...request, signal }
+      const result = await this.#guardTransport(() =>
+        attachWorkspace(attachDeps(target, connection.rpc, this.#store), withSignal),
       )
+      // 已经建成也要报取消：否则面板同时收到「已取消」与「工作区已在线」两个矛盾结论。
+      throwIfAborted(signal)
+      return result
     } finally {
-      // 成功、失败、取消三条路都要清：清不掉面板会永远停在「接入中」。
-      this.#attach = undefined
+      // 只清自己这一份：将来若放开并发，先结束者不能把后一次的进度清掉。
+      const current = this.#attach
+      if (current !== undefined && current.startedAt === startedAt) this.#attach = undefined
     }
   }
 
@@ -527,6 +547,16 @@ export class ProjectionService {
     }
     return live.connection
   }
+}
+
+/** 用户取消的边界检查：底层不认 signal 时，服务层也要能及时退出。 */
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal === undefined || !signal.aborted) return
+  throw new TeleportError({
+    code: 'remote/cancelled',
+    detail: '已取消这次接入',
+    nextActions: ['重新点一次「接入」', '换个目标再试'],
+  })
 }
 
 /** 传输层失败：隧道断了 / 握手超时。业务拒绝不算。 */

@@ -256,6 +256,10 @@ async function connectSsh(
     remoteRoot: target.remoteRoot,
     ...(ssh.dshVersion === undefined ? {} : { dshVersion: ssh.dshVersion }),
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+    // 取消要能打断远端检查与引导器安装（最长 300s）。这条链早就支持 signal
+    // （`runtime.ts` 的 `defaultExec` 会转发给 `runSsh`），漏传等于「点了取消也不停」（R1-B-1）。
+    ...(control.signal === undefined ? {} : { signal: control.signal }),
+    ...(control.onPhase === undefined ? {} : { onPhase: (phase: 'bootstrap') => control.onPhase?.(phase) }),
   })
   // 端口可以在连的时候才定：代理与「连远端」是两条独立生命期，插件入口先起代理、
   // 用户点连接时才读端口。读晚了没关系，读到 undefined 就是不挂 `-R`（下表已写清后果）。

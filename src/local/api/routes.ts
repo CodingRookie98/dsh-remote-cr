@@ -470,6 +470,14 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   })
 
   mount('/attach', ['POST'], async (req, res) => {
+    // 「同一时刻只允许一个」必须是真的拒绝，而不是把 controller 覆盖掉（R1-M-1）。
+    if (attaching !== undefined) {
+      throw new TeleportError({
+        code: 'remote/attach-busy',
+        detail: '已经有一次接入正在进行',
+        nextActions: ['等它结束', '或先点面板上的「取消接入」'],
+      })
+    }
     const service = requireProjection()
     const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
     // 取消要能真的打断「起进程/建隧道」这一段，否则按钮只是个装饰。
@@ -488,7 +496,12 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       )
     } catch (error) {
       // 用户自己取消不算故障：把它回成 cancelled，面板就不会把红字摆出来。
+      // 但取消瞬间同时发生的**真失败**（bootstrap-failed / forward-unavailable）必须原样
+      // 上抛——否则用户拿到的永远是「已取消」，拿不到可操作的码（R1-m-3）。
       if (controller.signal.aborted) {
+        if (error instanceof TeleportError && error.code !== 'remote/cancelled' && error.code !== 'remote/tunnel-unavailable') {
+          throw error
+        }
         throw new TeleportError({
           code: 'remote/cancelled',
           detail: '已取消这次接入',
