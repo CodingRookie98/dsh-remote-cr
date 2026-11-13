@@ -1,0 +1,110 @@
+{
+  "at": "2026-11-13T06:33:39.550Z",
+  "negative": false,
+  "measurements": [
+    {
+      "key": "ssh-attach",
+      "label": "SSH 接入（含远端引导）",
+      "ms": 16729,
+      "source": "node",
+      "at": "2026-11-13T06:33:27.140Z"
+    },
+    {
+      "key": "new-session",
+      "label": "新建远端会话",
+      "ms": 1338,
+      "source": "rAF",
+      "at": "2026-11-13T06:33:28.547Z"
+    },
+    {
+      "key": "probe",
+      "label": "远端取证",
+      "ms": 2331,
+      "source": "rAF",
+      "at": "2026-11-13T06:33:31.082Z"
+    },
+    {
+      "key": "disconnect",
+      "label": "断开远端",
+      "ms": 13,
+      "source": "rAF",
+      "at": "2026-11-13T06:33:31.180Z"
+    },
+    {
+      "key": "reconnect",
+      "label": "一键重连",
+      "ms": 1865,
+      "source": "rAF",
+      "at": "2026-11-13T06:33:33.130Z"
+    }
+  ],
+  "results": [
+    {
+      "id": "S2P-1",
+      "ok": true,
+      "detail": {
+        "mounted": [
+          "main",
+          "sidebar.panellist",
+          "directoryFlow"
+        ],
+        "half": "client"
+      }
+    },
+    {
+      "id": "S2P-2",
+      "ok": true,
+      "detail": {
+        "hosts": "14"
+      }
+    },
+    {
+      "id": "S2P-3",
+      "ok": true,
+      "detail": {
+        "attachMs": 16729,
+        "linkPhase": "connected",
+        "linkLine": "远端已连接 · gcp",
+        "blocked": null
+      }
+    },
+    {
+      "id": "S2P-4",
+      "ok": true,
+      "detail": {
+        "sessionId": "session-bb0ba15a-f0f7-4275-8ba9-bf1dff550d0d",
+        "error": null
+      }
+    },
+    {
+      "id": "S2P-5",
+      "ok": true,
+      "detail": {
+        "remote": "true",
+        "hasCwd": true,
+        "hasLinux": true,
+        "head": "session: session-bb0ba15a-f0f7-4275-8ba9-bf1dff550d0d\nterminal: teleport-probe\nverdict: 远端执行已确认\ncwd: /home/hui/workspace\nuname: Linux hindsight-memory--server 7.0.0-1017-gcp #19-Ubuntu SMP PREEMPT Wed",
+        "error": null
+      }
+    },
+    {
+      "id": "S2P-6",
+      "ok": true,
+      "detail": {
+        "disconnectMs": 12.699999999254942,
+        "offlineKept": true,
+        "reconnectMs": 1865,
+        "error": null
+      }
+    },
+    {
+      "id": "S2P-7",
+      "ok": true,
+      "detail": {
+        "remotePort": 8961,
+        "hadRemote": true,
+        "busyAfter": false
+      }
+    }
+  ]
+}

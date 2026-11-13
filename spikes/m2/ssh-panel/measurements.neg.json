@@ -1,0 +1,74 @@
+{
+  "at": "2026-11-13T06:35:34.273Z",
+  "negative": true,
+  "measurements": [],
+  "results": [
+    {
+      "id": "S2P-1",
+      "ok": true,
+      "detail": {
+        "mounted": [
+          "main",
+          "sidebar.panellist",
+          "directoryFlow"
+        ],
+        "half": "client"
+      }
+    },
+    {
+      "id": "S2P-2",
+      "ok": true,
+      "detail": {
+        "hosts": "14"
+      }
+    },
+    {
+      "id": "S2P-3",
+      "ok": false,
+      "detail": {
+        "attachMs": null,
+        "linkPhase": "idle",
+        "linkLine": "尚未连接远端",
+        "blocked": "点不到「接入 SSH 远端」按钮：还没有填写远端路径 / 输入框=\"\""
+      }
+    },
+    {
+      "id": "S2P-4",
+      "ok": false,
+      "detail": {
+        "sessionId": null,
+        "error": "测量「新建远端会话」点不到目标控件（可能还没渲染或处于 disabled）"
+      }
+    },
+    {
+      "id": "S2P-5",
+      "ok": false,
+      "detail": {
+        "remote": null,
+        "hasCwd": null,
+        "hasLinux": null,
+        "head": null,
+        "error": "blocked: 没有会话可取证"
+      }
+    },
+    {
+      "id": "S2P-6",
+      "ok": false,
+      "detail": {
+        "disconnectMs": null,
+        "offlineKept": null,
+        "reconnectMs": null,
+        "error": "测量「断开远端」点不到目标控件（可能还没渲染或处于 disabled）"
+      }
+    },
+    {
+      "id": "S2P-7",
+      "ok": true,
+      "detail": {
+        "remotePort": 8961,
+        "hadRemote": false,
+        "busyAfter": false
+      }
+    }
+  ]
+}
