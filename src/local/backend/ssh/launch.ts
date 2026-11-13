@@ -722,7 +722,12 @@ export async function openSshTunnel(options: {
     ...(options.sshExecutable === undefined ? {} : { sshExecutable: options.sshExecutable }),
     ...(options.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: options.connectTimeoutMs }),
   }
-  const invocation = buildSshInvocation(connectOptions, ['-N'])
+  const base = buildSshInvocation(connectOptions, [])
+  // `-N` 是**选项**，必须插在 destination 之前：`buildSshInvocation` 把 remoteCommand 拼在
+  // destination 之后，直接传 `['-N']` 会变成「远端要执行的命令」——隧道建不起来，而 ssh
+  // 只是去远端跑了个叫 -N 的东西然后正常退出（正是刚才 `tunnel-unavailable` 的真凶）。
+  // 选项必须整体排在 destination 之前：直接放到 argv 最前最稳（ssh 不接受选项夹在 destination 之后）。
+  const invocation = { ...base, args: ['-N', ...base.args] }
   const spawnProcess = options.spawn ?? defaultSpawn
   const child = spawnProcess(invocation.executable, invocation.args, invocation.env)
   let buffer = ''
@@ -731,9 +736,16 @@ export async function openSshTunnel(options: {
   }
   child.stdout?.on('data', digest)
   child.stderr?.on('data', digest)
+  child.on('error', (error: unknown) => {
+    buffer += '\nspawn error: ' + String(error)
+  })
+  child.on('exit', (code: number | null) => {
+    buffer += '\nssh exit: ' + String(code)
+  })
 
   const ready = await new Promise<boolean>((resolve) => {
-    const deadline = Date.now() + (options.readyTimeoutMs ?? 1_500)
+    // 手动实测：冷连接建隧道要 ~4s（1.5s 会把「慢」误判成「失败」）。
+    const deadline = Date.now() + (options.readyTimeoutMs ?? 5_000)
     let settled = false
     const attempt = (): void => {
       if (settled) return
@@ -763,7 +775,7 @@ export async function openSshTunnel(options: {
     }
     throw new TeleportError({
       code: 'remote/tunnel-unavailable',
-      detail: 'attach-only 隧道 ' + String(options.readyTimeoutMs ?? 1_500) + 'ms 内没建起来（本地端口 ' + String(localPort) + '）',
+      detail: 'attach-only 隧道 ' + String(options.readyTimeoutMs ?? 5_000) + 'ms 内没建起来（本地端口 ' + String(localPort) + '）',
       nextActions: ['确认远端实例还在监听', '重新接入（会回落到正常启动）'],
       logTail: buffer.slice(-400),
     })
