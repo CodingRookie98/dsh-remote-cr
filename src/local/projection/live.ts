@@ -30,6 +30,7 @@ import { TeleportError } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
 import { launchSshDsh } from '../backend/ssh/launch.ts'
+import { resolveRemoteDsh, type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts'
 import type { SshAuth } from '../backend/ssh/transport.ts'
 import { launchRemoteDsh } from '../backend/wsl/launch.ts'
 import type { ConnectTarget, RemoteConnection, SshConnectTarget } from './service.ts'
@@ -51,6 +52,15 @@ export interface LiveSshOptions {
   readonly configFile?: string
   readonly sshExecutable?: string
   readonly connectTimeoutMs?: number
+  /** 装哪个版本的 dsh（只有走到引导器时用得上）。 */
+  readonly dshVersion?: string
+  /**
+   * 「远端 dsh 用哪一份」的注入缝：缺省走 `resolveRemoteDsh`（检出优先，否则引导器装 staging）。
+   *
+   * 留这个缝不是为了测试方便而已：真机上「远端有没有检出」是环境事实，
+   * 而这里要能在没有 SSH 的机器上被完整单测。
+   */
+  readonly resolveDsh?: (request: ResolveRemoteDshRequest) => Promise<RemoteDshRuntime>
 }
 
 export interface LiveConnectOptions {
@@ -134,12 +144,23 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
   }
 
   const auth = await ssh.authFor(resolved.target)
+  // 先决定「用远端检出还是引导器装的那份」：一台普通 SSH 目标通常**没有** dsh 检出，
+  // 缺省启动前缀（`node apps/cli/lib/bin.js`）会让接入在启动那步失败。
+  const runtime = await (ssh.resolveDsh ?? resolveRemoteDsh)({
+    homeDir: ssh.homeDir,
+    target: resolved.target,
+    auth,
+    remoteRoot: target.remoteRoot,
+    ...(ssh.dshVersion === undefined ? {} : { dshVersion: ssh.dshVersion }),
+    ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+  })
   const handle = await launchSshDsh({
     homeDir: ssh.homeDir,
     target: resolved.target,
     auth,
     remoteRoot: target.remoteRoot,
     remotePort: target.port,
+    argvPrefix: runtime.argvPrefix,
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
     ...(ssh.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: ssh.connectTimeoutMs }),
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),

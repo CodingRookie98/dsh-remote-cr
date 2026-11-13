@@ -117,3 +117,35 @@ test('createLiveConnect：别名不在 ~/.ssh/config 里时同样带码报错，
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('createLiveConnect：SSH 先解析「远端 dsh 用哪一份」，解析失败就不启隧道', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'teleport-live-'))
+  const configFile = join(home, 'config')
+  writeFileSync(configFile, ['Host gcp', '  HostName 10.0.0.9', '  User hui', ''].join(String.fromCharCode(10)), 'utf8')
+  let resolved = 0
+  try {
+    const connect = createLiveConnect({
+      ssh: {
+        homeDir: home,
+        configFile,
+        authFor: () => ({ kind: 'key' }),
+        resolveDsh: async (request) => {
+          resolved += 1
+          assert.equal(request.remoteRoot, SSH.remoteRoot)
+          throw new TeleportError({ code: 'remote/dsh-missing', detail: '远端没有可用的 dsh（测试注入）', nextActions: ['装一个 dsh'] })
+        },
+      },
+    })
+    await assert.rejects(
+      () => connect(SSH),
+      (error: unknown) => {
+        assert.ok(error instanceof TeleportError)
+        assert.equal(error.code, 'remote/dsh-missing')
+        return true
+      },
+    )
+    assert.equal(resolved, 1, '解析器必须被调用一次；不调用就等于直接按缺省前缀起进程')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
