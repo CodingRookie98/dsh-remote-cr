@@ -27,6 +27,7 @@
 | `model-request.ts` | 远端 provider 配到代理后，**真的模型请求**打到代理并被替换 | 8/8 | — |
 | `anchor-files.ts` | 锚点工作区里 `read` 读到远端文件、`write`/`edit` 写的是远端那一个 | 9/9 | 4/9，失败集恰为 `AF-0b`/`AF-3`/`AF-4`/`AF-5`/`AF-6`，`AF-0/1/2/2b` 仍绿 |
 | `env-policy.ts` | `reuse` / `isolated` 两档真的作用到**远端进程环境**上，且快照里看得见 | 11/11 | 7/11，失败集恰为 `A4-4..A4-7`，端口与错误码四条仍绿 |
+| `remote-tools.ts` | 远端装的插件在**远端会话的模型工具表**里真的多出它的工具 | present 8/8、absent 8/8 | 7/8，失败集恰为 `A3-3` |
 
 ### probe.ts（S9.6，`§7.1` 口径）
 
@@ -89,6 +90,25 @@ Windows 侧用 `ssh -n -N -L 127.0.0.1:12222:127.0.0.1:12222 gcp` 接入，然�
 
 负控把隔离那一档拨回 `reuse`，期望变红的正是「隔离真的生效」那四条；端口释放与错误码仍绿，说明断言没有互相串。
 
+### remote-tools.ts（A3 插件真的注册了工具）
+
+`MSYS_NO_PATHCONV=1 REMOTE_PORT=8969 EXPECT=present EXPECT_TOOL=compress node spikes/m2/ssh-e2e/remote-tools.ts gcp home/hui/workspace`
+
+判据不看「我们以为装上了」：`ctx.tools` 是进程内服务、不走 RPC，所以取**远端 agent 发给模型的请求体里那份 `tools[]`**——
+那就是运行时真实工具表。装与不装各起一个**全新 `DSH_HOME`**，同一断言必须一绿一红。
+
+选 `billion-context@0.1.213` 作被装对象，因为它不改传输模式、六个工具名与 base 自带的不重名；
+先用 `@liustack/modsearch`（`web_search` 与 base 同名，卸了还在 ⇒ 假象）与 `dsh-ops`（挂上 PTC 执行器，模型工具表塌成 `run_code` 一个）各踩过一次。
+
+- **present**（`/tmp/teleport-a3/present`）：`dsh_plugin_packages` 非官方前缀 `[billion-context, billion-context]`；工具表 **32 → 38**，
+  新增的正是 `compress` / `decompress` / `acp_status` / `acp_cache` / `acp_read_original_image` / `search_context`。
+- **absent**（`/tmp/teleport-a3/absent`）：非官方前缀 `[]`；工具表 **32**，那六个都不在。`web_fetch` 两态都在（装卸只影响目标插件）。
+- 负控（absent home + `NEGATIVE_CONTROL=1` 把期望方向翻转）失败集恰为 `A3-3`，`NEGATIVE CONTROL OK`。
+
+远端装插件的方式（`dsh plugin` 只是把参数转给 profile 里的 pnpm）：远端**没有 pnpm**，先
+`COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@10.18.3 --activate && corepack enable --install-directory ~/.local/bin pnpm`，
+再 `PATH=$HOME/.local/bin:$PATH DSH_HOME=<home> ~/.dsh-teleport/staging/<id>/npm/bin/dsh plugin --profile web add billion-context@0.1.213`。
+装到 `~/.dsh` 对探针无效——探针传了 `DSH_HOME`，远端读的是**那个 home 的 profile**。
 ## 三条探针缺陷（都曾让结果假绿）
 
 1. **`tool_result` 与 `tool_use` 混在一起判**：第一版把整个请求体 `includes(内容)` 当「读回了」的证据，而请求体里本来就有模型自己写的 `tool_use` 入参 ⇒ 恒真。改成只取 `tool_result` 正文。
@@ -98,7 +118,8 @@ Windows 侧用 `ssh -n -N -L 127.0.0.1:12222:127.0.0.1:12222 gcp` 接入，然�
 ## 未验证
 
 - 跳板机（`ProxyJump`）、密码 / agent 认证、SFTP 上传回退这几条只有单测，无真机。
-- A3（远端插件真的注册了工具/钩子）**尚无证据**：gcp 的 `~/.dsh/profiles/web` 只挂了 `dsh-base` + `dsh-web-app`，上面没有装任何第三方插件。
+- 远端插件只证明了「注册了工具」这一面；插件自己的**钩子**（`ctx.effect`/拦截器）是否在远端跑，没有单独取证。
 
 > 已销账（本文件早先版本列为未验证）：浏览器里点这套 SSH UI 由 `spikes/m2/ssh-panel/probe.cjs` 证明（7/7）；
-> `describeAnchor` 已接进 `GET /teleport/api/anchors`（S10-F）。
+> `describeAnchor` 已接进 `GET /teleport/api/anchors`（S10-F）；
+> A3「远端插件真的注册了工具」由 `spikes/m2/ssh-e2e/remote-tools.ts` 三态证明（本文件早先将它列为未验证）。

@@ -18,7 +18,7 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: **S10-H 完成 —— 环境档位从「纯决策层」接进连接链路并真机取证（A4 的两档）**，M2 出口只剩 **A3**（远端插件真的注册了工具/钩子：gcp 的 `~/.dsh/profiles/web` 只有 `dsh-base` + `dsh-web-app`，没装任何第三方插件，因此尚未取证）。下一片 = A3 取证 → 出口签署 + `milestones.md` 勾选 + R1 终审
+- **当前活跃阶段**: **S10-I 完成 —— A3 已真机取证**（`billion-context` 三态：工具表 32→38 / 32 / 负控失败集恰为 `A3-3`），A1–A8 里只剩 **A5（分阶段进度 + 取消）与 A8（可复制日志 + 重试入口）在 SSH 向导路径上未在浏览器里点过**。下一片 = 补这条点击证据 → 出口签署 + `milestones.md` 勾选 + R1 终审
 - **历史阶段（S10 已完成）**: M2 出口的三条硬门槛 + 面板点击证据都已真机取证（代理接进 SSH 链路 `4881eca`；门槛 1 网络面 `5b5ff40` + 模型面 `8a74635`；门槛 2 `e991dd5`；门槛 3 `a20f043`；doctor 打印面 `e43c420`；面板点击证据见 Context Log）。下一片 = **M2 出口签署**（A1–A8 逐条对证据）+ `milestones.md` 勾选 + R1 终审
 - **当前活跃子任务**: Task M2-EXIT 剩余最后一项 **S10-G 已完成**（`spikes/m2/ssh-panel/probe.cjs` 真浏览器点面板：7/7，负控失败集恰为 `S2P-3/4/5/6`）。八条门槛证据：`proxy-ingress.ts` 6/6、`model-request.ts` 8/8、`forward-denied.ts` 5/5、`anchor-files.ts` 9/9、`ssh-e2e/probe.ts` 33/33（§7.1 门禁）、`ssh-panel/probe.cjs` 7/7、`ssh-exit-demo` 7/7，各自带负控。下一片 = 出口签署
 - **当前子任务重试计数**: S9.6 = 2/3（① 首版探针把「起远端」算进首连 10s 门禁，是**口径错误**不是产品缺陷；② 首版负控要求计时门禁 `gate-commandMs` 必须红，错在负控——见 Context Log）。M2-EXIT = 3/3（① 门槛 1 首版只证到网络面、② 门槛 3 首版 `AF-6` 假绿（整包 includes 命中模型自己的 tool_use 入参）、③ 门槛 3 负控指望「目录不存在」让写失败（write 会建父目录）——三条都在当轮定位并改判据）
@@ -103,6 +103,7 @@
 | **S10-F** | 锚点映射的打印面（doctor） | `ssh/anchor-runtime.ts`（`describeAnchors`）+ `anchor-runtime.test.ts`（+2）+ `api/routes.ts`（`GET /anchors`）+ `routes.test.ts`（+1，路由表十三条） | 输出必须来自与提示词/工具层同一份 `map.json`；坏掉的锚点照样列出并写明坏在哪（不静默省略） | [x] **543/543** 单测、双 tsc Exit 0、build / build:client（17 modules / 72282 B） |
 | **S10-G** | SSH 面板的真浏览器点击证据（A1 / A5 / A7） | `spikes/m2/ssh-panel/probe.cjs` + `README.md` + `measurements{,.neg}.json` | 必须在**原生 GUI** 里点（headless Chrome + CDP），不许直调 RPC 假装；接入计时受官方 workspace owner 导航影响，只能 Node 侧打点并**标明 `source: "node"`**，不冒充 rAF | [x] 真机 **7/7**；负控 3/7，失败集恰为 `S2P-3/4/5/6`（`S2P-7` 在负控下**空洞为真**，标注 `hadRemote=false`） |
 | **S10-H** | A4 环境档位：`reuse` / `isolated` 接进启动链路 | `src/local/env-policy/apply.ts`（+`apply.test.ts` 7 条）+ `src/shared/env-policy.ts` + `live.ts`（`connectWsl` 分派、`resolvePolicy`、`wslHome`）+ `ssh/runtime.ts`（`remoteHome`）+ `wsl/launch.ts`（`shellWord`/`envAssignments`/`LaunchOptions.env`）+ `service.ts`/`routes.ts`/`api.ts`/`panel.ts`/`components.ts`/`index.ts` + `spikes/m2/ssh-e2e/env-policy.ts` | `reuse` 下**一个变量都不加**；`isolated` 只加 `DSH_HOME`；`sync` 明确拒绝（不许悄悄按 `isolated` 办）；`extraEnv` 里已有不同的 `DSH_HOME` 必须硬失败；共享层不能 import 本地半（client 构建 TS2591） | [x] 真机 **11/11**、负控 **7/11**（失败集恰为 `A4-4..A4-7`）；双 tsc Exit 0、**550/550** 单测、build / build:client（18 modules / 73440 B） |
+| **S10-I** | A3 取证：远端插件在远端会话里真的注册了工具 | `spikes/m2/ssh-e2e/remote-tools.ts` + `measurements.tools.{present,absent}.json` | 判据只能是**远端 agent 发给模型的 `tools[]`**（`ctx.tools` 是进程内服务、不走 RPC）；装/不装各用全新 `DSH_HOME`，同一断言必须一绿一红；对照工具（`web_fetch`）两态都在，证明装卸没有把整张表打塌 | [x] 真机三态：present **8/8**（工具表 32→38，新增 `compress`/`decompress`/`acp_status`/`acp_cache`/`acp_read_original_image`/`search_context`）、absent **8/8**（32 个，无那六个）、负控失败集恰为 `A3-3`。**口径**：只证「注册了工具」，插件钩子未单独取证 |
 | **S9** | 真机端到端探针 `spikes/m2/ssh-exit-demo/` | probe.ts | 与 M1 `p352` 同构（7 项 + 负控 + §7 门禁测量） | [x] 真机 **7/7**（`gcp`）+ 负控失败集逐项相等；产物 `measurements.json` / `measurements.neg.json`。7 项：配置解析 / TOFU / 单 channel 探测 / 引导器装 `@deepseek-ai/dsh@0.2.2-rc.1` / `-L`+`-R` 同连接且远端请求真的回到本机代理 / 经 `-L` 读远端 HTTP 且远端命令与探测一致 / 看门狗回收 + 本地隧道口关闭 |
 
 **出口**：同一套 UI 与语义下，SSH 达到 A1–A8（= A9 达成），且 S1–S8 全部勾选、S9 真机 7/7 + 负控失败集逐项相等。
@@ -111,6 +112,11 @@
 
 ## 4. Context Log
 
+- 2026-11-13：**S10-I 完成 —— A3 不再靠「文件在远端」猜**（三态：present 8/8、absent 8/8、负控失败集恰为 `A3-3`）。A3 的原文是「远端已装/同步的插件在远端会话里真的注册了工具/钩子」，而 `ctx.tools` 是**进程内服务、不走 RPC**，所以没有「查一下服务」这种取证方式；成立的判据只有一个：远端 agent 发给模型的请求体里那份 `tools[]` 就是运行时工具表。
+  1. **三条失败路径（各自都曾给出看起来合理的错误结论）**：① 只看第一条 `/v1/messages` ⇒ 该请求顶层**没有 `tools`**（是标题/摘要类请求，字段只有 `model/stream/messages/max_tokens/thinking/system/dsh_session_log/dsh_plugin_packages`），要扫**所有**请求取并集；② 把插件装进 `~/.dsh` 却没用——探针给远端传了 `DSH_HOME`（隔离档），远端读的是**那个 home 的 profile**，装到 `~/.dsh` 等于白装；③ `dsh-ops` 装上了、`dsh_plugin_packages` 里也确有它，但模型工具表**塌成 `run_code` 一个**（它加载 `@deepseek-ai/dsh-tool-executor-ptc`，PTC 单入口）——「装上了」与「模型看得见」是两件事。
+  2. **选被装对象的三个条件**：不改传输模式、工具名不与 base 重名、卸载后不留持久化状态。`@liustack/modsearch` 因 `web_search` 与 base 同名（卸了工具还在，首次实验就是这么假绿的）被弃；`dsh-ops` 因 PTC 塌表被弃；最终用 `billion-context@0.1.213`。另外每个状态必须用**全新 home**：dsh-ops 在 home 里持久化了 `ops-ptc` 预设，卸插件后该 home 建会话直接 `Unknown agent preset`。
+  3. **探针自身三处缺陷（都发生在「看起来通过了」时）**：落盘文件名按翻转后的 `EXPECT` 命名 ⇒ 负控把 38 工具那份覆盖成 32（改为按原始期望命名，负控不落盘）；`dsh_plugin_packages` 的值是**被序列化的字符串**不是数组，第一版解析出 13 KB 原文（改为「字符串先 `JSON.parse` 再递归、对象取 `name`」）；递归第一版把版本号当插件名（`0.2.2-rc.1` 混进列表），改为只在可 `JSON.parse` 时下钻并跳过 `version` 键。
+  4. **M2 出口审计的新欠账**：向导（`components.ts:330-440`）本来就有分阶段 `data-step`、`running` 的 `progressBar` + `data-teleport='cancel'`、`error` 分支的 `errorBox`（可复制报告 + `data-teleport='retry'`），但 **SSH 路径从未在浏览器里点过这条向导**——S10-G 点的是瞬移面板的「接入 SSH 远端」。A5 的「分阶段进度 + 取消」与 A8 的「GUI 内可复制日志 + 重试入口」在 SSH 上仍属未验证，不许凭代码存在就签字。
 - 2026-11-13：**S10-H 完成 —— 环境档位不再是「有个决策函数没人用」**（真机 11/11，负控失败集逐项相等）。开工前的事实是：`src/local/env-policy/` 里的 `planEnv` 写得很完整，却**产品零引用**（`grep` 只命中注释），也就是说 A4 的「三档至少两档可用」当时一条都不成立：用户没有任何途径换档，面板也什么都不显示。
   1. **判据必须是「远端进程实际拿到的环境」**。单测只能证明「我们打算传 `DSH_HOME`」；档位没生效时产品照样连得上、照样能跑，只是悄悄用了远端的 `~/.dsh`——这种失败不报错，只能靠读 `/proc/<pid>/environ` 抓。进程按端口定位（`ss -ltnp | grep :8967`），不用 `pgrep -f`（执行它的 shell 自己会命中，恒为 1 条，S9 踩过）。
   2. **`sync` 明确拒绝而不是回落**。三档里 `sync`（可选插件同步）属 M3；若它悄悄按 `isolated` 办，用户会以为插件被同步了。`planEnvInjection` 直接抛 `remote/env-policy-unavailable`；`extraEnv` 里已有**不同**的 `DSH_HOME` 抛 `remote/env-policy-conflict`（同值放行）——两者都有单测。
