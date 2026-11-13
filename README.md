@@ -35,6 +35,31 @@
 
 > 一句话：**A 型把命令送去远端，B 型把整个 agent 搬到远端、只把画面和钥匙留在本地。** 完整调研与价值评估见 [`docs/research/05-ecosystem-and-value-2026-11.md`](./docs/research/05-ecosystem-and-value-2026-11.md)。
 
+## 安装
+
+前提：**DSH ≥ `0.2.1-rc.0`**（`< 0.3.0`）、本机 Windows + Node 22.19+/24+；目标端是 WSL2 发行版或一台能 SSH 的 Linux。
+
+```bash
+# 方式一：从 GitHub tag 安装（推荐，固定版本）
+dsh plugin --profile web add 'github:<ORG>/dsh-remote-cr#v0.1.0'
+
+# 方式二：本地开发，link 当前检出
+dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
+```
+
+装完**重启 `dsh web`**（或 Desktop），侧栏出现「瞬移」面板即可接入远端。
+
+> `<ORG>` 是占位：仓库尚未公开，发布时替换成实际组织名。`private: true` 暂时保留（不走 npm publish，走 GitHub tag/tgz，与社区插件的做法一致）。
+
+### 兼容矩阵
+
+| 组件 | 支持范围 |
+|---|---|
+| DSH 宿主 | `>=0.2.1-rc.0 <0.3.0`（`package.json#engines.dsh`） |
+| Node | `^22.19.0 \|\| >=24.0.0` |
+| 本机 | Windows 10/11（WSL2 或 OpenSSH 客户端） |
+| 远端 | Linux（POSIX shell + `node`，可由引导器安装） |
+
 ## 「丝滑」的验收定义（产品基准）
 
 | # | 基准 | 含义 |
