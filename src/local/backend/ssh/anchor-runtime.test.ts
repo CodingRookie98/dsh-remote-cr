@@ -12,7 +12,7 @@ import {
   anchorTargetOf,
   normalizeLocalPath,
 } from './anchors.ts'
-import { resolveAnchorPath } from './anchor-runtime.ts'
+import { describeAnchors, resolveAnchorPath } from './anchor-runtime.ts'
 import type { SshTarget } from './config.ts'
 
 const TARGET: SshTarget = {
@@ -117,4 +117,36 @@ test('锚点目录记着另一台机器时结构化报错，且不改动那份�
     },
   )
   assert.equal(await readFile(mapFile, 'utf8'), body, '冲突时一个字节都不许改')
+})
+test('describeAnchors：没有目录时是空清单，不是错误', async () => {
+  const homeDir = await home()
+  const report = await describeAnchors({ homeDir })
+  assert.deepEqual(report.anchors, [])
+  assert.ok(report.directory.endsWith('anchors'), report.directory)
+})
+
+test('describeAnchors：一条好锚点给出 describeAnchor 原文，坏锚点照样列出并写明原因', async () => {
+  const homeDir = await home()
+  const resolved = await resolveAnchorPath({ homeDir, target: TARGET, remotePath: '/home/hui/proj' })
+  // 再造一份坏掉的锚点：map.json 里 target 缺 host，parseAnchorMap 会拒
+  const brokenDir = join(homeDir, '.dsh-teleport', 'anchors', 'ffffffffffffffff')
+  await mkdir(brokenDir, { recursive: true })
+  await writeFile(join(brokenDir, ANCHOR_MAP_FILENAME), JSON.stringify({ version: 1 }), 'utf8')
+
+  const report = await describeAnchors({ homeDir })
+  assert.equal(report.anchors.length, 2, '坏的也要出现，不能静默省略')
+  const okEntry = report.anchors.find((entry) => entry.ok)
+  assert.ok(okEntry !== undefined, '必须有一条好锚点')
+  const goodLines = okEntry.lines.join(' | ')
+  assert.equal(okEntry.id, resolved.map.id)
+  assert.ok((okEntry.lines[0] ?? '').includes('@' + TARGET.hostName), goodLines)
+  assert.ok(
+    okEntry.lines.some((line) => line.includes('映射：')),
+    '映射行必须打出来：' + goodLines,
+  )
+  assert.ok(okEntry.lines.some((line) => line.includes('目录：')), goodLines)
+  const badEntry = report.anchors.find((entry) => !entry.ok)
+  assert.ok(badEntry !== undefined, '坏的那份必须被标出来')
+  assert.equal(badEntry.id, 'ffffffffffffffff')
+  assert.ok((badEntry.lines[0] ?? '').includes('读不出来'), badEntry.lines.join(' | '))
 })

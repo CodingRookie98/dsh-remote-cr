@@ -13,16 +13,22 @@
  * 猜一个「差不多的路径」会让会话在本地创建一个指向不存在目录的工作区（铁律 4「失败要响」）。
  */
 
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { TeleportError } from '../errors.ts'
 import {
+  ANCHOR_MAP_FILENAME,
+  ANCHORS_DIR_NAME,
   anchorTargetOf,
+  describeAnchor,
   ensureAnchorDir,
   normalizePosixPath,
+  readAnchorMap,
   virtualToLocal,
   type AnchorMap,
 } from './anchors.ts'
+import { teleportDir } from './known-hosts.ts'
 import type { SshTarget } from './config.ts'
 
 export interface AnchorResolution {
@@ -99,4 +105,68 @@ export async function resolveAnchorPath(options: AnchorResolveOptions): Promise<
   }
 
   return { localPath, remotePath, map: ensured.map, created: ensured.created }
+}
+/** 一条锚点的诊断输出。`lines` 就是 `describeAnchor` 的原文，面板/CLI 不再另写一套解读。 */
+export interface AnchorDiagnosis {
+  readonly id: string
+  readonly dir: string
+  readonly ok: boolean
+  readonly lines: readonly string[]
+}
+
+/** `describeAnchors` 的结果。目录不存在也算成功（只是没有任何锚点）。 */
+export interface AnchorDirectoryReport {
+  readonly directory: string
+  readonly anchors: readonly AnchorDiagnosis[]
+}
+
+export interface AnchorDirectoryOptions {
+  /** **本地** home。 */
+  readonly homeDir: string
+}
+
+/**
+ * 列出本机全部锚点映射（doctor 的打印面）。
+ *
+ * 为什么需要它：锚点是「提示词与工具层共用」的那份真相，排障时用户问的第一句是
+ * 「这台机器被映射到哪了」。没有这个入口，就只能让用户去翻 `~/.dsh-teleport/anchors/<id>/map.json`
+ * ——而那正是我们不想让用户做的事。
+ *
+ * 读不出来的锚点**不吞**：照样列出来并在 `lines` 里写明坏在哪，否则用户会以为那份映射
+ * 不存在，而实际上它存在只是坏了。
+ */
+export async function describeAnchors(options: AnchorDirectoryOptions): Promise<AnchorDirectoryReport> {
+  const directory = join(teleportDir(options.homeDir), ANCHORS_DIR_NAME)
+  let names: string[]
+  try {
+    const entries = await readdir(directory, { withFileTypes: true })
+    names = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { directory, anchors: [] }
+    throw new TeleportError({
+      code: 'remote/path-unreadable',
+      detail: '读不出锚点目录 ' + directory + '：' + (error instanceof Error ? error.message : String(error)),
+      nextActions: ['确认 ' + directory + ' 可读', '确认磁盘未满'],
+    })
+  }
+
+  const anchors: AnchorDiagnosis[] = []
+  for (const name of names) {
+    const dir = join(directory, name)
+    const loaded = await readAnchorMap(join(dir, ANCHOR_MAP_FILENAME))
+    if (loaded.ok) {
+      anchors.push({ id: loaded.map.id, dir, ok: true, lines: describeAnchor(loaded.map) })
+      continue
+    }
+    anchors.push({
+      id: name,
+      dir,
+      ok: false,
+      lines: ['锚点 ' + name + '：读不出来（' + loaded.problem.code + '）', '  ' + loaded.problem.message],
+    })
+  }
+  return { directory, anchors }
 }

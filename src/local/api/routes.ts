@@ -38,7 +38,7 @@ import { selectableSources, sourceOptions, type WorkspaceSource } from '../../sh
 import { TeleportError } from '../backend/errors.ts'
 import { parseWslVerboseList } from '../backend/wsl/distro.ts'
 import { runInDistro, runWslManagement } from '../backend/wsl/exec.ts'
-import { resolveAnchorPath as resolveAnchor } from '../backend/ssh/anchor-runtime.ts'
+import { describeAnchors, resolveAnchorPath as resolveAnchor } from '../backend/ssh/anchor-runtime.ts'
 import { listSshSources, nodeSshSourcesOptions, resolveTargetByAlias } from '../backend/ssh/targets.ts'
 import { toUnc, uncCandidates } from '../backend/wsl/unc.ts'
 import { listDistroDirectory, listLocalDirectory } from './browse.ts'
@@ -417,6 +417,14 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   mount('/workspaces', ['GET'], async (_req, res) => {
     const records: WorkspaceRecord[] = flows.records()
     sendJson(res, 200, okEnvelope(records))
+  })
+
+  // ── 锚点诊断（S10-F）────────────────────────────────────────────────────
+  // M2 出口原文要求「doctor 能打印当前 host 的映射」。这里给的就是那份打印面：
+  // 输出直接来自 `describeAnchor`，与提示词/工具层用的是同一份 map.json，不另写一套解读。
+  mount('/anchors', ['GET'], async (_req, res) => {
+    const report = await describeAnchors({ homeDir })
+    sendJson(res, 200, okEnvelope(report))
   })
 
   // ── 投影（P3.5）──────────────────────────────────────────────────────────

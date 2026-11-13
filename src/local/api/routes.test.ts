@@ -11,6 +11,8 @@ import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
 import { TeleportError } from '../backend/errors.ts'
 import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerTeleportRoutes } from './routes.ts'
+import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
+import type { SshTarget } from '../backend/ssh/config.ts'
 
 const DISTROS: DistroInfo[] = [
   { name: 'ubuntu_dev', state: 'Running', version: 2, isDefault: true },
@@ -93,6 +95,7 @@ function rig(
   extra: {
     projection?: ProjectionService
     resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
+    homeDir?: string
   } = {},
 ): Rig {
   const calls: string[] = []
@@ -131,6 +134,7 @@ function rig(
   const mounted = registerTeleportRoutes(ctx, {
     deps,
     wslExecutable: 'wsl.exe',
+    ...(extra.homeDir === undefined ? {} : { homeDir: extra.homeDir }),
     ...(extra.projection === undefined ? {} : { projection: extra.projection }),
     ...(extra.resolveAnchorPath === undefined ? {} : { resolveAnchorPath: extra.resolveAnchorPath }),
   })
@@ -159,11 +163,12 @@ function rig(
   }
 }
 
-test('十二条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('十三条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
     [
+      '/teleport/api/anchors GET',
       '/teleport/api/attach POST',
       '/teleport/api/disconnect POST',
       '/teleport/api/flow GET',
@@ -474,4 +479,33 @@ test('defaultAnchorResolver：别名在 config 里就建出锚点目录并返回
   const map = JSON.parse(await readFile(mapPath, 'utf8')) as { version: number; target: { host: string } }
   assert.equal(map.version, 1)
   assert.equal(map.target.host, '10.0.0.9')
+})
+test('/anchors 打印本机锚点映射；没有锚点时是空清单而不是错误', async () => {
+  const emptyHome = await mkdtemp(join(tmpdir(), 'teleport-routes-home-'))
+  const empty = await rig({}, { homeDir: emptyHome }).call({ path: '/anchors' })
+  assert.equal(empty.status, 200)
+  const emptyValue = (empty.json as { value: { directory: string; anchors: unknown[] } }).value
+  assert.deepEqual(emptyValue.anchors, [])
+  assert.ok(emptyValue.directory.endsWith('anchors'), emptyValue.directory)
+
+  // 用产品自己的 ensureAnchorDir 造一份真锚点，再让路由读出来：两边必须指向同一份 map.json
+  const homeDir = await mkdtemp(join(tmpdir(), 'teleport-routes-home-'))
+  const anchorTarget: SshTarget = {
+    alias: 'gcp',
+    hostName: '10.0.0.9',
+    user: 'hui',
+    port: 22,
+    identityFiles: [],
+    proxyJump: [],
+    source: { file: '<test>', line: 1 },
+  }
+  const resolved = await resolveAnchorPath({ homeDir, target: anchorTarget, remotePath: '/home/hui/proj' })
+  const found = await rig({}, { homeDir }).call({ path: '/anchors' })
+  const value = (found.json as { value: { anchors: { id: string; ok: boolean; lines: string[] }[] } }).value
+  assert.equal(value.anchors.length, 1)
+  const entry = value.anchors[0]
+  assert.ok(entry !== undefined)
+  assert.equal(entry.id, resolved.map.id)
+  assert.equal(entry.ok, true)
+  assert.ok(entry.lines.some((line) => line.includes('映射：')), entry.lines.join(' | '))
 })
