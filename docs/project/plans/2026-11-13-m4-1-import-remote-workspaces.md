@@ -13,6 +13,14 @@
 - `src/local/projection/import.ts`：`parseBaselineFrame`（只认 baseline，坏条目跳过）、`planImport`（id + 路径双重判重，远端同路径只导一条）。
 - `import.test.ts` 4 条单测。
 
+## 1.5 已接线（2026-11-13）
+
+`service.importable()`（follow 首帧 10s 上限）→ `planImport` 过滤 → `importWorkspaces(paths)`（经连接上的 `anchorFor` 映射）；
+路由 `GET /workspace/importable`、`POST /workspace/import`；面板「导入远端工作区」+ 勾选 + 空态文案。
+
+**真机**：`GATE=import` → `M4-1-list` PASS（`opened:clicked`、`count:0`）。当前远端只有已接入的那一个 workspace，
+0 行是合法负控。**正例未跑**（远端需先有第二个 workspace）。
+
 ## 2. 待做
 
 | # | 事项 | 关键点 |
