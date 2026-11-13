@@ -72,6 +72,14 @@ while (Date.now() < untilPhase) {
   if (phase === 'attach') break
   await sleep(20)
 }
+// **先确认端口真的在监听**再取消：否则这一跑根本没观测到「忙 → 释放」，数字就是假的
+// （R1 #5 E1：原版在 `await running` 之后才采样 busy，那时连接已经 dispose，必然 false）。
+let busyBefore = remotePortBusy()
+const waitBusy = Date.now() + 20_000
+while (!busyBefore && Date.now() < waitBusy) {
+  await sleep(500)
+  busyBefore = remotePortBusy()
+}
 const abortedAt = Date.now()
 controller.abort()
 let cancelled = false
@@ -80,12 +88,11 @@ try {
 } catch (error) {
   cancelled = (error as { code?: string }).code === 'remote/cancelled'
 }
-const busyAtAbort = remotePortBusy()
-const pollFrom = Date.now()
+// 释放耗时从 **abort 那一刻**起算，并且只在「取消前确实忙」时才成立。
 let freedAfterMs: number | null = null
-while (Date.now() - pollFrom < 90_000) {
+while (busyBefore && Date.now() - abortedAt < 90_000) {
   if (!remotePortBusy()) {
-    freedAfterMs = Date.now() - pollFrom
+    freedAfterMs = Date.now() - abortedAt
     break
   }
   await sleep(2_000)
@@ -98,7 +105,8 @@ const result = {
   cancelPhase: phase,
   cancelled,
   connected: service.connected,
-  busyAtAbort,
+  busyBefore,
+  observedBusyThenFreed: busyBefore && freedAfterMs !== null,
   freedAfterMs,
 }
 console.log(JSON.stringify(result, null, 2))

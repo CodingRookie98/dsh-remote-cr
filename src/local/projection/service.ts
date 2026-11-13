@@ -170,6 +170,8 @@ export class ProjectionService {
    * 那 52ms 的便宜路径，回到 9–20s 冷启动。
    */
   #detached: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
+  /** 本次接入里已 dispose 的留存连接：回滚时不能再把它写回去（R1 #5 B1）。 */
+  #discarded: { readonly connection: RemoteConnection } | undefined
   /** 正在进行的接入。成功/失败/取消都会清掉——清不掉就会永远显示「接入中」。 */
   #attach: AttachProgress | undefined
 
@@ -224,6 +226,7 @@ export class ProjectionService {
     // B 不 dispose、`#live` 不清、link 还是 connected）。
     const liveBefore = this.#live
     const detachedBefore = this.#detached
+    this.#discarded = undefined
     /** 本次接入是否新建了连接（由 `#ensure` 报，不看槽位）。 */
     let created = false
     try {
@@ -256,7 +259,11 @@ export class ProjectionService {
         // 只有 `created` —— 本次真的新建的连接 —— 才回收。复用连接绝不动（B1/D3）。
         const live = this.#live
         this.#live = liveBefore
-        this.#detached = detachedBefore
+        // `detachedBefore` 是**值快照**，它可能在本次接入里已被 `#dropDetached()` dispose
+        // （救援失败 / 换 target 丢弃）。写回一个死连接比不写回更糟（R1 #5 B1）。
+        const discarded = this.#takeDiscarded()
+        this.#detached =
+          detachedBefore !== undefined && detachedBefore.connection === discarded?.connection ? undefined : detachedBefore
         if (created && live !== undefined) {
           const clean = await live.connection.dispose()
           if (clean === false) {
@@ -464,10 +471,22 @@ export class ProjectionService {
   }
 
   /** 真收掉留存连接（目标变了、用户断开、进程退出时才调）。 */
+  /** 取走「本次接入里被丢弃的留存连接」（同时清标记）。字段窄化会让直接读变成 `never`。 */
+  #takeDiscarded(): { readonly connection: RemoteConnection } | undefined {
+    const value = this.#discarded
+    this.#discarded = undefined
+    return value
+  }
+
   #dropDetached(): void {
     const entry = this.#detached
     this.#detached = undefined
-    entry?.connection.dispose()
+    if (entry !== undefined) {
+      // 记下「这条已经 dispose 了」：取消回滚若把 detachedBefore 值快照写回去，
+      // 死连接会复活成 `#live`（R1 #5 D7/D8）。
+      this.#discarded = { connection: entry.connection }
+      entry.connection.dispose()
+    }
   }
 
   #startDriver(target: ConnectTarget): void {
@@ -572,7 +591,13 @@ export class ProjectionService {
         this.#dropDetached()
       }
     }
-    if (live !== undefined) this.disconnect()
+    if (live !== undefined) {
+      // 换 target 只「搁置」旧连接，不走 `disconnect()`：那条路径会 `markAllOffline()`，
+      // 而取消这次接入后要回滚到接入前 —— 那时旧工作区仍应在线（R1 #5 M1/D5）。
+      this.#live = undefined
+      this.#stopDriver()
+      this.#detatch(live)
+    }
     const connection = await this.#connect(target, control)
     this.#live = { target, connection }
     this.#lastTarget = target

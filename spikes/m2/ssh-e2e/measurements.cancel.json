@@ -1,11 +1,12 @@
 {
-  "at": "2026-11-13T11:36:41.314Z",
+  "at": "2026-11-13T11:54:04.093Z",
   "alias": "gcp",
   "remotePort": 8945,
-  "attachMs": 15521,
+  "attachMs": 20949,
   "cancelPhase": "attach",
   "cancelled": true,
   "connected": false,
-  "busyAtAbort": false,
-  "freedAfterMs": 4367
+  "busyBefore": true,
+  "observedBusyThenFreed": true,
+  "freedAfterMs": 4012
 }
