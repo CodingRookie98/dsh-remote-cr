@@ -89,6 +89,24 @@ R1 #3 判「不是 Zero Blockers」：1 BLOCKER + 5 MAJOR。逐条：
 
 **门禁**：双 tsc Exit 0、`pnpm test` **560/560**、R1 #3 夹具 1 绿 2 红（D1/D2 已修、P1 证明 N1 修复成立）。
 
+### 4.3 R1 #4 处置（2026-11-13，第四轮复审）
+
+R1 #4 判「不是 Zero Blockers」：2 BLOCKER + 4 MAJOR + 5 MINOR。基线漂移已记账（开审 `d557a91`，中途 HEAD 前进到 `64fc7ee`，其夹具随 `git add -A` 被带入）；本轮之后**签署基线定死为本提交**。
+
+| 条目 | 处置 | 取证 |
+|---|---|---|
+| **B1（D1/D2/D3）** 上一轮的「槽位是否被改写」判据仍是错的 | `#ensure` 返回 `{ connection, created }`：live 命中与 `#detached` 救回都是 `created:false`，只有新 `#connect` 才 true；取消时**无条件回滚** `#live`/`#detached` 到接入前，**只有 created 才 dispose** | 夹具 D1/D2/D3 全部转红、P1/P2 绿 |
+| **B2（D6）** `finally` 先 throw 再清 `#attach` ⇒ 面板永久卡「接入中」 | 清理顺序对调：**先清 `#attach`，再可能抛** `remote/recycle-incomplete` | 夹具 D6 转红、P6 绿 |
+| M-A WSL 握手 signal | 代码已补；**口径更正**：`live.test.ts` 里没有专门测试，§4.2 写的「单测」不成立，改记为「tsc + 未跑真机」（R1 #4 M1） | — |
+| M-B 认证错误分类 | 主干成立（P4：`Permission denied (publickey).` → `remote/auth-failed`）；但 dsh 日志里混进的 `Connection refused` 会被读成 `remote/host-unreachable`（D4 仍绿） | 记账，未修 |
+| M-E offline 占位 | 成立（P3：同一 `workspaceId` 不会变两条，再接入转 online） | — |
+| M2 探针 timeline 复用 | `phases` / `timeline` 改 `let` 并在第二次接入前重置（否则 G-A5-1 与 G-A5-2 的证据逐字相同） | 本轮**未重跑真机**（下次跑生效） |
+| M3「3270ms」无落盘 | 新增 `spikes/m2/ssh-e2e/cancel-reclaim.ts` 并跑出 `measurements.cancel.json`：`cancelPhase:"attach"`、`cancelled:true`、`busyAtAbort:false`、`freedAfterMs:4367` | 已落盘 |
+| M4 里程碑旧口径 | `milestones.md` 的 A5 行与出口句更新到四轮后的状态 | 已改 |
+| D5 回滚后投影仍 offline | **未修**：取消回滚只恢复连接，不恢复投影可用性（换 target 时 `disconnect()` 会 `markAllOffline`） | 记账，留 R1 #5 |
+
+**门禁**：双 tsc Exit 0、`pnpm test` **560/560**、R1 #4 夹具 10 条里 D1/D2/D3 转红 + D6 转红、P1–P6 全绿；D4/D5 仍绿（记账）。
+
 ## 5. R1 台账
 
 | 轮次 | 基线 | 派发 | 结果 |
@@ -97,7 +115,9 @@ R1 #3 判「不是 Zero Blockers」：1 BLOCKER + 5 MAJOR。逐条：
 | R1 #2（待派） | 本轮修复后的工作区 | — | **未派发**。复审输入 = 本条 + §4 处置表 + `repro/cancel-lie.test.ts`（现在应 2/3 转红、第 3 条因断言只看 HTTP 状态而不再有效） |
 | R1 #2 | `1c12736` | `subagent r1-reviewer-2` | **报告已落盘**：1 BLOCKER + 3 MAJOR + 6 MINOR，非 Zero Blockers；夹具 `round2-probes.test.ts` C1–C5 当时 5/5 绿（缺陷成立）。Lead 已处置（§4.1），复跑后该夹具 5/5 转红 |
 | R1 #3 | `23f5671` | `subagent r1-reviewer-3` | **报告已落盘**：1 BLOCKER + 5 MAJOR，非 Zero Blockers；夹具 `round3-probes.test.ts` 当时 3/3 绿。Lead 已处置（§4.2；M-D 记账未做），复跑后 D1/D2 转红、P1 仍绿 |
-| R2（待派） | R1 #4 之后 | — | 元架构师终审 |
+| R1 #4 | `d557a91`（中途漂到 `64fc7ee`） | `subagent r1-reviewer-4` | **报告已落盘**：2 BLOCKER + 4 MAJOR + 5 MINOR，非 Zero Blockers；夹具 `round4-probes.test.ts`（10 条）+ `drift-64fc7ee.test.ts`（D6/P6）。Lead 已处置（§4.3）：D1/D2/D3/D6 转红、P1–P6 绿；D4/D5 记账 |
+| R1 #5（待派） | 本提交 | — | 复审 B1/B2 与 D4/D5/M2 |
+| R2（待派） | R1 #5 之后 | — | 元架构师终审 |
 
 ## 6. Lead 代位自查（不替代 R1）
 
@@ -117,7 +137,10 @@ R1 #3 判「不是 Zero Blockers」：1 BLOCKER + 5 MAJOR。逐条：
 - [x] A5/A8 正向 8/8 + 负控 3/8（最终代码）
 - [x] A7 正向 7/7 + 负控 4/7（`spikes/m2/ssh-e2e/reconnect.ts`）
 - [x] R1 #2 复审（判 1 BLOCKER + 3 MAJOR + 6 MINOR；已全部处置，见 §4.1）
-- [ ] R1 #3 复审（基线 = 本轮修复后的工作区）
+- [x] R1 #2 复审（判 1 BLOCKER + 3 MAJOR + 6 MINOR；已全部处置）
+- [x] R1 #3 复审（判 1 BLOCKER + 5 MAJOR；已处置，M-D 已补）
+- [x] R1 #4 复审（判 2 BLOCKER + 4 MAJOR + 5 MINOR；B1/B2 已修，D4/D5 记账）
+- [ ] R1 #5 复审（基线 = 本提交）
 - [ ] R2 元架构师终审
 - [ ] §3 剩余未验证子句（A2 关 GUI、A7 链路丢包/整机重启、A5 verify/barrier 与端口回收代价、A3 钩子）
 - [ ] `isTransportLoss` 的 slug 撞名风险（m-2 残留）

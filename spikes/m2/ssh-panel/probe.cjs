@@ -744,8 +744,8 @@ async function runGateA5A8() {
   }
 
   // ── A5：阶段进度 + 取消（冷路径，先取消再真接入） ──────────────────────
-  const phases = []
-  const timeline = []
+  let phases = []
+  let timeline = []
   let sawCancelButton = false
   let cancelClicked = false
   let cancelAt = 0
@@ -951,6 +951,11 @@ async function runGateA5A8() {
     timeline,
   })
 
+
+  // G-A5-1 的 timeline 必须是**第二次接入自己的**：取消那次的 timeline 已写进 G-A5-2 的
+  // detail（record 存的是同一个数组引用），不换新数组会让两条断言的证据逐字相同（R1 #4 M2）。
+  phases = []
+  timeline = []
 
   // ── A5：真正接进来（这次不取消） ────────────────────────────────────
   if (!firstOnline) {

@@ -167,14 +167,19 @@ test('D3：救回留存连接后取消 ⇒ 既有连接被 dispose（复用分�
   const store = new ProjectionStore()
   const a = fakeConn({ rehandshake: async () => {} })
   const gate = deferred<void>()
-  let calls = 0
+  let gated = false
+  let connects = 0
   const service = new ProjectionService({
     store,
     timers,
     async connect() {
-      calls += 1
+      connects += 1
       return { ...a, rpc: rpc(async (endpoint) => {
-        if (endpoint === 'workspace/create') { await gate.promise; return workspace('ws-a') }
+        if (endpoint === 'workspace/create') {
+          // 第一次接入立刻回来；第二次（救回留存连接）才挂在 gate 上，好在 attach 段取消。
+          if (gated) await gate.promise
+          return workspace('ws-a')
+        }
         return { items: [] }
       }) } as never
     },
@@ -183,6 +188,7 @@ test('D3：救回留存连接后取消 ⇒ 既有连接被 dispose（复用分�
   await service.attach(T1, ATTACH)
   service.disconnect()
   assert.equal(service.connected, false)
+  gated = true
 
   const controller = new AbortController()
   const running = service.attach(T1, ATTACH, { signal: controller.signal })
@@ -193,7 +199,7 @@ test('D3：救回留存连接后取消 ⇒ 既有连接被 dispose（复用分�
 
   assert.equal(a.disposes.count, 1, '复用（rehandshake 救回）的既有连接被取消连同远端进程一起收掉了')
   assert.equal(service.connected, false, '接入前有 #detached 的活连接，取消后连留存也没了')
-  assert.equal(calls, 1, '这一跑确实没有新建连接（connect 只被调了一次）')
+  assert.equal(connects, 1, '这一跑确实没有新建连接（connect 只被调了一次）')
 })
 
 // ── P1：D1 的修法正证 —— 换 target 取消后回到「连着 A」 ──────────────────────
@@ -235,20 +241,25 @@ test('P2：同 target 复用后取消不 dispose 用户正在用的连接', asyn
   const store = new ProjectionStore()
   const a = fakeConn()
   const gate = deferred<void>()
-  let calls = 0
+  let gated = false
+  let connects = 0
   const service = new ProjectionService({
     store,
     timers,
     async connect() {
-      calls += 1
+      connects += 1
       return { ...a, rpc: rpc(async (endpoint) => {
-        if (endpoint === 'workspace/create') { await gate.promise; return workspace('ws-a') }
+        if (endpoint === 'workspace/create') {
+          if (gated) await gate.promise
+          return workspace('ws-a')
+        }
         return { items: [] }
       }) } as never
     },
   })
 
   await service.attach(T1, ATTACH)
+  gated = true
   const controller = new AbortController()
   const running = service.attach(T1, ATTACH, { signal: controller.signal })
   await tick()
@@ -256,7 +267,7 @@ test('P2：同 target 复用后取消不 dispose 用户正在用的连接', asyn
   gate.resolve()
   await assert.rejects(running, (error: unknown) => (error as { code?: string }).code === 'remote/cancelled')
 
-  assert.equal(calls, 1, '同 target 复用：没有新建连接')
+  assert.equal(connects, 1, '同 target 复用：没有新建连接')
   assert.equal(a.disposes.count, 0, '复用的连接没被收')
   assert.equal(service.connected, true)
 })

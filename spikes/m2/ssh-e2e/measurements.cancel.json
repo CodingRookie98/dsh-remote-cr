@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-13T11:36:41.314Z",
+  "alias": "gcp",
+  "remotePort": 8945,
+  "attachMs": 15521,
+  "cancelPhase": "attach",
+  "cancelled": true,
+  "connected": false,
+  "busyAtAbort": false,
+  "freedAfterMs": 4367
+}

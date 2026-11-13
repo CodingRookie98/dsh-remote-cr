@@ -223,11 +223,16 @@ export class ProjectionService {
     // 只看布尔值会在「先连着 A、再接入 B 时取消 B」的情况下放过 B 的连接（R1 #3 D1：
     // B 不 dispose、`#live` 不清、link 还是 connected）。
     const liveBefore = this.#live
+    const detachedBefore = this.#detached
+    /** 本次接入是否新建了连接（由 `#ensure` 报，不看槽位）。 */
+    let created = false
     try {
       // 三段边界检查：底层（ssh / 假连接 / 别家实现）未必认 signal，服务层不能因此变成
       // 「点了取消照样建成工作区」。R1-B-1 的复现 1 就是靠这条兜底转红的。
       throwIfAborted(signal)
-      const connection = await this.#ensure(target, { ...control, onPhase: phase })
+      const ensured = await this.#ensure(target, { ...control, onPhase: phase })
+      created = ensured.created
+      const connection = ensured.connection
       throwIfAborted(signal)
       phase('attach')
       const withSignal: AttachRequest = signal === undefined ? request : { ...request, signal }
@@ -241,12 +246,18 @@ export class ProjectionService {
       // 取消且这条连接是本次新建的 ⇒ 连带回收。否则「取消」会留下一条仍在监听的
       // 远端 dsh 与一个没人持有的连接对象（R1 #2 C5：connected:true / disposed:false）。
       // 取消只回滚到接入前的状态；用户主动「断开」仍走 `disconnect()`（留存连接，§8.5）。
+      // **先清进度，再谈回收**：finally 里的任何 throw 都不能把 `#attach` 留在面板上 ——
+      // 一次 `recycle-incomplete` 会让此后每次 `/attach` 都被 `remote/attach-busy` 拒绝（R1 #4 B2）。
+      const current = this.#attach
+      if (current !== undefined && current.startedAt === startedAt) this.#attach = undefined
+
       if (signal !== undefined && signal.aborted) {
+        // 取消一律把连接状态回滚到**接入前**（live 与 detached 一起）；
+        // 只有 `created` —— 本次真的新建的连接 —— 才回收。复用连接绝不动（B1/D3）。
         const live = this.#live
-        if (live !== undefined && live !== liveBefore) {
-          // 本次接入新装上的连接：回收它，并把 `#live` 回滚到接入前的状态。
-          // 复用（同一 target）时 `live === liveBefore`，绝不动用户正在用的连接。
-          this.#live = liveBefore
+        this.#live = liveBefore
+        this.#detached = detachedBefore
+        if (created && live !== undefined) {
           const clean = await live.connection.dispose()
           if (clean === false) {
             // 用户取消了，但远端没收干净：这比「已取消」更需要他知道（A7 要求可回收）。
@@ -258,9 +269,6 @@ export class ProjectionService {
           }
         }
       }
-      // 只清自己这一份：将来若放开并发，先结束者不能把后一次的进度清掉。
-      const current = this.#attach
-      if (current !== undefined && current.startedAt === startedAt) this.#attach = undefined
     }
   }
 
@@ -534,9 +542,15 @@ export class ProjectionService {
     return this.#connect(target)
   }
 
-  async #ensure(target: ConnectTarget, control?: AttachControl): Promise<RemoteConnection> {
+  /**
+   * 拿到一条可用连接，并告诉调用方它**是不是本次新建的**。
+   *
+   * `created` 不能靠「槽位有没有被改写」推断：从 `#detached` 救回的留存连接同样会改写
+   * `#live`，但那是复用、绝不能在取消时被收掉（R1 #4 B1/D3）。
+   */
+  async #ensure(target: ConnectTarget, control?: AttachControl): Promise<{ connection: RemoteConnection; created: boolean }> {
     const live = this.#live
-    if (live !== undefined && sameTarget(live.target, target)) return live.connection
+    if (live !== undefined && sameTarget(live.target, target)) return { connection: live.connection, created: false }
     const detached = this.#detached
     // 同 target 的留存连接可以直接救回来 —— 这正是「再点一次接入」不该重付冷启动的原因。
     if (detached !== undefined && sameTarget(detached.target, target)) {
@@ -550,7 +564,7 @@ export class ProjectionService {
           this.#live = { target, connection: detached.connection }
           this.#lastTarget = target
           this.#stopDriver()
-          return detached.connection
+          return { connection: detached.connection, created: false }
         } catch {
           this.#dropDetached()
         }
@@ -563,7 +577,7 @@ export class ProjectionService {
     this.#live = { target, connection }
     this.#lastTarget = target
     this.#stopDriver()
-    return connection
+    return { connection, created: true }
   }
 
   #requireLive(): RemoteConnection {
