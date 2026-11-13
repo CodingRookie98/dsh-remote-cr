@@ -41,7 +41,7 @@ import { listDistroDirectory, listLocalDirectory } from './browse.ts'
 import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
-import type { ConnectTarget, ProjectionService } from '../projection/service.ts'
+import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts'
 import type { ProjectedSession, ProjectedWorkspace } from '../projection/store.ts'
 import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
 import { WorkspaceFlows } from './workspace.ts'
@@ -89,6 +89,14 @@ export interface RouteOptions {
    * 四选一与目录浏览，不该被投影的依赖拖着走。
    */
   readonly projection?: ProjectionService
+  /**
+   * SSH 目标的「本地锚点路径」落实器（建目录 + 写 map.json，见 `ssh/anchor-runtime.ts`）。
+   *
+   * WSL 不需要它：UNC 路径由 `toUnc` 直接推出来，且 UNC 路径不需要预先存在。
+   * SSH 没有这层免费推导，所以做成注入——省略时 SSH 省略 `localPath` 会**明确报错**，
+   * 而不是由路由层偷偷猜一个本地路径。
+   */
+  readonly resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
 }
 
 /** 默认 `wsl.exe`；允许用环境变量指向特定版本（多 WSL 安装时用得上）。 */
@@ -377,7 +385,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
 
   mount('/attach', ['POST'], async (req, res) => {
     const service = requireProjection()
-    const input = parseAttachInput(await readJsonBody(req))
+    const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
     const result = await service.attach(input.target, {
       remotePath: input.remotePath,
       localPath: input.localPath,
@@ -521,7 +529,21 @@ function toTargetInfo(target: ConnectTarget): RemoteTargetInfo {
  * 落实（`anchors.ts` 的 `ensureAnchorDir`）。所以 SSH 省略 localPath 直接结构化报错，
  * 不拿远端路径去猜一个本地路径——猜错只会让会话在本地创建一个指向不存在目录的工作区。
  */
-export function parseAttachInput(body: unknown): AttachInput & { readonly localPath: string } {
+/** `/attach` 请求体的**纯解析**结果：`localPath` 只在客户端显式给出时存在。 */
+export interface AttachDraft {
+  readonly target: ConnectTarget
+  readonly remotePath: string
+  readonly localPath?: string
+  readonly title?: string
+}
+
+/**
+ * 纯解析（无副作用）——把「解析」与「落实本地路径」分开。
+ *
+ * 分开的理由：WSL 的本地路径是纯推导（`toUnc`），SSH 的本地路径要**建目录**。
+ * 混在一个同步函数里只能二选一：要么让 WSL 也等一次 IO，要么让 SSH 拿不到真路径。
+ */
+export function parseAttachDraft(body: unknown): AttachDraft {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     throw new TeleportError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
   }
@@ -536,18 +558,59 @@ export function parseAttachInput(body: unknown): AttachInput & { readonly localP
     })
   }
   const givenLocal = record['localPath']
-  const localPath = typeof givenLocal === 'string' && givenLocal !== ''
-    ? givenLocal
-    : target.backend === 'wsl'
-      ? toUnc(target.distro, remotePath)
-      : (() => {
-          throw new TeleportError({
-            code: 'remote/workspace-unwritable',
-            detail: `SSH 目标 ${target.alias} 的本地路径必须显式给出：宿主还没有为它建立锚点目录`,
-            nextActions: ['先建立锚点目录再接入', '改用 WSL 目标'],
-          })
-        })()
+  const localPath = typeof givenLocal === 'string' && givenLocal !== '' ? givenLocal : undefined
   const rawTitle = record['title']
   const title = typeof rawTitle === 'string' && rawTitle !== '' ? rawTitle : undefined
-  return { target, remotePath, localPath, ...(title === undefined ? {} : { title }) }
+  return {
+    target,
+    remotePath,
+    ...(localPath === undefined ? {} : { localPath }),
+    ...(title === undefined ? {} : { title }),
+  }
+}
+
+/** SSH 缺 `localPath` 且宿主没接锚点落实器时的固定说法（两条路径共用，避免文案分叉）。 */
+function anchorNotWired(target: SshConnectTarget): TeleportError {
+  return new TeleportError({
+    code: 'remote/workspace-unwritable',
+    detail: `SSH 目标 ${target.alias} 的本地路径必须显式给出：宿主还没有为它建立锚点目录`,
+    nextActions: ['先建立锚点目录再接入', '改用 WSL 目标'],
+  })
+}
+
+/**
+ * 把 draft 补成可执行的 `AttachInput`：本地路径按后端推导/落实。
+ *
+ * 顺序：客户端显式给的最优先（用户点了具体的本地目录）；WSL 次之（UNC 推导，零 IO）；
+ * SSH 最后（要建目录，失败了就报错）。
+ */
+export async function completeAttachInput(
+  body: unknown,
+  resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>,
+): Promise<AttachInput & { readonly localPath: string }> {
+  const draft = parseAttachDraft(body)
+  if (draft.localPath !== undefined) {
+    return { ...draft, localPath: draft.localPath }
+  }
+  if (draft.target.backend === 'wsl') {
+    return { ...draft, localPath: toUnc(draft.target.distro, draft.remotePath) }
+  }
+  if (resolveAnchorPath === undefined) {
+    throw anchorNotWired(draft.target)
+  }
+  const localPath = await resolveAnchorPath(draft.target, draft.remotePath)
+  return { ...draft, localPath }
+}
+
+/**
+ * 同步版本：只在「本地路径能当场得出」时可用（WSL 推导或客户端显式给出）。
+ *
+ * 保留它是为了既有单测与 `/attach` 之外的可能调用点有一个不改语义的入口；
+ * SSH 的锚点落实必须走上面的异步版本。
+ */
+export function parseAttachInput(body: unknown): AttachInput & { readonly localPath: string } {
+  const draft = parseAttachDraft(body)
+  if (draft.localPath !== undefined) return { ...draft, localPath: draft.localPath }
+  if (draft.target.backend === 'wsl') return { ...draft, localPath: toUnc(draft.target.distro, draft.remotePath) }
+  throw anchorNotWired(draft.target)
 }

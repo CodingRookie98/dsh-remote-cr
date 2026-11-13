@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { DirListing, DistroInfo, RemoteFacts, SourceReport } from '../../shared/api.ts'
 import { API_PREFIX } from '../../shared/api.ts'
-import { ProjectionService, type ConnectTarget } from '../projection/service.ts'
+import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '../projection/service.ts'
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
 import { TeleportError } from '../backend/errors.ts'
@@ -78,7 +78,13 @@ interface Rig {
   call(input: { path: string; method?: string; address?: string; body?: string; query?: Record<string, string> }): Promise<Call>
 }
 
-function rig(overrides: Partial<HostDeps> = {}, extra: { projection?: ProjectionService } = {}): Rig {
+function rig(
+  overrides: Partial<HostDeps> = {},
+  extra: {
+    projection?: ProjectionService
+    resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
+  } = {},
+): Rig {
   const calls: string[] = []
   const deps: HostDeps = {
     listSources: async (): Promise<SourceReport> => ({ wslAvailable: true, distros: DISTROS, probeError: null }),
@@ -116,6 +122,7 @@ function rig(overrides: Partial<HostDeps> = {}, extra: { projection?: Projection
     deps,
     wslExecutable: 'wsl.exe',
     ...(extra.projection === undefined ? {} : { projection: extra.projection }),
+    ...(extra.resolveAnchorPath === undefined ? {} : { resolveAnchorPath: extra.resolveAnchorPath }),
   })
   assert.deepEqual(effects.length, mounted.length, '每条路由恰好一个 effect')
 
@@ -391,4 +398,35 @@ test('parseAttachInput：WSL 省略 localPath 仍推 UNC；SSH 省略则结构�
     localPath: 'D:\\anchors\\gcp\\home\\dev\\proj',
   })
   assert.equal(explicit.localPath, 'D:\\anchors\\gcp\\home\\dev\\proj')
+})
+test('注入锚点落实器后，SSH 目标省略 localPath 也能接入（且落实器拿到的是别名目标）', async () => {
+  const seen: string[] = []
+  const projection = new ProjectionService({
+    store: new ProjectionStore(),
+    connect: async () => { throw new Error('这条测试不该真的连远端') },
+  })
+  // 用假的 attach 结果顶替真远端：这里验的是「路由把落实后的 localPath 交给了服务」
+  const captured: { localPath?: string } = {}
+  const original = projection.attach.bind(projection)
+  let seenTarget: SshConnectTarget | undefined
+  projection.attach = async (target, request) => {
+    seenTarget = target as SshConnectTarget
+    captured.localPath = request.localPath
+    throw Object.assign(new Error('stub'), { name: 'StubAttach' })
+  }
+  const sshTarget = { backend: 'ssh' as const, alias: 'gcp', port: 8899, remoteRoot: '/home/dev/harness' }
+  const answer = await rig({}, {
+    projection,
+    resolveAnchorPath: async (target, remotePath) => {
+      seen.push(target.alias + ' ' + remotePath)
+      return 'D:/anchors/gcp' + remotePath
+    },
+  }).call({ path: '/attach', method: 'POST', body: JSON.stringify({ target: sshTarget, remotePath: '/home/dev/proj' }) })
+
+  assert.deepEqual(seen, ['gcp /home/dev/proj'], '落实器必须拿到别名与远端路径')
+  assert.equal(seenTarget?.backend, 'ssh', '服务拿到的必须是 SSH 目标')
+  assert.equal(captured.localPath, 'D:/anchors/gcp/home/dev/proj', '交给服务的是落实后的本地路径')
+  assert.equal(answer.status, 200)
+  assert.equal((answer.json as { ok: boolean }).ok, false, '假 attach 抛错要如实回错误包')
+  projection.attach = original
 })
