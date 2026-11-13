@@ -18,8 +18,9 @@
 `service.importable()`（follow 首帧 10s 上限）→ `planImport` 过滤 → `importWorkspaces(paths)`（经连接上的 `anchorFor` 映射）；
 路由 `GET /workspace/importable`、`POST /workspace/import`；面板「导入远端工作区」+ 勾选 + 空态文案。
 
-**真机**：`GATE=import` → `M4-1-list` PASS（`opened:clicked`、`count:0`）。当前远端只有已接入的那一个 workspace，
-0 行是合法负控。**正例未跑**（远端需先有第二个 workspace）。
+**真机（正例，2026-11-13）**：`GATE=import` **2/2** —— `M4-1-list`（`count:1`、`/home/hui/workspace-import`）、`M4-1-import`（`clicked`、`before:1`、`after:2`）。
+
+修复过程中暴露并解决的四个「静默失败」：① follow 的 payload 必须是 `{ args }`；② 流帧外层有 `item` 包装；③ 首帧是 error 时要抛而不是当空列表；④ `callApi` 会自己 stringify，别二次编码。
 
 ## 2. 待做
 
