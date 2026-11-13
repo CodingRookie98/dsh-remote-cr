@@ -52,6 +52,14 @@ export interface LiveSshOptions {
   readonly configFile?: string
   readonly sshExecutable?: string
   readonly connectTimeoutMs?: number
+  /**
+   * 本机凭据代理端口：给了就在 `ssh` 上加 `-R 127.0.0.1:0:127.0.0.1:<port>`。
+   *
+   * 为什么是可选：代理起不来（没有凭据文件、端口被占）不该让整个远端连不上 ——
+   * 那种情况下用户仍能连远端、只是模型请求不走代理。但**失败要响**：代理起不来时
+   * 入口会记一条日志，而不是静默当成没配。
+   */
+  readonly proxyPort?: number | (() => number | undefined)
   /** 装哪个版本的 dsh（只有走到引导器时用得上）。 */
   readonly dshVersion?: string
   /**
@@ -154,6 +162,9 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
     ...(ssh.dshVersion === undefined ? {} : { dshVersion: ssh.dshVersion }),
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
   })
+  // 端口可以在连的时候才定：代理与「连远端」是两条独立生命期，插件入口先起代理、
+  // 用户点连接时才读端口。读晚了没关系，读到 undefined 就是不挂 `-R`（下表已写清后果）。
+  const proxyPort = typeof ssh.proxyPort === 'function' ? ssh.proxyPort() : ssh.proxyPort
   const handle = await launchSshDsh({
     homeDir: ssh.homeDir,
     target: resolved.target,
@@ -164,6 +175,7 @@ async function connectSsh(target: SshConnectTarget, options: LiveConnectOptions)
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
     ...(ssh.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: ssh.connectTimeoutMs }),
     ...(options.launchTimeoutMs === undefined ? {} : { timeoutMs: options.launchTimeoutMs }),
+    ...(proxyPort === undefined || proxyPort <= 0 ? {} : { proxyPort }),
   })
   return openConnection(handle)
 }
@@ -184,6 +196,7 @@ async function openConnection(handle: RemoteDshHandle): Promise<RemoteConnection
     get rpc() {
       return rpc
     },
+    remoteProxyPort: handle.remoteProxyPort,
     /**
      * 只换传输：关掉旧 socket 与 WS，用**同一个** endpoint 再握一次手。
      *

@@ -46,6 +46,8 @@ import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './st
  */
 export interface RemoteConnection {
   readonly rpc: ProjectionRpc
+  /** 远端经 `-R` 拿到的本地代理端口；没挂代理的后端（WSL）为 `undefined`。 */
+  readonly remoteProxyPort?: number | undefined
   rehandshake?(): Promise<void>
   dispose(): void
 }

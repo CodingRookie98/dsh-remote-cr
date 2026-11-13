@@ -17,6 +17,12 @@ export interface DshEndpoint {
 
 export interface RemoteDshHandle {
   readonly endpoint: DshEndpoint
+  /**
+   * 远端经反向隧道拿到的**本地**代理端口；没挂代理的后端（WSL、以及未配代理的 SSH）为
+   * `undefined`。它必须由后端自己报，不能在这里重新推算：`-R 127.0.0.1:0:` 的端口是
+   * ssh 分配的，只有读过日志的启动器知道。
+   */
+  readonly remoteProxyPort?: number | undefined
   /** 已捕获的全部 stdout+stderr 文本，供「复制日志」。 */
   log(): string
   /** 回收：只收自己起的那个进程句柄。返回是否干净（有 survivor 即 false）。 */

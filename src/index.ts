@@ -24,6 +24,8 @@ import {
   type MountedRoute,
   type TeleportHostContext,
 } from './local/api/routes.ts'
+import { LocalCredentials } from './local/proxy/credentials.ts'
+import { type CredentialProxyRuntime, resolveUpstreamFromEnv, startCredentialProxy } from './local/proxy/runtime.ts'
 import { createLiveConnect } from './local/projection/live.ts'
 import { installPromptProjection, type PromptProjectionLog } from './local/projection/prompt.ts'
 import { ProjectionService } from './local/projection/service.ts'
@@ -67,6 +69,17 @@ export interface TeleportMount {
   readonly routes: readonly MountedRoute[]
   readonly projection: ProjectionService
   readonly promptLog: PromptProjectionLog | undefined
+  /**
+   * 本机凭据代理的启动结果；`undefined` 表示起不来（没有凭据文件、端口被占、被策略拦）。
+   *
+   * 为什么用 Promise 而不是同步值：起代理要读凭据文件、绑端口，都是异步的；而 `apply`
+   * 必须同步返回（Loader 不等）。**失败不阻塞连接**：没有代理时用户仍能连远端，只是
+   * 模型请求不走替换链路；这份失败必须能被看到，所以它作为挂载清单的一部分暴露出来，
+   * 而不是在 `catch` 里咽掉。
+   */
+  readonly proxyReady: Promise<CredentialProxyRuntime | undefined>
+  /** 代理起不来的原因；起来了就是 `undefined`。**不许咽掉**：模型请求不走替换链路是用户必须知道的事实。 */
+  readonly proxyFailure: () => Error | undefined
 }
 
 /**
@@ -81,20 +94,42 @@ export function apply(ctx: TeleportPluginContext): TeleportMount {
   // 本机 home 只算一次：SSH 来源列表、别名解析、锚点目录三处必须是同一个根。
   const homeDir = defaultHomeDir()
 
+  // 凭据代理先起（不等它）：它绑的是**本机回环**端口，远端经 `ssh -R` 连回来。
+  // 起不来不阻塞远端连接 —— 见 TeleportMount.proxyReady 的注释。
+  let proxy: CredentialProxyRuntime | undefined
+  let proxyFailure: Error | undefined
+  const proxyReady = (async () => {
+    try {
+      const credentials = await LocalCredentials.load({})
+      proxy = await startCredentialProxy({
+        credentials,
+        resolveUpstream: (provider) => resolveUpstreamFromEnv(provider),
+      })
+      return proxy
+    } catch (error) {
+      proxyFailure = error instanceof Error ? error : new Error(String(error))
+      return undefined
+    }
+  })()
+
   // 投影服务先建：它不连远端（连接在第一次 /attach 时才建立），构造是纯内存操作。
   const projection = new ProjectionService({
     store: new ProjectionStore(),
     connect: createLiveConnect({
       // SSH 走 `ssh` 自己的认证（密钥 / agent / ssh_config 里的 IdentityFile）；
       // 本插件不碰密码，也不把任何凭据存在远端或浏览器里。
-      ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }) },
+      ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }), proxyPort: () => proxy?.port },
     }),
   })
 
   const promptLog = installPromptProjection(ctx as never)
 
   // 进程退出时释放远端连接；不标 offline，因为没人会再看这份内存表。
-  ctx.effect(() => () => { projection.dispose() }, 'dsh-teleport: projection lifetime')
+  ctx.effect(() => () => {
+    projection.dispose()
+    // 代理要显式停：它持着一个 listening socket，不停就留在进程里占端口。
+    void proxy?.stop()
+  }, 'dsh-teleport: projection lifetime')
 
   const routes = registerTeleportRoutes(ctx, {
     projection,
@@ -107,7 +142,7 @@ export function apply(ctx: TeleportPluginContext): TeleportMount {
           reject: (req: IncomingMessage) => fence.requestRejection({ headers: req.headers }),
         }),
   })
-  return { routes, projection, promptLog }
+  return { routes, projection, promptLog, proxyReady, proxyFailure: () => proxyFailure }
 }
 
 export { SHARED_PROTOCOL_VERSION, describeShared } from './shared/index.ts'
