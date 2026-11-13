@@ -40,11 +40,37 @@ export interface DistroInfo {
   readonly isDefault: boolean
 }
 
+/**
+ * 一个 SSH 来源在面板上的样子。
+ *
+ * **刻意不含 host / user / 私钥路径**：这份数据会直接进浏览器。面板按 alias 选目标就够了，
+ * 而 alias 本来就是用户自己在 `~/.ssh/config` 里写的名字。主机名与用户名属于「往哪儿连」，
+ * 只留在宿主半。
+ */
+export interface SshTargetInfo {
+  readonly alias: string
+  readonly port: number
+  /** 有没有配 `IdentityFile`：没有也不代表连不上（可能走 ssh-agent），只作提示。 */
+  readonly hasIdentityFile: boolean
+}
+
+/** SSH 来源的探测结果。读不到 config 是**正常情况**（大多数用户没写过），不是错误。 */
+export interface SshSourceReport {
+  /** 具体的 config 路径，读不到时用户据此知道该写哪个文件。 */
+  readonly configFile: string
+  /** config 主文件是否存在且可读。 */
+  readonly readable: boolean
+  readonly targets: readonly SshTargetInfo[]
+  /** 解析问题（坏行、Include 读不到等），一行一条可操作文案。 */
+  readonly problems: readonly { readonly code: string; readonly message: string }[]
+}
+
 export interface SourceReport {
   readonly wslAvailable: boolean
   readonly distros: readonly DistroInfo[]
   /** 探测失败时的原因（例如没有 `wsl.exe`）；成功时为 null。 */
   readonly probeError: string | null
+  readonly ssh: SshSourceReport
 }
 
 /** 远端环境事实（P3.4 只做「加工作区前的可用性判定」，不启动 dsh）。 */

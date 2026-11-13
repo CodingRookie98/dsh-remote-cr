@@ -6,7 +6,8 @@
  * 与 `docs/design/ui-design.md` §4 的偏差（**登记，供 P4 审查**）：ui-design 写
  * 「SSH 未灰」，但 M1 的验收项写「本机 / WSL / SSH-灰 / Docker-灰」。以 M1 验收为准
  * ——SSH 的实现在 M2，M1 里点它只会得到一个明确的「计划在 M2」，比给一个跑不起来的
- * 入口更符合铁律 4（失败要响）。M2 落地时把 `ssh` 改成 `available` 即可，UI 不需要改。
+ * 入口更符合铁律 4（失败要响）。M2 的 S9.5b-2b 起，**只要 `~/.ssh/config` 里真有主机**
+ * 就转为 `available`；没有主机时灰显并说明「config 里没有主机」，而不是笼统的「计划在 M2」。
  */
 
 /** 四个来源，顺序即 UI 里的展示顺序。 */
@@ -35,7 +36,11 @@ export interface SourceOption {
  * `wslAvailable` 是探测结果（`wsl.exe --list` 能不能跑通），**不是配置项**：
  * 用户机器上没装 WSL 时，把 WSL 显示成可选只会在下一步炸。
  */
-export function sourceOptions(input: { readonly wslAvailable: boolean }): SourceOption[] {
+export function sourceOptions(input: {
+  readonly wslAvailable: boolean
+  /** `~/.ssh/config` 里至少有一个可连主机（探测结果，不是配置项）。 */
+  readonly sshAvailable?: boolean
+}): SourceOption[] {
   return [
     { id: 'local', label: '本机目录', availability: 'available', reason: '' },
     input.wslAvailable
@@ -46,7 +51,14 @@ export function sourceOptions(input: { readonly wslAvailable: boolean }): Source
           availability: 'unavailable',
           reason: '未检测到可用的 wsl.exe，或 wsl.exe 无法列出发行版',
         },
-    { id: 'ssh', label: 'SSH 远端', availability: 'planned', reason: '计划在 M2' },
+    input.sshAvailable === true
+      ? { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' }
+      : {
+          id: 'ssh',
+          label: 'SSH 远端',
+          availability: 'unavailable',
+          reason: '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）',
+        },
     { id: 'docker', label: 'Docker 容器', availability: 'planned', reason: '计划在 M5' },
   ]
 }

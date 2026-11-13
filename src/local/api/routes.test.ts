@@ -1,17 +1,27 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
-import type { DirListing, DistroInfo, RemoteFacts, SourceReport } from '../../shared/api.ts'
+import type { DirListing, DistroInfo, RemoteFacts, SourceReport, SshSourceReport } from '../../shared/api.ts'
 import { API_PREFIX } from '../../shared/api.ts'
 import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '../projection/service.ts'
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
 import { TeleportError } from '../backend/errors.ts'
-import { parseAddInput, parseAttachInput, registerTeleportRoutes } from './routes.ts'
+import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerTeleportRoutes } from './routes.ts'
 
 const DISTROS: DistroInfo[] = [
   { name: 'ubuntu_dev', state: 'Running', version: 2, isDefault: true },
 ]
+
+const NO_SSH: SshSourceReport = {
+  configFile: 'C:\\Users\\hui\\.ssh\\config',
+  readable: false,
+  targets: [],
+  problems: [],
+}
 
 const FACTS: RemoteFacts = {
   nodeVersion: '24.22.1',
@@ -87,7 +97,7 @@ function rig(
 ): Rig {
   const calls: string[] = []
   const deps: HostDeps = {
-    listSources: async (): Promise<SourceReport> => ({ wslAvailable: true, distros: DISTROS, probeError: null }),
+    listSources: async (): Promise<SourceReport> => ({ wslAvailable: true, distros: DISTROS, probeError: null, ssh: NO_SSH }),
     listLocal: async (path) => {
       calls.push('local:' + path)
       return { ...LOCAL_LISTING, path }
@@ -178,7 +188,7 @@ test('/sources 回四选一 + 可点清单；探测失败也回 200（灰显不�
   assert.deepEqual(value.selectable, ['local', 'wsl'])
 
   const degraded = await rig({
-    listSources: async () => ({ wslAvailable: false, distros: [], probeError: 'wsl.exe 不存在' }),
+    listSources: async () => ({ wslAvailable: false, distros: [], probeError: 'wsl.exe 不存在', ssh: NO_SSH }),
   }).call({ path: '/sources' })
   assert.equal(degraded.status, 200, '没装 WSL 是正常情况，不能回 5xx')
   const degradedValue = (degraded.json as { value: { selectable: string[]; probeError: string } }).value
@@ -279,7 +289,7 @@ test('非回环地址一律 403，且根本不进业务（越权面必须在最�
   const r = rig({
     listSources: async () => {
       touched += 1
-      return { wslAvailable: true, distros: DISTROS, probeError: null }
+      return { wslAvailable: true, distros: DISTROS, probeError: null, ssh: NO_SSH }
     },
   })
   const denied = await r.call({ path: '/sources', address: '192.168.1.10' })
@@ -429,4 +439,39 @@ test('注入锚点落实器后，SSH 目标省略 localPath 也能接入（且�
   assert.equal(answer.status, 200)
   assert.equal((answer.json as { ok: boolean }).ok, false, '假 attach 抛错要如实回错误包')
   projection.attach = original
+})
+test('defaultAnchorResolver：别名不在 config 里带码报出，绝不猜一个本地路径', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'teleport-anchor-'))
+  const resolver = defaultAnchorResolver(home)
+  await assert.rejects(
+    () => resolver({ backend: 'ssh', alias: 'nope', port: 8899, remoteRoot: '/home/dev/h' }, '/home/dev/proj'),
+    (error: unknown) => {
+      const teleport = error as TeleportError
+      assert.equal(teleport.code, 'remote/ssh-target-unresolved')
+      assert.ok(teleport.detail.includes('nope'), teleport.detail)
+      return true
+    },
+  )
+})
+
+test('defaultAnchorResolver：别名在 config 里就建出锚点目录并返回它（本地路径真的存在）', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'teleport-anchor-'))
+  const sshDir = join(home, '.ssh')
+  await mkdir(sshDir, { recursive: true })
+  await writeFile(join(sshDir, 'config'), 'Host gcp\n  HostName 10.0.0.9\n  User hui\n', 'utf8')
+
+  const resolver = defaultAnchorResolver(home)
+  const localPath = await resolver(
+    { backend: 'ssh', alias: 'gcp', port: 8899, remoteRoot: '/home/dev/h' },
+    '/home/dev/proj',
+  )
+  assert.ok(localPath.replaceAll('\\', '/').endsWith('/home/dev/proj'), localPath)
+  assert.equal((await stat(localPath)).isDirectory(), true, '锚点目录必须真建出来，否则 workspaceRegistry.create 会拒')
+
+  // map.json 与目录同落：虚拟路径 ≡ 远端绝对路径（默认 / → /）
+  const anchorDir = localPath.replaceAll('\\', '/').slice(0, localPath.replaceAll('\\', '/').indexOf('/home/dev/proj'))
+  const mapPath = join(anchorDir, 'map.json')
+  const map = JSON.parse(await readFile(mapPath, 'utf8')) as { version: number; target: { host: string } }
+  assert.equal(map.version, 1)
+  assert.equal(map.target.host, '10.0.0.9')
 })

@@ -17,7 +17,13 @@
 
 import type { IncomingMessage } from 'node:http'
 
-import { registerTeleportRoutes, type MountedRoute, type TeleportHostContext } from './local/api/routes.ts'
+import {
+  defaultAnchorResolver,
+  defaultHomeDir,
+  registerTeleportRoutes,
+  type MountedRoute,
+  type TeleportHostContext,
+} from './local/api/routes.ts'
 import { createLiveConnect } from './local/projection/live.ts'
 import { installPromptProjection, type PromptProjectionLog } from './local/projection/prompt.ts'
 import { ProjectionService } from './local/projection/service.ts'
@@ -72,10 +78,17 @@ export interface TeleportMount {
 export function apply(ctx: TeleportPluginContext): TeleportMount {
   const fence = fenceOf(ctx)
 
+  // 本机 home 只算一次：SSH 来源列表、别名解析、锚点目录三处必须是同一个根。
+  const homeDir = defaultHomeDir()
+
   // 投影服务先建：它不连远端（连接在第一次 /attach 时才建立），构造是纯内存操作。
   const projection = new ProjectionService({
     store: new ProjectionStore(),
-    connect: createLiveConnect({}),
+    connect: createLiveConnect({
+      // SSH 走 `ssh` 自己的认证（密钥 / agent / ssh_config 里的 IdentityFile）；
+      // 本插件不碰密码，也不把任何凭据存在远端或浏览器里。
+      ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }) },
+    }),
   })
 
   const promptLog = installPromptProjection(ctx as never)
@@ -85,6 +98,9 @@ export function apply(ctx: TeleportPluginContext): TeleportMount {
 
   const routes = registerTeleportRoutes(ctx, {
     projection,
+    homeDir,
+    // SSH 的 `localPath` 靠锚点目录推导（WSL 靠 UNC，不需要这一步）。
+    resolveAnchorPath: defaultAnchorResolver(homeDir),
     ...(fence === undefined
       ? {}
       : {

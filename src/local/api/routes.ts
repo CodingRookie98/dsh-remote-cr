@@ -13,6 +13,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 
 import {
   API_PREFIX,
@@ -27,6 +28,7 @@ import {
   type ProjectionSnapshotInfo,
   type RemoteFacts,
   type RemoteTargetInfo,
+  type SshSourceReport,
   type SourceDefaults,
   type SourceReport,
   type WorkspaceAddInput,
@@ -36,6 +38,8 @@ import { selectableSources, sourceOptions, type WorkspaceSource } from '../../sh
 import { TeleportError } from '../backend/errors.ts'
 import { parseWslVerboseList } from '../backend/wsl/distro.ts'
 import { runInDistro, runWslManagement } from '../backend/wsl/exec.ts'
+import { resolveAnchorPath as resolveAnchor } from '../backend/ssh/anchor-runtime.ts'
+import { listSshSources, nodeSshSourcesOptions, resolveTargetByAlias } from '../backend/ssh/targets.ts'
 import { toUnc, uncCandidates } from '../backend/wsl/unc.ts'
 import { listDistroDirectory, listLocalDirectory } from './browse.ts'
 import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
@@ -97,6 +101,13 @@ export interface RouteOptions {
    * 而不是由路由层偷偷猜一个本地路径。
    */
   readonly resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
+  /**
+   * 本机 home（`~/.ssh/config` 与锚点目录的根）；省略时看 `USERPROFILE`。
+   *
+   * 测试注入它，生产装配也用同一个值——否则「列表读的是真 config、
+   * 接入读的是另一个」这种事查起来极贵。
+   */
+  readonly homeDir?: string
 }
 
 /** 默认 `wsl.exe`；允许用环境变量指向特定版本（多 WSL 安装时用得上）。 */
@@ -111,7 +122,13 @@ export function defaultWslExecutable(): string {
  * **探测失败不是异常**：用户机器上没装 WSL 是正常情况，UI 要把它显示成灰色 +
  * 原因，而不是弹一个错误框。所以这里把失败收进 `probeError`。
  */
-export async function readSources(executable: string): Promise<SourceReport> {
+export async function readSources(
+  executable: string,
+  ssh: { readonly homeDir: string; readonly configFile?: string } = { homeDir: defaultHomeDir() },
+): Promise<SourceReport> {
+  // SSH 那一路是**纯本地读配置**（不连远端、不花时间）：即使 WSL 探测失败也要照常报，
+  // 两个来源互不牵连——一台机器没有 WSL 完全可能有 SSH 目标。
+  const sshReport = readSshSources(ssh)
   try {
     const result = await runWslManagement(executable, ['--list', '--verbose'], { timeoutMs: 15_000 })
     if (result.exitCode !== 0) {
@@ -120,6 +137,7 @@ export async function readSources(executable: string): Promise<SourceReport> {
         wslAvailable: false,
         distros: [],
         probeError: `wsl.exe --list --verbose 退出码 ${String(result.exitCode)}${stderr}`,
+        ssh: sshReport,
       }
     }
     const distros: DistroInfo[] = parseWslVerboseList(result.text).map((distro) => ({
@@ -128,12 +146,36 @@ export async function readSources(executable: string): Promise<SourceReport> {
       version: distro.version,
       isDefault: distro.isDefault,
     }))
-    return { wslAvailable: distros.length > 0, distros, probeError: null }
+    return { wslAvailable: distros.length > 0, distros, probeError: null, ssh: sshReport }
   } catch (error) {
     return {
       wslAvailable: false,
       distros: [],
       probeError: error instanceof Error ? error.message : String(error),
+      ssh: sshReport,
+    }
+  }
+}
+
+/** 本机 home：优先 `USERPROFILE`（Windows 服务账户下 `os.homedir()` 未必对），退到 `os.homedir()`。 */
+export function defaultHomeDir(): string {
+  const fromEnv = process.env['USERPROFILE']
+  return fromEnv !== undefined && fromEnv !== '' ? fromEnv : homedir()
+}
+
+/** SSH 来源报告：读配置失败也要如实报（不吞），因为它决定面板上 SSH 那一行能不能点。 */
+function readSshSources(input: { readonly homeDir: string; readonly configFile?: string }): SshSourceReport {
+  try {
+    return listSshSources({
+      homeDir: input.homeDir,
+      ...(input.configFile === undefined ? {} : { file: input.configFile }),
+    })
+  } catch (error) {
+    return {
+      configFile: input.configFile ?? input.homeDir,
+      readable: false,
+      targets: [],
+      problems: [{ code: 'config-unreadable', message: error instanceof Error ? error.message : String(error) }],
     }
   }
 }
@@ -175,9 +217,12 @@ export function defaultLocalRoot(home: string | undefined = process.env['USERPRO
 }
 
 /** 真机实现。 */
-export function createHostDeps(executable: string): HostDeps {
+export function createHostDeps(
+  executable: string,
+  ssh: { readonly homeDir: string; readonly configFile?: string } = { homeDir: defaultHomeDir() },
+): HostDeps {
   return {
-    listSources: () => readSources(executable),
+    listSources: () => readSources(executable, ssh),
     listLocal: (path) => listLocalDirectory(path),
     listDistro: (distro, path, signal) => listDistroDirectory(executable, distro, path, signal),
     probeFacts: (distro, signal) => readRemoteFacts(executable, distro, signal),
@@ -188,6 +233,30 @@ export function createHostDeps(executable: string): HostDeps {
         return false
       }
     },
+  }
+}
+
+/**
+ * 生产用的锚点落实器：别名 → `~/.ssh/config` 里那个真实目标 → 锚点目录。
+ *
+ * 两层都可以失败，且都**带码报出**（不静默退化成猜一个本地路径）：
+ * 别名不在 config 里是 `remote/ssh-target-unresolved`，目录建不出来是
+ * `remote/workspace-unwritable`（后者由 `anchor-runtime.ts` 抛）。
+ */
+export function defaultAnchorResolver(
+  homeDir: string,
+): (target: SshConnectTarget, remotePath: string) => Promise<string> {
+  return async (target, remotePath) => {
+    const found = resolveTargetByAlias({ homeDir, alias: target.alias, ...nodeSshSourcesOptions() })
+    if (found.target === undefined) {
+      throw new TeleportError({
+        code: 'remote/ssh-target-unresolved',
+        detail: `${target.alias} 无法接入：${found.reason ?? '~/.ssh/config 里没有这个别名'}`,
+        nextActions: ['在 ~/.ssh/config 里补一个 Host 块', '刷新页面后重试'],
+      })
+    }
+    const resolved = await resolveAnchor({ homeDir, target: found.target, remotePath })
+    return resolved.localPath
   }
 }
 
@@ -235,7 +304,8 @@ export interface MountedRoute {
  */
 export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteOptions = {}): MountedRoute[] {
   const executable = options.wslExecutable ?? defaultWslExecutable()
-  const deps = options.deps ?? createHostDeps(executable)
+  const homeDir = options.homeDir ?? defaultHomeDir()
+  const deps = options.deps ?? createHostDeps(executable, { homeDir })
   const flows = new WorkspaceFlows({
     listDistros: async () => (await deps.listSources()).distros,
     probeFacts: (distro, signal) => deps.probeFacts(distro, signal),
@@ -295,7 +365,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
 
   mount('/sources', ['GET'], async (_req, res) => {
     const report = await deps.listSources()
-    const options4 = sourceOptions({ wslAvailable: report.wslAvailable })
+    const options4 = sourceOptions({ wslAvailable: report.wslAvailable, sshAvailable: report.ssh.targets.length > 0 })
     sendJson(res, 200, okEnvelope({
       ...report,
       options: options4,
