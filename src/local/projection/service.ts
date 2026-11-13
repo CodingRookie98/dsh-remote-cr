@@ -60,6 +60,8 @@ export interface RemoteConnection {
   rehandshake?(): Promise<void>
   /** 驻留：让远端进程在本地离开后继续跑（与 `dispose` 互斥，先调哪个哪个生效）。 */
   keepAlive?(): Promise<void>
+  /** 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。 */
+  stopRemote?(): Promise<void>
   /**
    * 回收远端连接（含远端进程）：`false` = 没确认收干净（看门狗未在窗口内退出）。
    *
@@ -448,6 +450,26 @@ export class ProjectionService {
     const detached = this.#detached
     this.#setDetached(undefined)
     if (detached !== undefined) this.#release(detached.connection)
+  }
+
+  /**
+   * 结束远端：把当前（含留存）连接真正收掉，并清空槽位与重连驱动。
+   *
+   * 与 `dispose()` 的区别：`dispose()` 在驻留模式下只是「放手」；这里永远是真收 ——
+   * 面板上的「结束远端」必须能终止一个没人接回的驻留实例。
+   */
+  async stopRemote(): Promise<void> {
+    const live = this.#live
+    const detached = this.#detached
+    this.#setLive(undefined)
+    this.#setDetached(undefined)
+    this.#stopDriver()
+    for (const entry of [live, detached]) {
+      if (entry === undefined) continue
+      this.#retired.add(entry.connection)
+      if (typeof entry.connection.stopRemote === 'function') await entry.connection.stopRemote()
+      else await entry.connection.dispose()
+    }
   }
 
   /** 退出时怎么处理一条连接：默认回收；驻留模式下「放手」（keepAlive）。 */

@@ -31,7 +31,7 @@ import { TeleportError, type ConnectionPhase } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
 import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
-import { INSTANCE_VERSION, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
+import { INSTANCE_VERSION, buildKillInstanceScript, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
 import { launchSshDsh, openSshTunnel } from '../backend/ssh/launch.ts'
 import { resolveRemoteDsh, type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts'
@@ -250,7 +250,9 @@ async function connectSsh(
     })
   }
 
-  const auth = await ssh.authFor(resolved.target)
+  // 固定窄化后的 target：异步闭包（如 stopRemote）里 `resolved.target` 会被重新视为可空。
+  const sshTarget = resolved.target
+  const auth = await ssh.authFor(sshTarget)
   // 先决定「用远端检出还是引导器装的那份」：一台普通 SSH 目标通常**没有** dsh 检出，
   // 缺省启动前缀（`node apps/cli/lib/bin.js`）会让接入在启动那步失败。
   const runtime = await (ssh.resolveDsh ?? resolveRemoteDsh)({
@@ -288,6 +290,19 @@ async function connectSsh(
     path: instanceFile,
     ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
   })
+  if (known !== null && (!known.portListening || isInstanceExpired(known.instance, Date.now()))) {
+    // TTL / 端口不监听：旧实例要么没人管、要么已经死了 —— 先杀再启动，
+    // 别让「驻留」变成「漏进程」（A7 的约定不能因为开了 keepRemote 就失守）。
+    void runSsh({
+      target: resolved.target,
+      knownHostsFile: knownHostsPath(ssh.homeDir),
+      auth,
+      command: ['sh', '-c', shellQuote(buildKillInstanceScript(known.instance.pid))],
+      allowFailure: true,
+      deadlineMs: 15_000,
+      ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+    }).catch(() => undefined)
+  }
   if (known !== null && known.portListening && !isInstanceExpired(known.instance, Date.now())) {
     abortIfCancelled(control.signal)
     control.onPhase?.('tunnel')
@@ -317,6 +332,19 @@ async function connectSsh(
         },
         envPolicy: policy,
         dispose: async () => tunnel.dispose(),
+        // 「结束远端」：复用连接只关隧道的话，驻留实例会永远留着 —— 必须按登记 pid 真杀。
+        stopRemote: async () => {
+          await runSsh({
+            target: sshTarget,
+            knownHostsFile: knownHostsPath(ssh.homeDir),
+            auth,
+            command: ['sh', '-c', shellQuote(buildKillInstanceScript(known.instance.pid))],
+            allowFailure: true,
+            deadlineMs: 15_000,
+            ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
+          })
+          await tunnel.dispose()
+        },
       }
     }
   }
@@ -447,6 +475,10 @@ async function openConnection(
       rpc.dispose()
       // 把「是否干净」原样带出去：调用方（取消路径）据此决定要不要报 recycle-incomplete。
       return await handle.dispose()
+    },
+    /** 「结束远端」：本地连接走 dispose（EXIT 行 → 看门狗 kill），语义与 recycle 一致。 */
+    stopRemote: async () => {
+      await handle.dispose()
     },
   }
 }

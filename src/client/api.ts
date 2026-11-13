@@ -162,6 +162,16 @@ export function cancelAttach(fetchImpl?: typeof fetch): Promise<{ readonly cance
   return callApi('/attach/cancel', { method: 'POST' }, fetchImpl)
 }
 
+/**
+ * 结束远端：把（含留存/驻留的）远端 dsh 真的收掉。
+ *
+ * 与「断开」的区别：断开只断传输、进程留着温热；这里连进程一起收 —— 面板上必须有一个
+ * 「我不想再让它占着远端」的出口，否则开了驻留模式就没人能替用户收尸。
+ */
+export function stopRemote(fetchImpl?: typeof fetch): Promise<{ readonly stopped: boolean }> {
+  return callApi('/stop', { method: 'POST' }, fetchImpl)
+}
+
 /** 在一个已接入的远端工作区里新建会话（远端 `session/create`）。 */
 export function createRemoteSession(
   input: { workspaceId: string; agentPreset?: string | undefined },

@@ -43,6 +43,7 @@ import {
   readProjection,
   reconnectRemote,
   startWorkspace,
+  stopRemote,
   TeleportApiError,
 } from './api.ts'
 import {
@@ -734,6 +735,20 @@ export function TeleportPanel(): unknown {
     }
   }
 
+  /** 「结束远端」：连进程一起收（与「断开」相对 —— 断开只断传输）。 */
+  const onStopRemote = async (): Promise<void> => {
+    setBusy('stop-remote')
+    try {
+      await stopRemote()
+      setError(null)
+      await refresh()
+    } catch (caught) {
+      setError(failureOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const onProbe = async (sessionId: string): Promise<void> => {
     setBusy('probe:' + sessionId)
     try {
@@ -1003,6 +1018,17 @@ export function TeleportPanel(): unknown {
           onClick: () => void onLink('disconnect'),
         },
         busy === 'disconnect' ? '断开中…' : '断开',
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'stop-remote',
+          disabled: busy !== null,
+          title: '把远端 dsh 真的收掉（「断开」只断传输、进程留着温热）',
+          onClick: () => void onStopRemote(),
+        },
+        busy === 'stop-remote' ? '结束中…' : '结束远端',
       ),
     ),
     sshBox,

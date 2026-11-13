@@ -520,6 +520,11 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     }))
   })
 
+  mount('/stop', ['POST'], async (_req, res) => {
+    await requireProjection().stopRemote()
+    sendJson(res, 200, okEnvelope({ stopped: true }))
+  })
+
   mount('/attach/cancel', ['POST'], async (_req, res) => {
     const controller = attaching
     controller?.abort()
