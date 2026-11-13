@@ -1,0 +1,49 @@
+{
+  "at": "2026-11-13T10:01:25.823Z",
+  "negative": false,
+  "alias": "gcp",
+  "remotePort": 8941,
+  "results": [
+    {
+      "name": "A7-0",
+      "ok": true,
+      "detail": "远端 8941 端口清场",
+      "ms": 5121
+    },
+    {
+      "name": "A7-1",
+      "ok": true,
+      "detail": "link=connected / workspaces=1 / id=a5650020-af32-4add-8724-e75dfc2fb275",
+      "ms": 22511
+    },
+    {
+      "name": "A7-2",
+      "ok": true,
+      "detail": "portFreed=true / code=remote/tunnel-unavailable / link=retrying / offline=true / entries=1 / killed: 96967",
+      "ms": 3156
+    },
+    {
+      "name": "A7-3",
+      "ok": true,
+      "detail": "link=connected（等 18340ms，未做手动重连）",
+      "ms": 18340
+    },
+    {
+      "name": "A7-3b",
+      "ok": true,
+      "detail": "远端 8941 重新监听",
+      "ms": 3550
+    },
+    {
+      "name": "A7-4",
+      "ok": true,
+      "detail": "workspaces=1 / id 保持=true / availability=online / 重建耗时=251ms"
+    },
+    {
+      "name": "A7-5",
+      "ok": true,
+      "detail": "远端 8941 不再监听",
+      "ms": 3113
+    }
+  ]
+}
