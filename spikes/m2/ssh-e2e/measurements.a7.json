@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-13T10:01:25.823Z",
+  "at": "2026-11-13T12:35:14.876Z",
   "negative": false,
   "alias": "gcp",
   "remotePort": 8941,
@@ -8,42 +8,42 @@
       "name": "A7-0",
       "ok": true,
       "detail": "远端 8941 端口清场",
-      "ms": 5121
+      "ms": 4398
     },
     {
       "name": "A7-1",
       "ok": true,
       "detail": "link=connected / workspaces=1 / id=a5650020-af32-4add-8724-e75dfc2fb275",
-      "ms": 22511
+      "ms": 26863
     },
     {
       "name": "A7-2",
       "ok": true,
-      "detail": "portFreed=true / code=remote/tunnel-unavailable / link=retrying / offline=true / entries=1 / killed: 96967",
-      "ms": 3156
+      "detail": "portFreed=true / code=remote/tunnel-unavailable / link=retrying / offline=true / entries=1 / killed: 114006",
+      "ms": 3682
     },
     {
       "name": "A7-3",
       "ok": true,
-      "detail": "link=connected（等 18340ms，未做手动重连）",
-      "ms": 18340
+      "detail": "link=connected（等 24871ms，未做手动重连）",
+      "ms": 24871
     },
     {
       "name": "A7-3b",
       "ok": true,
       "detail": "远端 8941 重新监听",
-      "ms": 3550
+      "ms": 3821
     },
     {
       "name": "A7-4",
       "ok": true,
-      "detail": "workspaces=1 / id 保持=true / availability=online / 重建耗时=251ms"
+      "detail": "workspaces=1 / id 保持=true / availability=online / 重建耗时=1041ms"
     },
     {
       "name": "A7-5",
       "ok": true,
       "detail": "远端 8941 不再监听",
-      "ms": 3113
+      "ms": 3658
     }
   ]
 }

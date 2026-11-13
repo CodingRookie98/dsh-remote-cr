@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-13T12:40:20.821Z",
+  "alias": "gcp",
+  "remotePort": 8946,
+  "waitSeconds": 60,
+  "attachMs": 42384,
+  "workspaceId": "a5650020-af32-4add-8724-e75dfc2fb275",
+  "sessionId": "session-f857ceaf-a17c-428d-993e-8048354a69a9",
+  "dshPidBeforeDispose": 115448,
+  "dshAliveAfterWait": false,
+  "portBusyAfterWait": false,
+  "longTaskAlive": true,
+  "reattach": {
+    "workspaceId": "a5650020-af32-4add-8724-e75dfc2fb275",
+    "sessions": 24,
+    "sessionKept": true,
+    "error": null
+  }
+}
