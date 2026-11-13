@@ -962,10 +962,16 @@ async function runGateA5A8() {
     await openPanel(cdp, sid)
     const secondClick = await gateClickAttach(cdp, sid)
     if (secondClick.ok !== true) throw new Error('取消后再点接入点不到：' + JSON.stringify(secondClick.why))
+    // 第二次接入自己的时间基准：沿用第一次的 attachStart 会让时间线看起来像「接入了 60s」。
+    const secondStart = Date.now()
     const onlineDeadline = Date.now() + 300_000
     while (Date.now() < onlineDeadline) {
       const progress = await readProgress(cdp, sid)
-      if (progress !== null && typeof progress.phase === 'string' && !phases.includes(progress.phase)) phases.push(progress.phase)
+      if (progress !== null && typeof progress.phase === 'string') {
+        if (!phases.includes(progress.phase)) phases.push(progress.phase)
+        const last = timeline.length === 0 ? null : timeline[timeline.length - 1]
+        if (last === null || last.phase !== progress.phase) timeline.push({ phase: progress.phase, at: Date.now() - secondStart })
+      }
       if (progress === null && (await gateLooksOnline(cdp, sid)) === true) { firstOnline = true; break }
       await sleep(200)
     }
