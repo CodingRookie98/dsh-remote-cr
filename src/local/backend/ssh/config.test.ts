@@ -352,15 +352,3 @@ test('未知别名不是坏配置：返回空目标、零问题，交给调用�
   assert.equal(resolved.target, undefined)
   assert.deepEqual(resolved.problems, [])
 })
-
-test('本机真实配置文件（存在才跑）：与内嵌副本的目标数一致', (t) => {
-  const file = join(HOME, '.ssh/config')
-  let parsed
-  try {
-    parsed = readSshConfig({ file, homeDir: HOME })
-  } catch {
-    t.skip('本机没有 ' + file)
-    return
-  }
-  assert.deepEqual(listSshTargets(parsed.parsed, OPTIONS).targets.length, 14)
-})

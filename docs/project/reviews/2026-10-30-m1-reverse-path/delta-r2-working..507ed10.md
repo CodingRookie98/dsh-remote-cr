@@ -22,7 +22,7 @@
 ### 1.3 运行时维度：本节已激活（三支命令我都实跑了）
 
 - `node spikes/m1/wsl-closed-loop/probe.cjs`：A4 `PASS`；A5 `SKIP`（网关 `198.51.100.1`、`198.51.100.254` 均 `curl: (7)`）；A6 `PASS`（distro `127.0.0.1:38510`）；A11 拟合 `① a=0.8 ms, b=16.4 → 61 MiB/s`、`③ a=5.7 ms, b=23.3 → 43 MiB/s`；`全部必需断言通过`。
-- `REBIND=0.0.0.0 node spikes/m1/wsl-closed-loop/probe.cjs`：`宿主非回环 IPv4 全集` = 13 个；逐个结果——`172.26.192.1` 与 `192.168.1.10` 为 `curl: (28) Connection timed out after 2051 ms`（exit=28），其余 11 个 `curl: (7)`（exit=7）；`PASS REBIND 反证成立：…… 共 15 个目标全不可达`；A11 `③ a=7.7 ms, b=22.6 → 44 MiB/s`。**exit=28 与 exit=7 是两类失败（静默丢包 vs 主动拒绝），断言把它们折叠成同一个布尔**——撑得起「不可达」，撑不起「这些地址上没有监听者」。
+- `REBIND=0.0.0.0 node spikes/m1/wsl-closed-loop/probe.cjs`：`宿主非回环 IPv4 全集` = 13 个；逐个结果——`203.0.113.98` 与 `192.168.1.10` 为 `curl: (28) Connection timed out after 2051 ms`（exit=28），其余 11 个 `curl: (7)`（exit=7）；`PASS REBIND 反证成立：…… 共 15 个目标全不可达`；A11 `③ a=7.7 ms, b=22.6 → 44 MiB/s`。**exit=28 与 exit=7 是两类失败（静默丢包 vs 主动拒绝），断言把它们折叠成同一个布尔**——撑得起「不可达」，撑不起「这些地址上没有监听者」。
 - `NEGATIVE_CONTROL=1 node spikes/m1/wsl-closed-loop/probe.cjs`：`FAIL 档位③ 请求未穿透: curl: (52) Empty reply from server`、`FAIL 大载荷穿越不完整：① 0/0 B，③ 0/0 B`、`SKIP stdio 桥：载荷未穿越（1 MiB=0 B、9 MiB=0 B）……`、两条拟合行打印 `边际 不可用（该通路未穿越载荷或 b≤0，边际带宽无从估计）`、`2 项必需断言失败`。⇒ C7 的变异入口实测会红；R1-5 的护栏实测生效。
 - 取证边界：该次负控输出被 `| tail -40` 截断，A4 那一行未捕获，故「A4 记 SKIP」只由 `probe.cjs:175-176`（仅 `pass` 与 SKIP 两分支、无 `bad`）支持；管道吞退出码，shell 侧 `exit=0` 不能当脚本退出码证据，断言级结论以脚本自打的「2 项必需断言失败」为准。
 - **R1-6 的反证据来自我这次跑**：`REBIND` 轮的 ③ 边际带宽 **44 MiB/s**，落在文档主张的 `31–43 MiB/s` **区间之外**（`architecture.md:175`、`ADR-0002:117`、`spikes/m1/README.md:19`、`spikes/m1/wsl-closed-loop/README.md:150`/`:179`、`spikes/m0/evidence/r1-1-reverse-tunnel.md:73` 六处同口径）。`a₃` 5.7 / 7.7 与 `a₁` 0.8 / −1.4 都在区间内，唯独带宽上界被自己打破 ⇒ 该区间不是「多轮观测的包络」。

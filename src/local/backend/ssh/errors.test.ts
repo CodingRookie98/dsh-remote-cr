@@ -28,7 +28,7 @@ test('主机密钥变更优先于认证失败：真实输出里两者同时出�
   const error = classifySshFailure(stderr, KEY)
   assert.equal(error.code, 'remote/host-key-changed')
   assert.match(error.detail, /主机密钥与首次记录的不一致/)
-  assert.match(error.detail, /192\.168\.5\.8/, '文案里要带目标，省得用户自己对应')
+  assert.match(error.detail, /198\.51\.100\.8/, '文案里要带目标，省得用户自己对应')
 })
 
 test('私钥要口令：给出的是口令提示，不是「钥匙不对」', () => {

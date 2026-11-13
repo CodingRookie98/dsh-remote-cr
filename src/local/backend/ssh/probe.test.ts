@@ -207,7 +207,7 @@ test('输出不完整：抛 probe-incomplete，文案带目标与下一步', asy
       (error: unknown) => {
         assert.ok(error instanceof TeleportError)
         assert.equal(error.code, 'remote/probe-incomplete')
-        assert.match(error.detail, /hui@192\.168\.5\.8/)
+        assert.match(error.detail, /hui@198\.51\.100\.8/)
         assert.match(error.detail, /结束标记/)
         assert.ok(error.nextActions.length >= 2)
         return true

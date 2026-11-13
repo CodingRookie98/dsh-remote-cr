@@ -177,7 +177,7 @@ test('parseAnchorMap 拒绝空映射表与「id 与目标不一致」的记录',
 test('describeAnchor 打印目标与每一条映射，供 doctor 原样输出', () => {
   const lines = describeAnchor(mapOf())
   const joined = lines.join('\n')
-  assert.match(joined, /hui@192\.168\.5\.8:22/)
+  assert.match(joined, /hui@198\.51\.100\.8:22/)
   assert.match(joined, /（syy）/)
   assert.match(joined, /映射：\/ → \//)
   assert.match(joined, /目录：D:\/Temp\/teleport-home\/\.dsh-teleport\/anchors\/[0-9a-f]{16}/)
