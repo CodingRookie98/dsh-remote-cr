@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { ProbeOutcome, ProjectionSnapshotInfo, WorkspaceRecord } from '../shared/api.ts'
+import type {
+  ProbeOutcome,
+  ProjectionSnapshotInfo,
+  SshTargetInfo,
+  WorkspaceRecord,
+} from '../shared/api.ts'
 import {
   basenameOf,
   disconnectPlan,
   formatUpdatedAt,
   linkLine,
   planAttach,
+  planSshAttach,
   probeReport,
   probeSummary,
   reconnectPlan,
+  sshAttachPlan,
 } from './panel.ts'
 
 /**
@@ -151,4 +158,55 @@ test('断开按钮：没连过时不可点，连过（含掉线在重试）都�
 
   assert.equal(disconnectPlan(snapshot({ connected: true, link: 'connected', target: TARGET })).ok, true)
   assert.equal(disconnectPlan(snapshot({ link: 'retrying', target: TARGET })).ok, true)
+})
+const SSH_HOSTS: readonly SshTargetInfo[] = [
+  { alias: 'gcp', port: 2222, hasIdentityFile: true },
+  { alias: 'lab', port: 22, hasIdentityFile: false },
+]
+
+test('SSH 接入只给远端路径：本地路径交给宿主落实锚点目录，面板不猜', () => {
+  const plan = planSshAttach({ alias: 'gcp', remotePath: '/home/hui/workspace' }, DEFAULTS)
+  assert.equal(plan.ok, true)
+  if (!plan.ok) return
+  assert.deepEqual(plan.input.target, { backend: 'ssh', alias: 'gcp', port: 8899, remoteRoot: '/home/dev/harness' })
+  assert.equal(plan.input.remotePath, '/home/hui/workspace')
+  assert.equal('localPath' in plan.input, false, 'SSH 的本地路径必须由宿主决定')
+  assert.equal(plan.input.title, 'workspace')
+})
+
+test('SSH 接入的四种拒绝各给一句人话原因', () => {
+  const cases: readonly (readonly [{ alias: string; remotePath: string }, { port: number; remoteRoot: string }, string])[] = [
+    [{ alias: '', remotePath: '/home/hui' }, DEFAULTS, '.ssh/config'],
+    [{ alias: 'gcp', remotePath: 'home/hui' }, DEFAULTS, '以 / 开头'],
+    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: 'home' }, 'DSH_TELEPORT_REMOTE_ROOT'],
+    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: '' }, 'DSH_TELEPORT_REMOTE_ROOT'],
+  ]
+  for (const [draft, defaults, expected] of cases) {
+    const plan = planSshAttach(draft, defaults)
+    assert.equal(plan.ok, false, expected)
+    if (plan.ok) continue
+    assert.ok(plan.reason.includes(expected), '原因里要出现关键信息：' + plan.reason)
+  }
+})
+
+test('SSH 按钮的三种不可点各有各的原因：没主机 / 没选 / 没填路径', () => {
+  const noHosts = sshAttachPlan([], { alias: '', remotePath: '' }, DEFAULTS)
+  assert.equal(noHosts.ok, false)
+  if (!noHosts.ok) assert.ok(noHosts.reason.includes('.ssh/config'), noHosts.reason)
+
+  const noPick = sshAttachPlan(SSH_HOSTS, { alias: '', remotePath: '/home/hui' }, DEFAULTS)
+  assert.equal(noPick.ok, false)
+  if (!noPick.ok) assert.ok(noPick.reason.includes('还没有选择'), noPick.reason)
+
+  const noPath = sshAttachPlan(SSH_HOSTS, { alias: 'gcp', remotePath: '   ' }, DEFAULTS)
+  assert.equal(noPath.ok, false)
+  if (!noPath.ok) assert.ok(noPath.reason.includes('还没有填写'), noPath.reason)
+
+  assert.equal(sshAttachPlan(SSH_HOSTS, { alias: 'gcp', remotePath: '/home/hui' }, DEFAULTS).ok, true)
+})
+
+test('负控：把「有主机」判成恒真，SSH 按钮的没主机文案必须红', () => {
+  const plan = sshAttachPlan(NEG ? SSH_HOSTS : [], { alias: '', remotePath: '' }, DEFAULTS)
+  assert.equal(plan.ok, false)
+  if (!plan.ok) assert.ok(plan.reason.includes('.ssh/config'), plan.reason)
 })

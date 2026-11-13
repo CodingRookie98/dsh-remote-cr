@@ -99,9 +99,11 @@ export interface SourcesPayload {
   readonly selectable: readonly import('../shared/choices.ts').WorkspaceSource[]
   /** 接入远端用的默认端口与检出根；检出根没配置时是空串（UI 要显式说清楚）。 */
   readonly defaults: import('../shared/api.ts').SourceDefaults
+  /** SSH 来源：`~/.ssh/config` 里有哪些主机（不含 host/user/私钥路径）。 */
+  readonly ssh: import('../shared/api.ts').SshSourceReport
 }
 
-/** 读四选一的可用性 + WSL 发行版清单。 */
+/** 读四选一的可用性 + WSL 发行版清单 + SSH 主机清单。 */
 export function loadSources(fetchImpl?: typeof fetch): Promise<SourcesPayload> {
   return callApi<SourcesPayload>('/sources', {}, fetchImpl)
 }

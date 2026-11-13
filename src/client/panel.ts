@@ -14,6 +14,7 @@ import type {
   ProjectionSnapshotInfo,
   RemoteTargetInfo,
   SourceDefaults,
+  SshTargetInfo,
   WorkspaceRecord,
 } from '../shared/api.ts'
 import { describeLink } from '../shared/reconnect.ts'
@@ -58,6 +59,59 @@ export function planAttach(record: WorkspaceRecord, defaults: SourceDefaults): A
       title: basenameOf(record.posixPath),
     },
   }
+}
+
+/**
+ * SSH 目标的接入计划。
+ *
+ * 与 `planAttach` 的区别是**没有本地路径**：WSL 的 `localPath` 能从发行版名推出 UNC，
+ * SSH 推不出来（远端 `/home/x` 在本地没有任何约定俗成的落点），所以 `localPath` 留空，
+ * 由宿主半的锚点落实器建目录并回填。面板这里**不猜**——猜出来的路径会让宿主把工作区
+ * 建在一个不存在的地方，之后所有读写都落在错的位置还不报错。
+ */
+export function planSshAttach(
+  draft: { readonly alias: string; readonly remotePath: string },
+  defaults: SourceDefaults,
+): AttachPlan {
+  const alias = draft.alias.trim()
+  if (alias === '') return { ok: false, reason: '还没有可用的 SSH 主机：先在 ~/.ssh/config 里写一个 Host 块' }
+  const remotePath = draft.remotePath.trim()
+  if (!remotePath.startsWith('/')) {
+    return { ok: false, reason: '远端路径必须是以 / 开头的绝对路径（例如 /home/hui/workspace）' }
+  }
+  if (defaults.remoteRoot === '' || !defaults.remoteRoot.startsWith('/')) {
+    return {
+      ok: false,
+      reason: '宿主没有配置远端 dsh 检出根（DSH_TELEPORT_REMOTE_ROOT），无法启动远端 dsh',
+    }
+  }
+  return {
+    ok: true,
+    input: {
+      target: { backend: 'ssh', alias, port: defaults.port, remoteRoot: defaults.remoteRoot },
+      remotePath,
+      title: basenameOf(remotePath),
+    },
+  }
+}
+
+/**
+ * SSH 接入按钮的可点性。
+ *
+ * 单独一个函数而不是就用 `planSshAttach` 的 ok：后者在用户**还没输入路径**时
+ * 就已经返回 false 了，但那不是「坏了」，是「还没填」。两者文案必须不同，
+ * 否则用户一打开面板就看到一条红字。
+ */
+export function sshAttachPlan(
+  hosts: readonly SshTargetInfo[],
+  draft: { readonly alias: string; readonly remotePath: string },
+  defaults: SourceDefaults,
+): ButtonPlan {
+  if (hosts.length === 0) return { ok: false, reason: '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）' }
+  if (draft.alias.trim() === '') return { ok: false, reason: '还没有选择 SSH 主机' }
+  if (draft.remotePath.trim() === '') return { ok: false, reason: '还没有填写远端路径' }
+  const plan = planSshAttach(draft, defaults)
+  return plan.ok ? { ok: true } : { ok: false, reason: plan.reason }
 }
 
 /** 远端路径的最后一段，用作工作区标题；根路径退化成整串。 */

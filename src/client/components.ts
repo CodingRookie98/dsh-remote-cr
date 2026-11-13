@@ -25,6 +25,7 @@ import type {
   ProjectedSessionInfo,
   ProjectedWorkspaceInfo,
   ProjectionSnapshotInfo,
+  SshSourceReport,
   WorkspaceRecord,
 } from '../shared/api.ts'
 import { canCancel, describeFlow, FLOW_PHASE_LABELS, type FlowState } from '../shared/flow.ts'
@@ -69,9 +70,11 @@ import {
   formatUpdatedAt,
   linkLine,
   planAttach,
+  planSshAttach,
   probeReport,
   probeSummary,
   reconnectPlan,
+  sshAttachPlan,
 } from './panel.ts'
 import { wizardStore } from './wizard-store.ts'
 
@@ -460,6 +463,10 @@ export function TeleportPanel(): unknown {
   const [busy, setBusy] = useState<string | null>(null)
   const [probe, setProbe] = useState<ProbeOutcome | null>(null)
   const [activeSession, setActiveSession] = useState<string | null>(null)
+  // SSH 接入：主机清单来自 /sources（只含 alias / 端口 / 有无密钥），路径由用户手输。
+  const [ssh, setSsh] = useState<SshSourceReport | null>(null)
+  const [sshAlias, setSshAlias] = useState<string>('')
+  const [sshPath, setSshPath] = useState<string>('')
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
@@ -474,6 +481,25 @@ export function TeleportPanel(): unknown {
     },
     [],
   )
+
+  // SSH 主机清单：面板一打开就要有，不能等用户点开向导才知道有哪些别名。
+  // 读失败不算错（/sources 自己会带原因），SSH 块显示成空即可——面板其余部分照常可用。
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const payload = await loadSources()
+        if (!alive) return
+        setSsh(payload.ssh)
+        setSshAlias((current) => (current === '' ? (payload.ssh.targets[0]?.alias ?? '') : current))
+      } catch {
+        if (alive) setSsh(null)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // 向导落终态时重读一次：刚添加的目录应当立刻出现在「本机已添加」里。
   useEffect(() => {
@@ -502,6 +528,25 @@ export function TeleportPanel(): unknown {
       return
     }
     setBusy(record.localPath)
+    try {
+      const outcome = await attachWorkspace(plan.input)
+      setError(null)
+      await refresh()
+      setActiveSession(outcome.sessions[0]?.sessionId ?? null)
+    } catch (caught) {
+      setError(messageOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onSshAttach = async (): Promise<void> => {
+    const plan = planSshAttach({ alias: sshAlias, remotePath: sshPath }, defaults)
+    if (!plan.ok) {
+      setError(plan.reason)
+      return
+    }
+    setBusy('ssh-attach')
     try {
       const outcome = await attachWorkspace(plan.input)
       setError(null)
@@ -565,8 +610,75 @@ export function TeleportPanel(): unknown {
   const flow = state.flow?.state
   const summary = useMemo(() => (flow === undefined ? '尚未连接远端' : describeFlow(flow)), [flow])
   const defaults = snapshot?.defaults ?? state.defaults
+  const sshHosts = ssh?.targets ?? []
+  const sshPlan = sshAttachPlan(sshHosts, { alias: sshAlias, remotePath: sshPath }, defaults)
   const reconnect = reconnectPlan(snapshot)
   const disconnect = disconnectPlan(snapshot)
+
+  /**
+   * SSH 接入块。
+   *
+   * 三个输入（主机 / 远端路径 / 按钮）都是**明面**的：主机列的是 `~/.ssh/config` 里的别名，
+   * 路径由用户写，按钮不能点时 `title` 里是原因。宿主半负责把远端路径落实成锚点目录，
+   * 面板**不猜**本地路径（猜出来的工作区会建在一个不存在的地方）。
+   */
+  const sshBox = h(
+    'div',
+    { 'data-teleport': 'ssh', 'data-hosts': String(sshHosts.length) },
+    h('div', { 'data-teleport': 'ssh-title' }, 'SSH 远端'),
+    sshHosts.length === 0
+      ? h(
+          'div',
+          { 'data-teleport': 'ssh-empty' },
+          ssh === null
+            ? '还没读到 ~/.ssh/config'
+            : (ssh.problems[0]?.message ?? '~/.ssh/config 里没有可用的主机：写一个 Host 块后刷新'),
+        )
+      : h(
+          'div',
+          { 'data-teleport': 'ssh-form' },
+          h(
+            'div',
+            { 'data-teleport': 'ssh-aliases' },
+            ...sshHosts.map((host) =>
+              h(
+                'button',
+                {
+                  type: 'button',
+                  key: host.alias,
+                  'data-teleport': 'ssh-alias',
+                  'data-selected': String(sshAlias === host.alias),
+                  onClick: () => {
+                    setSshAlias(host.alias)
+                  },
+                },
+                host.alias + ' · 端口 ' + String(host.port) + (host.hasIdentityFile ? ' · 有密钥' : ''),
+              ),
+            ),
+          ),
+          h('input', {
+            'data-teleport': 'ssh-path',
+            type: 'text',
+            value: sshPath,
+            placeholder: '/home/hui/workspace（远端绝对路径）',
+            onInput: (event: unknown) => {
+              const value = (event as { target?: { value?: unknown } }).target?.value
+              if (typeof value === 'string') setSshPath(value)
+            },
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-teleport': 'ssh-attach',
+              disabled: !sshPlan.ok || busy !== null,
+              title: sshPlan.ok ? '接入这个 SSH 远端' : sshPlan.reason,
+              onClick: () => void onSshAttach(),
+            },
+            busy === 'ssh-attach' ? '接入中…' : '接入 SSH 远端',
+          ),
+        ),
+  )
 
   const addRows = records.map((record) => {
     const plan = planAttach(record, defaults)
@@ -691,6 +803,7 @@ export function TeleportPanel(): unknown {
         busy === 'disconnect' ? '断开中…' : '断开',
       ),
     ),
+    sshBox,
     h(
       'div',
       { 'data-teleport': 'panel-workspaces' },
