@@ -1116,6 +1116,67 @@ async function runGate() {
 }
 // ── 主流程 ─────────────────────────────────────────────────────────────────
 
+// ── M3-UI：运行状态可见 + 「结束远端」按钮的真机点击 ─────────────────────
+//
+// 这两条是 M3-2a/2b 的 UI 出口：状态文案与「结束远端」都只能靠点面板证明。
+async function runGateStop() {
+  console.log('== M3-UI · 结束远端 + 运行状态 · ALIAS=' + ALIAS + ' · REMOTE_ROOT=' + JSON.stringify(REMOTE_ROOT))
+  killRemoteOnPort(REMOTE_PORT)
+  if (!(await hostPortFree())) throw new Error('宿主端口 ' + String(HOST_PORT) + ' 已被占用：先关掉上一个 dsh web')
+  ensureProfile()
+  const url = await startHost()
+  console.log('宿主已起：' + url.replace(/token=[^&]+/, 'token=***'))
+  await startChrome()
+  const cdp = await connectCdp(await waitForChrome())
+  const created = await cdp.send('Target.createTarget', { url: 'about:blank' })
+  const attached = await cdp.send('Target.attachToTarget', { targetId: created.targetId, flatten: true })
+  const sid = attached.sessionId
+  const watchdog = armWatchdog(cdp, sid, 10 * 60_000)
+  try {
+    await cdp.send('Runtime.enable', {}, sid)
+    await cdp.send('Page.enable', {}, sid)
+    await cdp.send('Page.navigate', { url }, sid)
+    await waitFor(cdp, sid, SEL_TELEPORT + ' !== null', 120_000, '侧栏出现「瞬移」')
+    await openPanel(cdp, sid)
+    await waitFor(cdp, sid, q('ssh') + ' !== null', 120_000, 'SSH 表单出现')
+    await gateEnsureHosts(cdp, sid)
+    const picked = await evaluate(
+      cdp, sid,
+      '(() => { const rows = ' + qa('ssh-alias') + ';' +
+        ' const hit = rows.find(r => (r.textContent || "").indexOf(' + JSON.stringify(ALIAS + ' ·') + ') === 0);' +
+        ' if (!hit) return "missing"; hit.click(); return "clicked" })()',
+    )
+    if (picked !== 'clicked') throw new Error('别名 ' + ALIAS + ' 不在面板主机列表里：' + String(picked))
+    if (!(await gateFillPath(cdp, sid, REMOTE_ROOT))) throw new Error('远端路径填不进去')
+    const clicked = await gateClickAttach(cdp, sid)
+    if (clicked.ok !== true) throw new Error('点不到接入按钮：' + JSON.stringify(clicked.why))
+    await waitFor(cdp, sid, q('projected') + ' !== null', 300_000, '投影条目出现')
+
+    // M3-UI-1：会话行显示运行状态（M3-2a 的可见性）
+    const running = await evaluate(
+      cdp, sid,
+      '(() => { const el = ' + q('session-running') + '; if (!el) return null;' +
+        ' return { text: el.textContent || "", running: el.getAttribute("data-running") } })()',
+    )
+    record('M3-UI-1', running !== null && typeof running.text === 'string' && running.text.length > 0, { sessionRunning: running })
+
+    // M3-UI-2：点「结束远端」→ 远端端口必须释放
+    const stopClicked = await evaluate(
+      cdp, sid,
+      '(() => { const b = ' + q('stop-remote') + '; if (!b) return "missing"; b.click(); return "clicked" })()',
+    )
+    let freed = false
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      if (!remotePortBusy(REMOTE_PORT)) { freed = true; break }
+      await sleep(500)
+    }
+    record('M3-UI-2', stopClicked === 'clicked' && freed, { stopClicked, freed, remotePort: REMOTE_PORT })
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+
 async function main() {
   console.log('== M2-EXIT ' + (NEG ? '负控' : '正向') + ' · SSH 面板 · ALIAS=' + ALIAS + ' · REMOTE_ROOT=' + JSON.stringify(REMOTE_ROOT))
 
@@ -1286,7 +1347,7 @@ async function main() {
   return { attachMs, sessionId, disconnectMs, reconnectMs }
 }
 
-const running = GATE === 'a5a8' ? runGate() : main()
+const running = GATE === 'a5a8' ? runGate() : GATE === 'stop' ? runGateStop() : main()
 
 running
   .then((outcome) => {
