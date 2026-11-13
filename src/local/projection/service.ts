@@ -170,8 +170,12 @@ export class ProjectionService {
    * 那 52ms 的便宜路径，回到 9–20s 冷启动。
    */
   #detached: { readonly target: ConnectTarget; readonly connection: RemoteConnection } | undefined
-  /** 本次接入里已 dispose 的留存连接：回滚时不能再把它写回去（R1 #5 B1）。 */
-  #discarded: { readonly connection: RemoteConnection } | undefined
+  /**
+   * 已经 dispose 过的连接（I2）：任何槽位都不得再持有它。
+   *
+   * 这是状态机形式化的第一块：不靠「值快照 vs 引用」的推断，直接记对象身份。
+   */
+  #retired = new Set<RemoteConnection>()
   /** 正在进行的接入。成功/失败/取消都会清掉——清不掉就会永远显示「接入中」。 */
   #attach: AttachProgress | undefined
 
@@ -226,7 +230,6 @@ export class ProjectionService {
     // B 不 dispose、`#live` 不清、link 还是 connected）。
     const liveBefore = this.#live
     const detachedBefore = this.#detached
-    this.#discarded = undefined
     /** 本次接入是否新建了连接（由 `#ensure` 报，不看槽位）。 */
     let created = false
     try {
@@ -258,12 +261,15 @@ export class ProjectionService {
         // 取消一律把连接状态回滚到**接入前**（live 与 detached 一起）；
         // 只有 `created` —— 本次真的新建的连接 —— 才回收。复用连接绝不动（B1/D3）。
         const live = this.#live
-        this.#live = liveBefore
+        // I2：已退休的连接不得写回任何槽位（D7 的根因就是这里少了这道检查）。
+        this.#live = liveBefore !== undefined && this.#retired.has(liveBefore.connection) ? undefined : liveBefore
         // `detachedBefore` 是**值快照**，它可能在本次接入里已被 `#dropDetached()` dispose
         // （救援失败 / 换 target 丢弃）。写回一个死连接比不写回更糟（R1 #5 B1）。
-        const discarded = this.#takeDiscarded()
         this.#detached =
-          detachedBefore !== undefined && detachedBefore.connection === discarded?.connection ? undefined : detachedBefore
+          detachedBefore !== undefined && !this.#retired.has(detachedBefore.connection) ? detachedBefore : undefined
+        // D9：`#lastTarget` 也要回滚 —— 否则取消后点「重连」会连到**被取消的**那个 target。
+        const restoredTarget = this.#live?.target ?? this.#detached?.target
+        if (restoredTarget !== undefined) this.#lastTarget = restoredTarget
         if (created && live !== undefined) {
           const clean = await live.connection.dispose()
           if (clean === false) {
@@ -466,25 +472,21 @@ export class ProjectionService {
   /** 保存一条「传输断了、进程可能还活着」的连接；同一 target 只留一条。 */
   #detatch(entry: { readonly target: ConnectTarget; readonly connection: RemoteConnection }): void {
     const previous = this.#detached
-    if (previous !== undefined && previous.connection !== entry.connection) previous.connection.dispose()
+    if (previous !== undefined && previous.connection !== entry.connection) {
+      this.#retired.add(previous.connection)
+      previous.connection.dispose()
+    }
     this.#detached = entry
   }
 
   /** 真收掉留存连接（目标变了、用户断开、进程退出时才调）。 */
-  /** 取走「本次接入里被丢弃的留存连接」（同时清标记）。字段窄化会让直接读变成 `never`。 */
-  #takeDiscarded(): { readonly connection: RemoteConnection } | undefined {
-    const value = this.#discarded
-    this.#discarded = undefined
-    return value
-  }
-
   #dropDetached(): void {
     const entry = this.#detached
     this.#detached = undefined
     if (entry !== undefined) {
       // 记下「这条已经 dispose 了」：取消回滚若把 detachedBefore 值快照写回去，
       // 死连接会复活成 `#live`（R1 #5 D7/D8）。
-      this.#discarded = { connection: entry.connection }
+      this.#retired.add(entry.connection)
       entry.connection.dispose()
     }
   }
