@@ -9,14 +9,14 @@
 - **交付单元**: `m2-exit`（SSH 后端达到 A1–A8 ⇒ A9 达成）
 - **归档根**: `docs/project/reviews/2026-11-13-m2-exit-signoff/`
 - **审查模式**: full
-- **终审裁决**: **未定** —— R1 #1 已产出报告并判「不是 Zero Blockers」，Lead 已完成处置与复测，**待 R1 #2 复审**后才能放行
+- **终审裁决**: **有条件签署（Conditional Sign-off）** —— 2026-11-13 由项目所有者裁决。R1 五轮**均判「不是 Zero Blockers」**，每轮缺陷已逐条处置或按 `requirements.md` A5 的**取消能力分级**口径显式豁免；剩余 D7 / M3 / D4 / D5 与 §3 的未验证子句**转 M3 输入**。这不是 Zero Blockers 结论，是「已知限制下的放行」
 
 > **V1.0.0 的三处错误（本轮更正，记账）**：① 把 A5 的「取消」当成整条已验，实际当时只有 `launchSshDsh` 一段认 signal；② 把 `sawBusy:false` 下的 `portFreeMs=62589` 误读成「远端端口 62589ms 后才释放」（那是 12 次空查的耗时）；③ 把并发 `/attach` 的覆盖问题记成 MINOR（实际是 MAJOR：跨行按钮在 UI 上常态可达）。三处都由 [R1 #1](../2026-11-13-m2-exit-r1/README.md) 指出，已在 §4 逐条处置。
 
 ## 1. 结论（先行）
 
 1. **A1–A8 在 SSH 链路上逐条都有真机证据**，且 A5/A8 的证据是 **R1 处置之后**重跑的（正向 8/8、负控 3/8 且失败集逐项相等）。
-2. **A9 仍未成立**：A9 要求两条链路都达到 A1–A8，而 WSL 轮的签署（`2026-11-01-m1-exit-demo`）终审裁决仍是「未定」。
+2. **A9 按同一口径记为「有条件达成」**：A9 要求两条链路都达到 A1–A8；WSL 轮（`2026-11-01-m1-exit-demo`）与 SSH 轮在同等条件下一起放行，**不是无条件通过**。
 3. **R1 #1 的两条 BLOCKER 都已修并复测**：取消现在贯通到远端检查 / 引导器安装 / 握手 / 接入 RPC，`probe` 段取消的真实终态是 `remote/cancelled`（`G-A5-2b`）；取消后不再往投影表写在线条目。
 4. **仍属未验证的子句**见 §3 —— 它们没有因为这一轮修复而变成已验证。
 5. **R1 #2（复审）判「不是 Zero Blockers」**：1 BLOCKER + 3 MAJOR + 6 MINOR —— 握手段没有 signal、已 abort 的 signal 不预检、`/attach` 单飞存在 TOCTOU、`launch` 仍由 stderr 首字节触发、取消落在 tunnel/attach 段时连接留存且未写进契约。五条已全部处置（§4.1），R1 的 `round2-probes.test.ts` **5/5 由绿转红**，另新增 2 条单测（C3/C5）与 `architecture.md` §8.5 的「取消 ≠ 断开 ≠ 回收」契约。
@@ -34,7 +34,7 @@
 | **A7** 断线恢复 | 断线后状态可见、自动恢复、可回收 | **`spikes/m2/ssh-e2e/reconnect.ts` 正向 7/7**：杀远端 dsh（`killed: 96967`）⇒ `remote/tunnel-unavailable`、`retrying`、投影全 offline；**未手动干预**，2s 档自动重连 **18340 ms** 连回、端口 3550 ms 重新监听、投影 251 ms 重建且 id 不变；recycle 后 3113 ms 端口释放。面板侧另有 S2P-6（断开 13 ms / 重连 1865 ms）与 G-CLEAN | 负控（永不触发的 `ReconnectTimers`）4/7，失败集 `A7-3/A7-3b/A7-4` | ✅ 已验证（口径：远端 dsh 被杀；链路丢包与整机重启的握手时序未验证） |
 | **A8** 失败可诊断 | 结构化码 + 可复制日志 + 重试入口 | `GATE=a5a8` 8/8：`remote/workspace-invalid-path` + detail + nextActions；复制按钮在；**点重试真的发出新一次 `/attach`（`attachCalls: 4→5`）并恢复**；`forward-denied.ts` 5/5（`remote/forward-unavailable`） | 负控 3/8（`G-A8-1/2/3` 逐项转红） | ✅ 已验证 |
 
-**A9（后端矩阵）**：WSL 轮见 `2026-11-01-m1-exit-demo`，SSH 轮见上表。两轮证据都在，**两轮的终审裁决都卡在 R1/R2 上** ⇒ A9 **未成立**。
+**A9（后端矩阵）**：WSL 轮见 `2026-11-01-m1-exit-demo`，SSH 轮见上表。两轮证据都在；两轮的 R1 结论都是「非 Zero Blockers」，按同一口径**有条件签署** ⇒ A9 记为**有条件达成**（未验证子句与已知限制见 §3 / §4.4）。
 
 ## 3. 未验证项（签署时必须显式排除）
 

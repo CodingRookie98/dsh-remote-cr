@@ -18,7 +18,7 @@
 
 ## 🚀 活跃执行状态与持久化检查点 (Active Checkpoint)
 - **当前执行通道**: Heavy Track
-- **当前活跃阶段**: **S10-N 完成 —— R1 #3 的 1 BLOCKER（D1：取消回滚判据）+ 5 MAJOR 已处置**（M-D 记账未做），夹具 D1/D2 转红、P1 仍绿、560/560、双 tsc Exit 0。此前 S10-M 处置了 R1 #2 的 1 BLOCKER + 3 MAJOR（握手取消、abort 预检、单飞 TOCTOU、stderr 阶段、取消后回收 + 投影写入时机），R1 的 `round2-probes.test.ts` 5/5 转红、`pnpm test` 560/560、A5/A8 正向 8/8 + 负控 2/8。下一片 = **R1 #3 复审**（基线 = 本轮修复后）→ R2 → 出口签署
+- **当前活跃阶段**: **M2 已收口（2026-11-13，有条件签署）** —— R1 五轮（每轮都判「非 Zero Blockers」）的缺陷逐条处置或按 `requirements.md` A5 的**取消能力分级**显式豁免；签署归档 §3 / §4.4 的未验证与 D7 / M3 / D4 / D5 转 **M3 输入**。下一片 = **M3**
 - **历史阶段（S10 已完成）**: M2 出口的三条硬门槛 + 面板点击证据都已真机取证（代理接进 SSH 链路 `4881eca`；门槛 1 网络面 `5b5ff40` + 模型面 `8a74635`；门槛 2 `e991dd5`；门槛 3 `a20f043`；doctor 打印面 `e43c420`；面板点击证据见 Context Log）。下一片 = **M2 出口签署**（A1–A8 逐条对证据）+ `milestones.md` 勾选 + R1 终审
 - **当前活跃子任务**: Task M2-EXIT **证据面已齐**。九条证据各自带负控：`proxy-ingress.ts` 6/6、`model-request.ts` 8/8、`forward-denied.ts` 5/5、`anchor-files.ts` 9/9、`ssh-e2e/probe.ts` 33/33（§7.1 门禁）、`ssh-panel/probe.cjs` 面板 7/7 + **向导 A5/A8 7/7**（`GATE=a5a8`）、`ssh-exit-demo` 7/7、`remote-tools.ts` 三态 8/8 ×2、`env-policy.ts` 11/11。下一片 = 出口签署（逐条对证据）+ R1 终审
 - **当前子任务重试计数**: S9.6 = 2/3（① 首版探针把「起远端」算进首连 10s 门禁，是**口径错误**不是产品缺陷；② 首版负控要求计时门禁 `gate-commandMs` 必须红，错在负控——见 Context Log）。M2-EXIT = 3/3（① 门槛 1 首版只证到网络面、② 门槛 3 首版 `AF-6` 假绿（整包 includes 命中模型自己的 tool_use 入参）、③ 门槛 3 负控指望「目录不存在」让写失败（write 会建父目录）——三条都在当轮定位并改判据）；S10-J = 1/3（首两跑被探针自己的 Chrome 归属判据挡住，第三跑即正/负双绿，见 Context Log）
@@ -117,6 +117,11 @@
 
 ## 4. Context Log
 
+- 2026-11-13：**S10-O —— M2 收口：A5 的取消能力分级 + 有条件签署**（项目所有者裁决）。五轮 R1 都判「不是 Zero Blockers」，且每轮都复现了真实缺陷；到第 #5 轮，剩余缺陷（D7 回滚边角、M3 零覆盖、D4 混流分类、D5 投影未回滚）已经集中在**同一个状态机**（取消 × 连接复用 live/detached/新建 × 回滚）里，继续修需要把它形式化（状态迁移表 + 穷举测试）——那是 M3 的量级。
+  1. **A5 写成分级口径**（`requirements.md`），而不是继续声称「取消全段可用」：保证 `probe`/`bootstrap`/`launch`/`tunnel` 四段（真机 `G-A5-2b`），`attach` RPC 段与 `#connect` 内部尽力而为，取消后远端进程何时退出不承诺。
+  2. **签署改为「有条件」**：`milestones.md` 的 M2 出口与签署归档的裁决都写明——这不是 Zero Blockers 结论，是「已知限制下的放行」；A9 记为「有条件达成」。
+  3. **未验证与已知缺陷显式转 M3**：签署归档 §3（A2 关 GUI 后会话数据、A7 链路丢包/整机重启、A5 的 verify/barrier、A3 钩子面）与 §4.4（D7/M3/D4/D5）。
+  4. **证据账**：A5/A8 正向 8/8 + 负控 2/8（6 条逐项相等）、A7 正向 7/7 + 负控 4/7、`pnpm test` 560/560、双 tsc Exit 0、`measurements.cancel.json`（busyBefore:true / observedBusyThenFreed:true / 4012ms）。
 - 2026-11-13：**S10-N —— R1 #3 判「不是 Zero Blockers」，1 BLOCKER + 5 MAJOR 逐条处置**。这一轮抓的是**判据本身的错误**，不是实现没写：
   1. **D1（BLOCKER）**：C5 的 `hadReusable = #live !== undefined || #detached !== undefined` 判的是「此刻有没有连接」，而问题是「本次这条是不是新建的」。先连着 A、再接入 B 时取消 B —— 布尔值说「有连接」，于是 B 的连接不 dispose、`#live` 不清、`link` 还是 connected。改成记住接入前的 `#live` **引用**，取消时只有 `#live !== liveBefore` 才回收并回滚。
   2. **M-A**：WSL 的 `openConnection` 漏传 signal（SSH 传了），WSL 握手段取消要等 15s。已补。
