@@ -12,6 +12,7 @@ import type {
   AttachInput,
   ProbeOutcome,
   ProjectionSnapshotInfo,
+  RemoteTargetInfo,
   SourceDefaults,
   WorkspaceRecord,
 } from '../shared/api.ts'
@@ -33,7 +34,7 @@ export function planAttach(record: WorkspaceRecord, defaults: SourceDefaults): A
   if (record.source !== 'wsl') {
     return {
       ok: false,
-      reason: 'M1 只接通 WSL；SSH 在 M2、Docker 在 M5，届时同一条路会打开',
+      reason: '这条记录不是 WSL 来源：面板还没有 SSH 别名与锚点目录的来源信息',
     }
   }
   if (record.distro === null || record.distro === '') {
@@ -51,7 +52,7 @@ export function planAttach(record: WorkspaceRecord, defaults: SourceDefaults): A
   return {
     ok: true,
     input: {
-      target: { distro: record.distro, port: defaults.port, remoteRoot: defaults.remoteRoot },
+      target: { backend: 'wsl', distro: record.distro, port: defaults.port, remoteRoot: defaults.remoteRoot },
       remotePath: record.posixPath,
       localPath: record.localPath,
       title: basenameOf(record.posixPath),
@@ -102,11 +103,20 @@ export type ButtonPlan = { readonly ok: true } | { readonly ok: false; readonly 
  * 「是没连过，还是掉线正在重试」——而这恰恰是用户按下按钮前最想知道的。
  * 文案直接用共享层的 `describeLink`，宿主半的日志与面板措辞才不会各说一套。
  */
+/**
+ * 连接目标的短标识：WSL 显示发行版名，SSH 显示 config 别名。
+ *
+ * 单独一个函数而不是就地三元：面板与日志都要这句摘要，两处各写一遍迟早只改一处。
+ */
+export function describeTargetInfo(target: RemoteTargetInfo): string {
+  return target.backend === 'wsl' ? target.distro : target.alias
+}
+
 export function linkLine(snapshot: ProjectionSnapshotInfo | null): string {
   if (snapshot === null) return '尚未读取投影'
   const base = describeLink(snapshot.link)
   if (snapshot.link !== 'connected' || snapshot.target === null) return base
-  return base + ' · ' + snapshot.target.distro
+  return base + ' · ' + describeTargetInfo(snapshot.target)
 }
 
 /**

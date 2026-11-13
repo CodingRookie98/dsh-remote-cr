@@ -30,7 +30,7 @@
 
 import { TeleportError } from '../backend/errors.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
-import type { AttachRequest, AttachResult, CreatedSession } from './attach.ts'
+import type { AttachDeps, AttachRequest, AttachResult, CreatedSession } from './attach.ts'
 import { attachWorkspace, createSession as createRemoteSession } from './attach.ts'
 import type { ProbeOptions, ProbeResult } from './probe.ts'
 import { preheatProbe, runSessionProbe } from './probe.ts'
@@ -50,14 +50,34 @@ export interface RemoteConnection {
   dispose(): void
 }
 
-/** 连到哪台远端：v1 只有 WSL，字段留足但不预设多后端。 */
-export interface ConnectTarget {
+/**
+ * 连到哪台远端。
+ *
+ * 判别联合而不是「一堆可选字段」：`backend` 决定下面该读哪个标识（WSL 读发行版名，
+ * SSH 读 config 别名）。写成可选字段就会出现「两者都有」或「两者都没有」的非法态，
+ * 而这两种态在投影与重连里都没法分派。
+ *
+ * **这里只放用户选择，不放凭据**：`ConnectTarget` 会原样进 `/snapshot` 的 HTTP
+ * 响应（面板要显示连的是谁），主机名/用户名/私钥由 live 层按别名解析（铁律 3）。
+ */
+export interface WslConnectTarget {
+  readonly backend: 'wsl'
   readonly distro: string
   /** 远端 dsh 监听的端口（`--port`）。 */
   readonly port: number
   /** 远端检出根（POSIX 绝对路径），用于日志与错误说明。 */
   readonly remoteRoot: string
 }
+
+/** SSH 目标：只记 `~/.ssh/config` 里的别名，余下交给 live 层解析。 */
+export interface SshConnectTarget {
+  readonly backend: 'ssh'
+  readonly alias: string
+  readonly port: number
+  readonly remoteRoot: string
+}
+
+export type ConnectTarget = WslConnectTarget | SshConnectTarget
 
 export interface ProjectionServiceOptions {
   readonly store: ProjectionStore
@@ -131,10 +151,7 @@ export class ProjectionService {
   async attach(target: ConnectTarget, request: AttachRequest): Promise<AttachResult> {
     const connection = await this.#ensure(target)
     return this.#guardTransport(() =>
-      attachWorkspace(
-        { rpc: connection.rpc, store: this.#store, backend: 'wsl', distro: target.distro },
-        request,
-      ),
+      attachWorkspace(attachDeps(target, connection.rpc, this.#store), request),
     )
   }
 
@@ -334,7 +351,7 @@ export class ProjectionService {
     }
     const live = this.#live
     if (live === undefined) return
-    const deps = { rpc: live.connection.rpc, store: this.#store, backend: 'wsl' as const, distro: target.distro }
+    const deps = attachDeps(target, live.connection.rpc, this.#store)
     for (const workspace of this.#store.workspaces()) {
       const remotePath = workspace.remotePath
       if (remotePath === null) continue
@@ -430,6 +447,27 @@ function asTeleportError(error: unknown): TeleportError {
   })
 }
 
-function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
-  return left.distro === right.distro && left.port === right.port && left.remoteRoot === right.remoteRoot
+/**
+ * 把连接目标翻译成投影依赖。
+ *
+ * `distro` 对非 WSL 后端必须是 null：`attach.ts` 拿它算本地 UNC 路径，SSH 的本地
+ * 路径来自锚点目录（S9.5b-2）；冒充成发行版名会拼出一条不存在的 UNC。
+ */
+export function attachDeps(
+  target: ConnectTarget,
+  rpc: ProjectionRpc,
+  store: ProjectionStore,
+): AttachDeps {
+  return target.backend === 'wsl'
+    ? { rpc, store, backend: 'wsl', distro: target.distro }
+    : { rpc, store, backend: 'ssh', distro: null }
+}
+
+/** 两台远端是否「同一条连接」。换后端就是另一台，哪怕端口与检出根一模一样。 */
+export function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
+  if (left.backend !== right.backend) return false
+  if (left.port !== right.port || left.remoteRoot !== right.remoteRoot) return false
+  if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro === right.distro
+  if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias === right.alias
+  return false
 }

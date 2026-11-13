@@ -6,7 +6,8 @@ import { API_PREFIX } from '../../shared/api.ts'
 import { ProjectionService, type ConnectTarget } from '../projection/service.ts'
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
-import { parseAddInput, registerTeleportRoutes } from './routes.ts'
+import { TeleportError } from '../backend/errors.ts'
+import { parseAddInput, parseAttachInput, registerTeleportRoutes } from './routes.ts'
 
 const DISTROS: DistroInfo[] = [
   { name: 'ubuntu_dev', state: 'Running', version: 2, isDefault: true },
@@ -318,7 +319,7 @@ function fakeProjectionRpc(): never {
   } as never
 }
 
-const PROJECTION_TARGET: ConnectTarget = { distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
+const PROJECTION_TARGET: ConnectTarget = { backend: 'wsl', distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
 
 test('/disconnect 回整份快照：条目留着标 offline，相位不再是 connected', async () => {
   const projection = projectionRig()
@@ -367,4 +368,27 @@ test('NEGATIVE_CONTROL 可假性：把回环守卫去掉必须让 403 断言失�
   const negate = process.env.NEGATIVE_CONTROL === '1'
   const denied = await rig().call({ path: '/sources', address: negate ? '127.0.0.1' : '192.168.1.10' })
   assert.equal(denied.status, 403)
+})
+test('parseAttachInput：WSL 省略 localPath 仍推 UNC；SSH 省略则结构化报错，不猜本地路径', () => {
+  const wsl = parseAttachInput({ target: PROJECTION_TARGET, remotePath: '/home/dev/proj' })
+  assert.equal(wsl.localPath, '\\\\wsl.localhost\\ubuntu_dev\\home\\dev\\proj')
+
+  const sshTarget = { backend: 'ssh' as const, alias: 'gcp', port: 8899, remoteRoot: '/home/dev/harness' }
+  assert.throws(
+    () => parseAttachInput({ target: sshTarget, remotePath: '/home/dev/proj' }),
+    (error: unknown) => {
+      assert.ok(error instanceof TeleportError)
+      assert.equal(error.code, 'remote/workspace-unwritable')
+      assert.ok(error.detail.includes('gcp'), error.detail)
+      return true
+    },
+  )
+
+  // 显式给了就放行：锚点目录由调用方落实（S9.5b-2 接线）
+  const explicit = parseAttachInput({
+    target: sshTarget,
+    remotePath: '/home/dev/proj',
+    localPath: 'D:\\anchors\\gcp\\home\\dev\\proj',
+  })
+  assert.equal(explicit.localPath, 'D:\\anchors\\gcp\\home\\dev\\proj')
 })

@@ -19,6 +19,7 @@ import { ProjectionStore } from './store.ts'
 import type { ReconnectTimers } from '../../shared/reconnect.ts'
 
 const TARGET: ConnectTarget = {
+  backend: 'wsl',
   distro: 'ubuntu_dev',
   port: 8899,
   remoteRoot: '/home/dev/harness',
@@ -210,7 +211,7 @@ test('传输层失败：标 offline、清连接、相位转 retrying，并按 2s
   assert.equal(service.connected, false, '隧道断了就不该再说自己连着')
   assert.equal(service.link, 'retrying')
   assert.equal(store.workspaces()[0]?.availability, 'offline', '条目留着并标 offline，不能删')
-  assert.equal(service.target?.distro, 'ubuntu_dev', '断线后仍要记得连回哪儿')
+  assert.deepEqual(service.target, TARGET, '断线后仍要记得连回哪儿')
   assert.deepEqual(timers.pending(), [2000])
 })
 

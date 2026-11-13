@@ -99,14 +99,30 @@ export interface SourceDefaults {
   readonly remoteRoot: string
 }
 
-/** 一台可连接的远端（v1 只有 WSL；锚点后端将来加 host/锚点目录）。 */
-export interface RemoteTargetInfo {
-  readonly distro: string
-  /** 远端 `dsh web` 监听端口。 */
-  readonly port: number
-  /** 远端检出根（POSIX 绝对路径）。 */
-  readonly remoteRoot: string
-}
+/**
+ * 一台可连接的远端：WSL 用发行版名，SSH 用 `~/.ssh/config` 里的别名。
+ *
+ * 判别联合而不是「可选字段全塞一个对象」：`backend` 决定面板该显示哪个标识，
+ * 也决定这一跳要不要走 UNC（WSL）还是锚点目录（SSH）。非法组合在类型上就不存在。
+ *
+ * **这里不放主机名与用户名**：这份对象会经 `/snapshot` 发给浏览器，只该有用户
+ * 自己选的标识（铁律 3）。
+ */
+export type RemoteTargetInfo =
+  | {
+      readonly backend: 'wsl'
+      readonly distro: string
+      /** 远端 `dsh web` 监听端口。 */
+      readonly port: number
+      /** 远端检出根（POSIX 绝对路径）。 */
+      readonly remoteRoot: string
+    }
+  | {
+      readonly backend: 'ssh'
+      readonly alias: string
+      readonly port: number
+      readonly remoteRoot: string
+    }
 
 /** 一个被投影的远端工作区（宿主半 `ProjectionStore` 的线上形状）。 */
 export interface ProjectedWorkspaceInfo {

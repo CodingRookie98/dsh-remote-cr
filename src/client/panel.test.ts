@@ -37,7 +37,7 @@ test('WSL 记录翻译成完整接入入参：UNC 原样带上，标题取远端
   const plan = planAttach(wslRecord(), DEFAULTS)
   assert.equal(plan.ok, true)
   if (!plan.ok) return
-  assert.deepEqual(plan.input.target, { distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' })
+  assert.deepEqual(plan.input.target, { backend: 'wsl', distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' })
   assert.equal(plan.input.remotePath, '/home/dev/proj')
   assert.equal(plan.input.localPath, '\\\\wsl.localhost\\ubuntu_dev\\home\\dev\\proj')
   assert.equal(plan.input.title, 'proj')
@@ -45,7 +45,7 @@ test('WSL 记录翻译成完整接入入参：UNC 原样带上，标题取远端
 
 test('不能接入的四种情况各给一句人话原因（灰按钮必须说清为什么）', () => {
   const cases: readonly (readonly [WorkspaceRecord, { port: number; remoteRoot: string }, string])[] = [
-    [wslRecord({ source: 'local', distro: null, posixPath: null }), DEFAULTS, 'M1 只接通 WSL'],
+    [wslRecord({ source: 'local', distro: null, posixPath: null }), DEFAULTS, '不是 WSL 来源'],
     [wslRecord({ distro: null }), DEFAULTS, '没有发行版信息'],
     [wslRecord({ posixPath: null }), DEFAULTS, '没有远端 POSIX 路径'],
     [wslRecord(), { port: 8899, remoteRoot: '' }, 'DSH_TELEPORT_REMOTE_ROOT'],
@@ -117,7 +117,7 @@ function snapshot(overrides: Partial<ProjectionSnapshotInfo> = {}): ProjectionSn
   }
 }
 
-const TARGET = { distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
+const TARGET = { backend: 'wsl' as const, distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/harness' }
 
 test('连接状态行读 link 而非 connected：掉线要能说出「正在重试」', () => {
   assert.equal(linkLine(null), '尚未读取投影')

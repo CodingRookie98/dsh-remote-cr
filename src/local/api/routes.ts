@@ -506,7 +506,9 @@ function toSessionInfo(session: ProjectedSession): ProjectedSessionInfo {
 }
 
 function toTargetInfo(target: ConnectTarget): RemoteTargetInfo {
-  return { distro: target.distro, port: target.port, remoteRoot: target.remoteRoot }
+  return target.backend === 'wsl'
+    ? { backend: 'wsl', distro: target.distro, port: target.port, remoteRoot: target.remoteRoot }
+    : { backend: 'ssh', alias: target.alias, port: target.port, remoteRoot: target.remoteRoot }
 }
 
 /**
@@ -514,6 +516,10 @@ function toTargetInfo(target: ConnectTarget): RemoteTargetInfo {
  *
  * `localPath` 省略时按 distro 推第一条 UNC 候选：那是 WSL 的**默认注册形态**
  * （`architecture.md` §4.1），让 UI 不必自己拼反斜杠。
+ *
+ * SSH 没有这层免费的推导：本地必须是**真目录**（DSH 工作区要求），而锚点目录要先
+ * 落实（`anchors.ts` 的 `ensureAnchorDir`）。所以 SSH 省略 localPath 直接结构化报错，
+ * 不拿远端路径去猜一个本地路径——猜错只会让会话在本地创建一个指向不存在目录的工作区。
  */
 export function parseAttachInput(body: unknown): AttachInput & { readonly localPath: string } {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
@@ -532,7 +538,15 @@ export function parseAttachInput(body: unknown): AttachInput & { readonly localP
   const givenLocal = record['localPath']
   const localPath = typeof givenLocal === 'string' && givenLocal !== ''
     ? givenLocal
-    : toUnc(target.distro, remotePath)
+    : target.backend === 'wsl'
+      ? toUnc(target.distro, remotePath)
+      : (() => {
+          throw new TeleportError({
+            code: 'remote/workspace-unwritable',
+            detail: `SSH 目标 ${target.alias} 的本地路径必须显式给出：宿主还没有为它建立锚点目录`,
+            nextActions: ['先建立锚点目录再接入', '改用 WSL 目标'],
+          })
+        })()
   const rawTitle = record['title']
   const title = typeof rawTitle === 'string' && rawTitle !== '' ? rawTitle : undefined
   return { target, remotePath, localPath, ...(title === undefined ? {} : { title }) }

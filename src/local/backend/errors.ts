@@ -41,6 +41,7 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/probe-incomplete': 'probe',
   'remote/auth-timeout': 'probe',
   'remote/ssh-missing': 'probe',
+  'remote/ssh-target-unresolved': 'probe',
   'remote/workspace-unwritable': 'attach',
   'remote/path-unreadable': 'attach',
   'remote/cancelled': 'probe',
