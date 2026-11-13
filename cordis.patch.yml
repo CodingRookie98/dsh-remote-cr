@@ -9,5 +9,8 @@
 # 在补丁文件所在目录（`packages/boot/app-boot/src/index.ts:551`）。
 
 - insert:
+    # `id` 是 Loader 的行标识，**刻意保持 `teleport`**：它是运行时标识（与 `~/.dsh-teleport`、
+    # `DSH_TELEPORT_*`、`/teleport` API 前缀同一层）。改它会让已安装 profile 里的补丁行对不上，
+    # 表现为重复插入或整行失效。品牌层（包名/插件 id）已改成 `dsh-remote-cr` —— 两层不要混。
     - id: teleport
       name: 'dsh-remote-cr'
