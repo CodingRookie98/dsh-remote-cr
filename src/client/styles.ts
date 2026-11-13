@@ -109,8 +109,22 @@ export const PANEL_CSS = `
 }
 `
 
+/**
+ * 注入所需的 DOM 最小面。
+ *
+ * 不直接用 `Document` / `document`：本文件同时被宿主 tsc（无 DOM lib）编译，
+ * 直接引用会让 `pnpm build` 报 TS2304。这里只声明真正用到的三个成员。
+ */
+export interface StyleHost {
+  querySelector(selector: string): unknown
+  createElement(tag: string): { setAttribute(name: string, value: string): void; textContent: string }
+  readonly head: { appendChild(node: unknown): void }
+}
+
 /** 幂等注入：多次挂载只留一份 `<style>`（DSH 的面板可能被反复卸载/挂载）。 */
-export function ensurePanelStyles(doc: Document = document): void {
+export function ensurePanelStyles(host: StyleHost | undefined = (globalThis as { document?: StyleHost }).document): void {
+  const doc = host
+  if (doc === undefined) return
   if (doc.querySelector('style[' + PANEL_STYLE_ATTR + ']') !== null) return
   const style = doc.createElement('style')
   style.setAttribute(PANEL_STYLE_ATTR, '')
