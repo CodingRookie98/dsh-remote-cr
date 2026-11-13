@@ -24,7 +24,8 @@ export const PANEL_STYLE_ATTR = 'data-dsh-remote-cr-styles'
 export const PANEL_CSS = `
 [data-teleport='panel'] {
   padding: 16px 20px 24px;
-  max-width: 920px;
+  /* 不再钉死 920px：宿主面板区更宽时右侧会有一大片空白（截图里就是）。 */
+  max-width: 100%;
   color: #1f2328;
   font-size: 13px;
   line-height: 1.55;
@@ -76,7 +77,7 @@ export const PANEL_CSS = `
 [data-teleport='panel'] [data-teleport='projected'] button { grid-column: 2; justify-self: end; }
 
 [data-teleport='panel'] [data-teleport='panel-sessions'] {
-  max-height: 320px; overflow-y: auto;
+  max-height: min(52vh, 460px); overflow-y: auto;
   border: 1px solid ${COLORS.border}; border-radius: 8px;
 }
 [data-teleport='panel'] [data-teleport='session'] {
