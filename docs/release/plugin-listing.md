@@ -24,7 +24,7 @@
 ## 4. 安装
 
 ```bash
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.1'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.2.0'
 ```
 
 ## 5. 截图
@@ -55,7 +55,7 @@ dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.1'
 dsh-plugin.org **不收表单**：流程是「公开仓库 + 打 `dsh-plugin` topic → 站点自动发现并 review → 自动生成 listing」。
 
 - ✅ 公开仓库：`https://github.com/CodingRookie98/dsh-remote-cr`
-- ✅ tag `v0.1.1` + release（`package.json#version` 与 tag 对齐，`lib/` 随仓库分发）
+- ✅ tag `v0.2.0` + release（`package.json#version` 与 tag 对齐，`lib/` 随仓库分发）
 - ✅ topic：`dsh-plugin`、`deepseek-harness`、`remote-development`、`remote-ssh`、`ssh`、`wsl`
 - ✅ 仓库描述：把整个 DSH 宿主搬到远端（SSH / WSL），长任务在远端继续跑，真实 API key 不出本机
 - ⏳ 站点 review 通过后：把 listing URL 回填 README 安装段

@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-cr",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "dsh-remote-cr：DeepSeek Harness 的远端宿主远程开发插件（B 型：宿主远端、单一原生 GUI、凭据不出本机）",
   "type": "module",

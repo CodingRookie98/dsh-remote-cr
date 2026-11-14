@@ -43,7 +43,7 @@
 
 ```bash
 # 方式一：从 GitHub tag 安装（推荐，固定版本）
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.1'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.2.0'
 
 # 方式二：本地开发，link 当前检出
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
