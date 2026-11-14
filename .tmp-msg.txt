@@ -1,0 +1,14 @@
+test(m4-1): 全新 WSL 目标上的导入与长任务验证（面板导入未过，记账）
+
+在一台全新 WSL Ubuntu（D 盘，用户自建）上重跑功能面：
+
+- 接入 + stopRemote：attachMs 4438（staging 复用修复后，之前 63898）、释放 269 ms
+- 长任务驻留：dshAliveAfterWait true、portBusyAfterWait true
+- 跨进程复用：sameInstance true（pid 5679）、sessionKept true
+- 导入（服务层）：imported 1、projected 2
+- 导入（面板路径）：import-list 30 s 未出现，未定位（gcp 上同一场景 2/2 通过）
+
+确认的环境坑：/home/hui/workspace-import 被删过，远端 workspace/create 正确拒绝
+（remote/workspace-invalid-path）——不是缺陷，是「失败要响」按预期工作。
+
+spikes/m3/follow-probe.ts 现在支持别名参数（之前硬编码 gcp）。

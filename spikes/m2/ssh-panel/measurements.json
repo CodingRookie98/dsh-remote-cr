@@ -1,27 +1,13 @@
 {
-  "at": "2026-11-13T15:04:16.265Z",
+  "at": "2026-11-14T10:00:10.705Z",
   "negative": false,
   "measurements": [],
   "results": [
     {
-      "id": "M4-1-list",
-      "ok": true,
+      "id": "S2P-FATAL",
+      "ok": false,
       "detail": {
-        "before": 1,
-        "opened": "clicked",
-        "listed": {
-          "count": 21,
-          "first": "/home/hui/seed-19"
-        }
-      }
-    },
-    {
-      "id": "M4-1-import",
-      "ok": true,
-      "detail": {
-        "imported": "clicked",
-        "before": 1,
-        "after": 2
+        "message": "等待「导入列表出现」超时（30000ms）\n--- 页面现场 ---\n{\n  \"url\": \"http://127.0.0.1:3131/\",\n  \"marks\": [\n    \"panellist-icon\",\n    \"panel\",\n    \"panel-title\",\n    \"panel-connected\",\n    \"panel-env\",\n    \"import\",\n    \"import-open\",\n    \"panel-link-actions\",\n    \"reconnect\",\n    \"disconnect\",\n    \"stop-remote\",\n    \"ssh\",\n    \"ssh-title\",\n    \"ssh-form\",\n    \"ssh-aliases\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-alias\",\n    \"ssh-path\",\n    \"ssh-attach\",\n    \"panel-workspaces\",\n    \"panel-projected\",\n    \"projected\",\n    \"projected-title\",\n    \"projected-path\",\n    \"new-session\",\n    \"panel-sessions\",\n    \"session\",\n    \"session-id\",\n    \"session-running\",\n    \"session-updated\",\n    \"probe\"\n  ],\n  \"buttons\": [\n    \"New session\",\n    \"Open sidebar\",\n    \"New session\",\n    \"Plugins\",\n    \"Automation tasks\",\n    \"Unpin Automation tasks from sidebar\",\n    \"瞬移\",\n    \"Unpin 瞬移 from sidebar\",\n    \"More\",\n    \"Search sessions\",\n    \"View options\",\n    \"Add workspace\",\n    \"Workspace actions for Default workspace\",\n    \"New session in Default workspace\",\n    \"Account menu\",\n    \"导入远端工作区\",\n    \"重连\",\n    \"断开\",\n    \"结束远端\",\n    \"github.com · 端口 22 · 有密钥\",\n    \"syy_win11_LAN · 端口 22 · 有密钥\",\n    \"syy_win11_zt · 端口 22 · 有密钥\",\n    \"syy_wsl_ubuntu_LAN · 端口 2222 · 有密钥\",\n    \"syy_wsl_ubuntu_zt · 端口 2222 · 有密钥\",\n    \"hskj_ubuntu_hui_zt · 端口 22 · 有密钥\",\n    \"gcp · 端口 22 · 有密钥\",\n    \"gcp-vps · 端口 22 · 有密钥\",\n    \"self-hosted · 端口 22 · 有密钥\",\n    \"hindsight-server · 端口 22 · 有密钥\",\n    \"RN_US_1C1G · 端口 65534 · 有密钥\",\n    \"接入 SSH 远端\",\n    \"新建会话\",\n    \"取证\",\n    \"取证\",\n    \"Open sidebar\",\n    \"Close\",\n    \"Add API Key\",\n    \"Sign in\"\n  ],\n  \"text\": \"Workspaces\\n瞬移\\n远端已连接 · syy_wsl_ubuntu_LAN\\n环境：复用远端已有 ~/.dsh\\n导入远端工作区\\n重连\\n断开\\n结束远端\\nSSH 远端\\ngithub.com · 端口 22 · 有密钥\\nsyy_win11_LAN · 端口 22 · 有密钥\\nsyy_win11_zt · 端口 22 · 有密钥\\nsyy_wsl_ubuntu_LAN · 端口 2222 · 有密钥\\nsyy_wsl_ubuntu_zt · 端口 2222 · 有密钥\\nhskj_ubuntu_hui_zt · 端口 22 · 有密钥\\ngcp · 端口 22 · 有密钥\\ngcp-vps · 端口 22 · 有密钥\\nself-hosted · 端口 22 · 有密钥\\nhindsight-server · 端口 22 · 有密钥\\nRN_US_1C1G · 端口 65534 · 有密钥\\n接入 SSH 远端\\nworkspace\\n/home/hui/workspace\\n新建会话\\nsession-ca7569c5-7b24-408e-b731-a8232156fd42\\n空闲\\n1 小时前\\n取证\\nsession-b4f59bf5-55f9-43f0-b5a7-0e8d68912f67\\n空闲\\n1 小时前\\n取证\\nGet started\\n\\nSign in to your DeepSeek account or add an API Key to get started. Your projects and files are stored locally.\\n\\nAdd API Key\\nSign in\"\n}"
       }
     }
   ]

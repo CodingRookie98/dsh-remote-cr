@@ -12,10 +12,11 @@ const HOME = process.env['USERPROFILE'] ?? process.env['HOME'] ?? ''
 const PORT = Number(process.env['REMOTE_PORT'] ?? '8951')
 const cfg = join(HOME, '.ssh', 'config')
 const config = readSshConfig({ file: cfg, homeDir: HOME })
-const resolved = resolveSshTarget(config.parsed, 'gcp', { homeDir: HOME, file: cfg })
+const ALIAS = process.argv[2] ?? 'gcp'
+const resolved = resolveSshTarget(config.parsed, ALIAS, { homeDir: HOME, file: cfg })
 if (resolved.target === undefined) process.exit(2)
 const anchor = await resolveAnchorPath({ homeDir: HOME, target: resolved.target, remotePath: '/home/hui/workspace' })
-const target: ConnectTarget = { backend: 'ssh', alias: 'gcp', port: PORT, remoteRoot: anchor.remotePath }
+const target: ConnectTarget = { backend: 'ssh', alias: ALIAS, port: PORT, remoteRoot: anchor.remotePath }
 const live = createLiveConnect({ ssh: { homeDir: HOME, authFor: async () => ({ kind: 'key' as const }) } })
 const service = new ProjectionService({ store: new ProjectionStore(), timers: defaultTimers, connect: async (w: ConnectTarget) => live(w) })
 await service.attach(target, { remotePath: anchor.remotePath, localPath: anchor.localPath })
