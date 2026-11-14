@@ -7,9 +7,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/<ORG>/dsh-remote-cr.git"
+    "url": "https://github.com/CodingRookie98/dsh-remote-cr.git"
   },
-  "homepage": "https://github.com/<ORG>/dsh-remote-cr#readme",
+  "homepage": "https://github.com/CodingRookie98/dsh-remote-cr#readme",
   "keywords": ["deepseek-harness", "dsh", "dsh-plugin", "remote-development", "ssh", "wsl"],
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

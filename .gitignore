@@ -23,6 +23,10 @@ spikes/**/cdp/chrome-profile*/
 # 运行时生成物：含 ed25519 私钥（hostkey/clientkey）、pid、日志 —— 绝不入库
 spikes/**/work/
 
+# local agent / scratch state
+.agents/
+.tmp-*
+
 # editors / OS
 .DS_Store
 Thumbs.db

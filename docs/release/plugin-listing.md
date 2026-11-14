@@ -1,6 +1,6 @@
 # 上架材料 · dsh-plugin.org
 
-> **状态**：材料已备好，**提交需要人工**（仓库公开 + 表单/PR）。这里的 `<ORG>` 与版本号是占位。
+> **状态**：材料已备好，**提交需要人工**（仓库公开 + 表单/PR）。版本号是占位，仓库地址已指向 `CodingRookie98/dsh-remote-cr`。
 
 ## 1. 一句话
 
@@ -24,7 +24,7 @@
 ## 4. 安装
 
 ```bash
-dsh plugin --profile web add 'github:<ORG>/dsh-remote-cr#v0.1.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.0'
 ```
 
 ## 5. 截图
@@ -52,7 +52,7 @@ dsh plugin --profile web add 'github:<ORG>/dsh-remote-cr#v0.1.0'
 
 ## 8. 提交步骤（人工）
 
-1. 公开仓库（把 `<ORG>` 换成实际组织名，更新 `package.json#repository` 与 README）。
+1. 公开仓库（`package.json#repository` 与 README 已指向 `CodingRookie98/dsh-remote-cr`；换组织时同步替换）。
 2. 打 tag `v0.1.0`，确认 `pnpm build` 与 `pnpm build:client` 的产物已提交或由 CI 生成。
 3. 在 dsh-plugin.org 提交表单（或对应 PR），附：一句话、分类、安装命令、三张截图、兼容矩阵、§7 的已知限制。
 4. 上架后回填 URL 到 README 的安装段。

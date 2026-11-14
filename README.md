@@ -41,7 +41,7 @@
 
 ```bash
 # 方式一：从 GitHub tag 安装（推荐，固定版本）
-dsh plugin --profile web add 'github:<ORG>/dsh-remote-cr#v0.1.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.0'
 
 # 方式二：本地开发，link 当前检出
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
@@ -49,7 +49,7 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 装完**重启 `dsh web`**（或 Desktop），侧栏出现「瞬移」面板即可接入远端。
 
-> `<ORG>` 是占位：仓库尚未公开，发布时替换成实际组织名。`private: true` 暂时保留（不走 npm publish，走 GitHub tag/tgz，与社区插件的做法一致）。
+> 仓库地址按实际组织名替换（当前是 `CodingRookie98`）。`private: true` 保留：不走 npm publish，走 GitHub tag/tgz，与社区插件的做法一致。
 
 ### 长什么样（真机截图，未后期）
 
