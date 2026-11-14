@@ -1,6 +1,6 @@
 # 文档索引
 
-> 本目录记录 `dsh-teleport` 的调研、设计与决策。写文档的规则：**结论先行、证据可复现、未验证的明确标注**。
+> 本目录记录 `dsh-remote-cr` 的调研、设计与决策。写文档的规则：**结论先行、证据可复现、未验证的明确标注**。
 
 ## research/ — 调研与实测
 
@@ -14,6 +14,7 @@
 | [zcode-remote/02-ssh-backend.md](./research/zcode-remote/02-ssh-backend.md) | 实现 SSH 后端前（连接参数、认证错误分类、上传回退、forwardOut、单 channel probe） |
 | [zcode-remote/03-wsl-docker-backend.md](./research/zcode-remote/03-wsl-docker-backend.md) | 实现 WSL 后端前（`--exec` 陷阱、UTF-16LE、UNC 回退、dispose 语义、代理网关） |
 | [zcode-remote/04-protocol-and-sync.md](./research/zcode-remote/04-protocol-and-sync.md) | 设计鉴权、连接状态机、断连语义、同步服务前 |
+| [05-ecosystem-and-value-2026-11.md](./research/05-ecosystem-and-value-2026-11.md) | 需要判断本项目在 DSH 生态里的位置、与 A 型插件的差异、场景胜率与路线建议时 |
 | [zcode-remote/05-capability-map.md](./research/zcode-remote/05-capability-map.md) | 判断「某个 ZCode 能力要不要抄」时；`architecture.md`/`milestones.md` 的修订依据 |
 
 ## design/ — 设计
@@ -24,6 +25,14 @@
 | [architecture.md](./design/architecture.md) | 总体架构、嵌入路线、后端抽象、凭据代理、安装器、后端矩阵（§14） |
 | [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、瞬移面板、四选一添加工作区、状态视觉映射、同步面板 |
 | [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M5） |
+| [keep-alive.md](./design/keep-alive.md) | **驻留模式**：`keepAlive` 控制行、实例登记、TTL、与 A7「不留孤儿」的冲突 |
+
+## ops/ 与 release/
+
+| 文件 | 内容 |
+|---|---|
+| [ops/SECRETS.md](./ops/SECRETS.md) | **开源前敏感信息规则**：禁止项、占位符约定、检查命令、历史重写记录 |
+| [release/plugin-listing.md](./release/plugin-listing.md) | 上架 dsh-plugin.org 的材料（一句话、分类、与 A 型差异、已知限制、提交步骤） |
 
 ## decisions/ — ADR
 
