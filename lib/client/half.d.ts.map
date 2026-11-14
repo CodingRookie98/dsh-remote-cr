@@ -1,0 +1,1 @@
+{"version":3,"file":"half.d.ts","sourceRoot":"","sources":["../../src/client/half.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,OAAO,EAAgB,KAAK,UAAU,EAAE,MAAM,qBAAqB,CAAA;AAEnE,eAAO,MAAM,IAAI,EAAE,UAAqB,CAAA;AAExC,qCAAqC;AACrC,wBAAgB,YAAY,IAAI,MAAM,CAErC;AAED,OAAO,EAAE,aAAa,EAAE,YAAY,EAAE,KAAK,UAAU,EAAE,MAAM,qBAAqB,CAAA;AAClF,OAAO,EAAE,uBAAuB,EAAE,cAAc,EAAE,MAAM,oBAAoB,CAAA"}

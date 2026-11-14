@@ -1,7 +1,8 @@
 # deps / build
 node_modules/
 dist/
-lib/
+# lib/ **入库**：`package.json#main` 指向 lib/index.js，GitHub 安装（`dsh plugin add github:...`）
+# 不会在用户机器上跑 tsc，必须带构建产物。CI 仍会重跑 build 以保证产物与源码一致。
 *.tsbuildinfo
 pnpm-lock.yaml.bak*
 *.log

@@ -1,0 +1,57 @@
+/**
+ * 环境共享策略三档（`docs/design/architecture.md` §6）。
+ *
+ * 这一层只做**纯决策**：给定策略与远端事实，算出该用哪个 `DSH_HOME`、要不要传
+ * `DSH_HOME` 环境变量、会不会碰远端已有的 `~/.dsh`。真正的读写留给 Backend。
+ *
+ * 三条硬约束来自文档，不是我的发明：
+ * 1. **默认 `reuse`**（2026-10-26 用户确认）——用户的核心诉求是「用 WSL 里已有的环境」。
+ * 2. `reuse` 下**不写**远端 `~/.dsh` 的任何文件（dsh 自身的会话数据除外）。
+ * 3. `isolated` / `sync` 共用同一 Backend，**只差 `DSH_HOME`**；官方支持
+ *    `DSH_HOME` 覆盖（`packages/util/home-paths/src/index.ts` 的 `DSH_HOME_ENV`），
+ *    所以隔离档位在官方机制上成立（真机已验，见 `spikes/m1/p37-env/README.md`）。
+ */
+import { type EnvPolicy } from '../../shared/env-policy.ts';
+export type { EnvPolicy };
+export declare const ENV_POLICIES: readonly ["reuse", "isolated", "sync"];
+/** 默认档位。改这里等于改产品行为，必须同步 `architecture.md` §6。 */
+export declare const DEFAULT_ENV_POLICY: EnvPolicy;
+/** 隔离档位的远端根目录名（相对远端 home）。 */
+export declare const ISOLATED_HOME_DIR = ".dsh-teleport";
+/** 官方默认 home 目录名（相对远端 home），与 `home-paths` 的 `DSH_HOME_DIR_NAME` 同值。 */
+export declare const DEFAULT_HOME_DIR = ".dsh";
+/** 官方读取的覆盖变量名，与 `home-paths` 的 `DSH_HOME_ENV` 同值。 */
+export declare const DSH_HOME_ENV = "DSH_HOME";
+/**
+ * 归一化外部输入（配置、命令行、UI 选择器）。
+ * 未知值**不猜**：抛错而不是回落到默认档——静默回落会让「用户以为隔离了其实没隔离」。
+ */
+export declare function resolveEnvPolicy(value: string | undefined): EnvPolicy;
+/** 远端 home 必须是 POSIX 绝对路径；这里只做形状校验，不碰文件系统。 */
+export declare function assertRemoteHome(home: string): string;
+/**
+ * host 标识（`wsl:ubuntu_dev` / `ssh:user@host`）会被拼进路径，
+ * 所以要挡住 `/` 与 `..` —— 否则一个恶意发行版名就能让隔离目录跳出 `~/.dsh-teleport`。
+ */
+export declare function assertHostKey(host: string): string;
+/** 一个档位落到远端的完整启动参数。 */
+export interface EnvPlan {
+    readonly policy: EnvPolicy;
+    /** 远端 harness home（绝对 POSIX 路径）。 */
+    readonly dshHome: string;
+    /** 要注入给远端 dsh 进程的环境变量；`reuse` 下为空（不覆盖任何东西）。 */
+    readonly env: Readonly<Record<string, string>>;
+    /** 会不会写远端已有的 `~/.dsh`。`reuse` 允许 dsh 自己写会话数据，但 teleport 不写。 */
+    readonly touchesDefaultHome: boolean;
+}
+/**
+ * 策略 → 计划。
+ * `hostKey` 只在隔离档位用得上，但仍强制校验：`reuse` 也不能接受一个会越界的 host 名。
+ */
+export declare function planEnv(policy: EnvPolicy, facts: {
+    home: string;
+    hostKey: string;
+}): EnvPlan;
+/** 给人看的一句话（UI 副标题直接用）。 */
+export declare function describeEnvPlan(plan: EnvPlan): string;
+//# sourceMappingURL=env-policy.d.ts.map

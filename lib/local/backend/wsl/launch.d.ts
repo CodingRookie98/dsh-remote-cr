@@ -1,0 +1,99 @@
+/**
+ * 启动远端 `dsh` 并把它变成一个可用的端点。
+ *
+ * **通路走 ③ stdio 桥**（ADR-0002 定档的默认档）：我们 spawn 一个
+ * `wsl.exe -d <distro> --exec node <cli> web …`，dsh 的 stdout 直接经管道回到本进程。
+ * 好处是三个：
+ * 1. **不需要日志文件**——启动过程中的每一行都在我们手里，超时/失败原因不需要再去
+ *    远端 `cat` 一遍（也就不会因为 `/tmp` 不在 UNC 可达范围而卡住）。
+ * 2. **句柄即生命周期**——真机 A7 实测：杀掉 Windows 侧的 `wsl.exe` 句柄，distro 侧的
+ *    子进程就被回收。所以 `dispose()` 只 kill 自己起的句柄，绝不 `wsl --terminate`。
+ * 3. **与后续 stdio 桥同构**——凭据反代走的就是这条管道，先在这里把它跑通。
+ *
+ * 这个文件**只做启动与回收**，日志解析交给 `../dsh-output.ts`（纯函数可单测），
+ * 错误分类也交给它。
+ */
+import type { RemoteDshHandle } from '../handle.ts';
+export interface LaunchOptions {
+    /** `wsl.exe` 的路径或命令名。 */
+    readonly executable?: string;
+    readonly distro: string;
+    /** 远端 dsh 检出目录（含 `apps/cli/lib/bin.js`）。 */
+    readonly remoteRoot: string;
+    readonly port: number;
+    readonly host?: string;
+    /** 远端 node 可执行文件名，默认 `node`；T6 失败路径会把它换成一个不存在的名字。 */
+    readonly nodeCommand?: string;
+    /** 传给 `dsh web` 的额外参数。 */
+    readonly extraArgs?: readonly string[];
+    /**
+     * 追加给远端 dsh 的环境变量（环境策略的隔离档靠它注入 `DSH_HOME`）。
+     *
+     * 走的是看门狗脚本里的前缀赋值而不是 `spawn` 的 `env`：后者是 **Windows 侧**
+     * 的进程环境，`wsl.exe --exec` 不会把它带进 distro（`env` 实测为空）。
+     */
+    readonly env?: Readonly<Record<string, string>>;
+    /** 等 URL 的上限，默认 60000ms（真机 12–18s 起，留足冷启动余量）。 */
+    readonly timeoutMs?: number;
+    readonly signal?: AbortSignal;
+}
+/** `dsh web` 的 argv（不含 wsl 前缀）。抽出来是为了能在单测里断言，不用真起进程。 */
+export declare function buildDshArgs(options: {
+    remoteRoot: string;
+    port: number;
+    host?: string;
+    nodeCommand?: string;
+    extraArgs?: readonly string[];
+}): string[];
+/**
+ * 完整 argv：`-d <distro> --cd <remoteRoot> --exec <node…>`。
+ *
+ * 三个细节都实测过：
+ * - 发行版名是**一个** argv 元素（不经 shell），含空格/中文都安全；
+ * - 工作目录必须用 `wsl --cd`，**不能**用 `spawn` 的 `cwd`——后者是 Windows 侧路径，
+ *   而 `remoteRoot` 是 distro 内的 POSIX 路径，交给 spawn 只会 ENOENT；
+ * - `--cd` 在 `-d` 前后都能生效，统一写在 `--exec` 之前。
+ */
+export declare function buildLaunchArgs(options: LaunchOptions): string[];
+/** 看门狗脚本里那两个标记，回收实证靠它们从日志里确认走的是哪条路。 */
+export declare const WATCHDOG_PID_MARK = "TELEPORT_WATCHDOG_PID=";
+export declare const WATCHDOG_KILLED_MARK = "TELEPORT_WATCHDOG_KILLED";
+/**
+ * 把 `dsh web` 包进一个「stdin 一关就自杀」的 bash 看门狗。
+ *
+ * 为什么需要它：宿主崩溃/被强杀时走不到 `dispose()`，而 Windows 不会替我们
+ * 杀掉 `wsl.exe` 的 distro 侧子进程 —— 远端 dsh 就成了孤儿，下次启动撞端口。
+ * 实测（D:/Temp/watchdog-test.cjs）：宿主侧 `child.stdin.destroy()` 之后
+ * `portBusy=false count=0`，日志末尾出现 `TELEPORT_WATCHDOG_KILLED`。
+ *
+ * 这条把「远端生命周期」绑到了「宿主是否还握着管道」上，比事后轮询扫孤儿可靠：
+ * 宿主怎么死的都无所谓，管道一断，`cat` 读到 EOF，脚本就把子进程 kill 掉。
+ *
+ * 整个脚本必须是**单行**：`wsl.exe --exec` 把每个 argv 原样传过去，多行会被
+ * bash 当成后续命令的输入。
+ */
+export declare function buildWatchdogScript(options: {
+    port: number;
+    host?: string;
+    nodeCommand?: string;
+    extraArgs?: readonly string[];
+    env?: Readonly<Record<string, string>>;
+}): string;
+/** 一个 argv 词：安全字符裸露，其余单引号包起来（`'` 自己用 `'\\''` 收尾）。 */
+export declare function shellWord(part: string): string;
+/**
+ * 环境变量 → `NAME=value` 前缀词。
+ *
+ * 名字与值都**先校验再拼**：脚本是单行 bash，一个换行就能把「设置变量」变成
+ * 「执行第二条命令」。名字非法或值里有控制字符时直接抛，不做转义猜测。
+ */
+export declare function envAssignments(env: Readonly<Record<string, string>> | undefined): string[];
+/** `bash -lc <看门狗脚本>` —— 与 `buildDshArgs` 一一对应，只是多了一层壳。 */
+export declare function buildWatchdogArgs(options: LaunchOptions): string[];
+/**
+ * 启动远端 dsh，等到它打印带 token 的 URL 才 resolve。
+ *
+ * 绝不静默降级：超时、端口占用、缺 node 都会抛出 `TeleportError`，且带可复制的日志尾。
+ */
+export declare function launchRemoteDsh(options: LaunchOptions): Promise<RemoteDshHandle>;
+//# sourceMappingURL=launch.d.ts.map
