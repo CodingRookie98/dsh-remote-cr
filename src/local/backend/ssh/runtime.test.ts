@@ -120,7 +120,10 @@ test('staging 装过就复用：一次往返、不装任何东西', async () => 
   try {
     const runtime = await resolveRemoteDsh(base(home, { exec }))
     assert.equal(runtime.source, 'staging')
-    assert.match(runtime.argvPrefix[0] ?? '', /\/\.dsh-teleport\/staging\/[0-9a-f]{16}\/npm\/bin\/dsh$/)
+    const argv = runtime.argvPrefix
+    // 末项是 dsh 入口；首项是 staging 的 node（dsh 的 shebang 依赖 PATH，显式带 node 才不挑远端环境）。
+    assert.match(argv[argv.length - 1] ?? '', /\/\.dsh-teleport\/staging\/[0-9a-f]{16}\/npm\/bin\/dsh$/)
+    assert.match(argv[0] ?? '', /\/bin\/node$/, 'staging 的 dsh 必须用 staging 的 node 执行')
     assert.equal(runtime.dshRoot.split('/').pop()?.length, 16, 'dshRoot 应是 staging/<16 位 id>')
     assert.equal(calls.length, 1, '复用路径只该花一次远端往返：这是首连 ≤10s 门禁的关键')
   } finally {

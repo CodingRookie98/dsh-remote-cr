@@ -196,7 +196,8 @@ test('node 安装脚本：有 curl 用 curl、没有就 wget、都没有退出 4
   assert.match(script, /command -v wget/)
   assert.match(script, /TELEPORT_NO_DOWNLOADER/)
   assert.match(script, /exit 4/)
-  assert.match(script, /tar -xJf .* --strip-components=1/)
+  // `=1` 后面不能跟逗号：曾经是 `=1,`，GNU tar 会把它读成元素个数 `1,` 直接失败。
+  assert.match(script, /tar -xJf .* --strip-components=1(?!,)/)
   assert.match(script, /if \[ ! -x '\/home\/hui\/\.dsh-teleport\/staging\/abc'\/bin\/node \]; then/)
   assert.match(script, /TELEPORT_NODE_OK/)
 })
@@ -224,11 +225,11 @@ test('dsh 装进 staging 前缀：非 root 也能装，且 PATH 指过去', () =
   assert.match(script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
   assert.match(script, /export PATH='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm\/bin':\$PATH/)
   assert.ok(
-    script.indexOf('mkdir -p') < script.indexOf('npm install'),
+    script.indexOf('mkdir -p') < script.indexOf('install --global'),
     '前缀目录必须先建出来，否则 npm 会因为父目录不存在而自己猜路径',
   )
   assert.ok(
-    script.indexOf('npm install') < script.indexOf('export PATH'),
+    script.indexOf('install --global') < script.indexOf('export PATH'),
     'PATH 必须在装完之后才生效——否则 command -v dsh 看到的是系统里那份',
   )
   // 没给 prefix 时不能凭空写 NPM_CONFIG_PREFIX（会污染用户的全局 npm 配置）

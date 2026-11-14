@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-13T15:08:15.618Z",
-  "alias": "gcp",
+  "at": "2026-11-14T07:25:52.175Z",
+  "alias": "syy_wsl_ubuntu_LAN",
   "remotePort": 8949,
-  "attachMs": 21192,
+  "attachMs": 63801,
   "busyBefore": true,
   "connectedAfterStop": false,
-  "freedAfterMs": 3932
+  "freedAfterMs": 252
 }

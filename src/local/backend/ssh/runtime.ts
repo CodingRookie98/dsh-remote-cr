@@ -206,7 +206,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const reusedVersion = values.get('STAGING') ?? ''
   if (dshSupported(reusedVersion)) {
     log.push('staging：复用已装的 dsh ' + reusedVersion)
-    return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, remoteHome, log }
+    return { argvPrefix: stagingArgv(stagingDir, stagingBin), source: 'staging', dshRoot: stagingDir, remoteHome, log }
   }
 
   const statePath = statePathOf(request)
@@ -246,7 +246,12 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   await writeBootstrapState(statePath, next)
   log.push('staging：装好 ' + stagingBin + '（执行 ' + outcome.executed.join('/') + '）')
 
-  const verify = await exec(shellQuote(stagingBin) + ' --version 2>/dev/null', 30_000)
+  // `dsh` 是 `#!/usr/bin/env node` 的脚本：校验时必须把 node 的 bin 放进 PATH，
+  // 否则干净机器上会以 127 退出（/usr/bin/env: node: No such file），被误判成「版本不可用」。
+  const verify = await exec(
+    'PATH=' + shellQuote(posix.join(stagingDir, 'bin')) + ':$PATH ' + shellQuote(stagingBin) + ' --version 2>/dev/null',
+    30_000,
+  )
   const version = verify.stdout.trim()
   if (verify.code !== 0 || !dshSupported(version)) {
     throw new TeleportError({
@@ -259,8 +264,19 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     })
   }
   log.push('staging：验过版本 ' + version)
-  return { argvPrefix: [stagingBin], source: 'staging', dshRoot: stagingDir, remoteHome, log }
+  return { argvPrefix: stagingArgv(stagingDir, stagingBin), source: 'staging', dshRoot: stagingDir, remoteHome, log }
 }
+/**
+ * staging 里的启动前缀：**用 staging 的 node 直接跑 dsh 入口**。
+ *
+ * dsh 是 `#!/usr/bin/env node` 的脚本，而启动脚本（`launch.ts`）不会给远端 PATH ——
+ * 在干净机器上直接执行它会以 127 退出（`/usr/bin/env: node: No such file`），
+ * 还会被误分类成 `remote/auth-failed`。显式带 node 就不依赖任何 PATH 约定。
+ */
+function stagingArgv(stagingDir: string, stagingBin: string): readonly string[] {
+  return [posix.join(stagingDir, 'bin/node'), stagingBin]
+}
+
 /** 缺省执行器：一条 `ssh` channel，非零退出**不**抛（引导器要按退出码分支）。 */
 function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {
   return async (script, deadlineMs) => {

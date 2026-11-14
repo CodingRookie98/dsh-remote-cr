@@ -338,7 +338,7 @@ export function buildNodeRuntimeScript(request: NodeRuntimeRequest): string {
     '  if command -v curl >/dev/null 2>&1; then curl -fsSL -o ' + file + ' ' + url + ';',
     '  elif command -v wget >/dev/null 2>&1; then wget -q -O ' + file + ' ' + url + ';',
     '  else echo TELEPORT_NO_DOWNLOADER; exit 4; fi;',
-    '  tar -xJf ' + file + ' -C ' + dir + ' --strip-components=1,',
+    '  tar -xJf ' + file + ' -C ' + dir + ' --strip-components=1',
     'fi',
     dir + '/bin/node --version',
     'echo TELEPORT_NODE_OK',
@@ -351,6 +351,8 @@ export interface DshPackageRequest {
   readonly version?: string
   /** npm 前缀：装进 staging 而不是系统目录（普通用户身份也能装）。 */
   readonly prefix?: string
+  /** node 的 bin 目录（`staging/bin`）：npm 在那里，**不是** prefix/bin/npm。 */
+  readonly nodeBin?: string
 }
 
 /**
@@ -361,17 +363,38 @@ export interface DshPackageRequest {
  */
 export function buildDshPackageScript(request: DshPackageRequest): string {
   const spec = request.version === undefined ? DSH_PACKAGE_NAME + '@latest' : DSH_PACKAGE_NAME + '@' + request.version
+  // 目标机上未必有系统 npm（WSL 常见）：引导器把 node/npm 装进了 prefix，所以检查 npm 要看
+  // prefix 里那份、安装也走它的**绝对路径**；而 PATH 仍然只在装完之后导出 —— 否则
+  // `command -v dsh` 会撞上系统里已有的那份，校验就失去意义。
+  const hasPrefix = request.prefix !== undefined && request.prefix !== ''
+  const nodeBin = request.nodeBin === undefined || request.nodeBin === '' ? undefined : request.nodeBin
+  // npm 随 node 落在 `nodeBin`，而 `prefix` 只是**安装**前缀（dsh 会进 prefix/bin）。
+  // 曾经用 prefix/bin/npm 去探测，结果在干净机器上必然 exit 5。
+  const npmCommand =
+    nodeBin !== undefined
+      ? shellQuote(nodeBin + '/npm')
+      : hasPrefix
+        ? shellQuote(request.prefix + '/bin/npm')
+        : 'npm'
+  const npmCheck =
+    nodeBin !== undefined || hasPrefix
+      ? 'command -v npm >/dev/null 2>&1 || [ -x ' + npmCommand + ' ] || { echo TELEPORT_MISSING_NPM; exit 5; }'
+      : 'command -v npm >/dev/null 2>&1 || { echo TELEPORT_MISSING_NPM; exit 5; }'
   const lines: string[] = [
     'set -e',
-    'command -v npm >/dev/null 2>&1 || { echo TELEPORT_MISSING_NPM; exit 5; }',
+    npmCheck,
   ]
+  // npm 自己是 `#!/usr/bin/env node` 的脚本：**安装阶段**必须让 node 在 PATH 里，
+  // 否则干净机器上会以 127 退出（/usr/bin/env: node: No such file）。
+  // 与下面「装完再导出 prefix/bin」不冲突：nodeBin 里没有 dsh，prefix/bin 里没有 node。
+  if (nodeBin !== undefined) lines.push('export PATH=' + shellQuote(nodeBin) + ':$PATH')
   const env: string[] = ['NPM_CONFIG_REGISTRY=' + shellQuote(request.registry)]
   if (request.prefix !== undefined && request.prefix !== '') {
     const prefix = shellQuote(request.prefix)
     env.push('NPM_CONFIG_PREFIX=' + prefix)
     lines.push('mkdir -p ' + prefix)
   }
-  lines.push(env.join(' ') + ' npm install --global --no-audit --no-fund ' + shellQuote(spec))
+  lines.push(env.join(' ') + ' ' + npmCommand + ' install --global --no-audit --no-fund ' + shellQuote(spec))
   if (request.prefix !== undefined && request.prefix !== '') {
     lines.push('export PATH=' + shellQuote(request.prefix + '/bin') + ':$PATH')
   }
@@ -400,10 +423,11 @@ function nodeRequestOf(request: PlanBootstrapRequest, version: string): NodeRunt
 }
 
 function dshRequestOf(request: PlanBootstrapRequest): DshPackageRequest {
-  const built: { registry: string; dshHome: string; version?: string; prefix?: string } = {
+  const built: { registry: string; dshHome: string; version?: string; prefix?: string; nodeBin?: string } = {
     registry: request.mirror ?? DEFAULT_MIRRORS[0]?.registry ?? 'https://registry.npmjs.org/',
     dshHome: request.dshHome ?? '',
     prefix: request.stagingDir + '/npm',
+    nodeBin: request.stagingDir + '/bin',
   }
   if (request.dshVersion !== undefined) built.version = request.dshVersion
   return built
