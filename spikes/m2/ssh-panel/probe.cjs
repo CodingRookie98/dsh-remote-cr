@@ -666,7 +666,11 @@ async function waitForQuiet(cdp, sessionId, expression, timeoutMs) {
  */
 async function gateEnsureHosts(cdp, sid) {
   for (let round = 1; round <= 4; round += 1) {
-    if (await waitForQuiet(cdp, sid, qa('ssh-alias') + '.length >= 1', 20_000)) return round
+    if (await waitForQuiet(cdp, sid, qa('ssh-alias') + '.length >= 1', 20_000)) {
+      // 主机默认折叠（面板只渲染当前选中的）：展开一次，调用方才能按别名找到目标。
+      await evaluate(cdp, sid, '(() => { const t = ' + q('ssh-toggle') + '; if (t) { t.click(); return true } return false })()')
+      return round
+    }
     const state = await evaluate(
       cdp,
       sid,
@@ -1245,7 +1249,9 @@ async function runGateShots() {
     await waitFor(cdp, sid, q('projected') + ' !== null', 300_000, '投影条目出现')
     await openPanel(cdp, sid)
     await dismissOverlays()
-    await sleep(800)
+    // 截图要展示**用户视角**：主机区默认折叠成「当前选中的那一个 + 切换按钮」。
+    await evaluate(cdp, sid, '(() => { const t = ' + q('ssh-toggle') + "; if (t && /收起/.test(t.textContent || '')) { t.click(); return true } return false })()")
+    await sleep(600)
     await shot(cdp, sid, 'panel-connected.png')
     // 结束远端：留一张「收尸之后」的现场。
     await evaluate(cdp, sid, '(() => { const b = ' + q('stop-remote') + '; if (!b) return false; b.click(); return true })()')

@@ -559,6 +559,8 @@ export function TeleportPanel(): unknown {
   const [sshError, setSshError] = useState<string | null>(null)
   const [sshAlias, setSshAlias] = useState<string>('')
   const [sshPath, setSshPath] = useState<string>('')
+  // 13 个别名平铺会占三行：默认只显示当前选中的，其余折叠在一个按钮后面。
+  const [sshExpanded, setSshExpanded] = useState(false)
   // 重试入口要记住「上一次想做什么」：面板上有五种动作，失败框只有一个重试按钮。
   //
   // 存的是**意图**而不是当时那个闭包：用户改了远端路径再点重试，期待的是用新路径重来；
@@ -884,9 +886,14 @@ export function TeleportPanel(): unknown {
           h(
             'div',
             { 'data-teleport': 'ssh-aliases' },
-            // 不隐藏任何主机：折叠会把 gcp 这类排后面的主机藏起来（探针与用户都找不到）。
-            // 视觉上由 CSS 的 max-height + 滚动控制。
-            ...sshHosts.map((host) =>
+            // 13 个别名平铺会占三行、把下面的内容推走。默认只渲染「当前选中的」那一个；
+            // 展开按钮（ssh-toggle）列出全部，探针也走同一条展开路径。
+            ...(sshExpanded
+              ? sshHosts
+              : sshAlias === ''
+                ? sshHosts.slice(0, 1)
+                : sshHosts.filter((host) => host.alias === sshAlias)
+            ).map((host) =>
               h(
                 'button',
                 {
@@ -901,6 +908,19 @@ export function TeleportPanel(): unknown {
                 host.alias + ' · 端口 ' + String(host.port) + (host.hasIdentityFile ? ' · 有密钥' : ''),
               ),
             ),
+            sshHosts.length > 1
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    'data-teleport': 'ssh-toggle',
+                    onClick: () => {
+                      setSshExpanded((current) => !current)
+                    },
+                  },
+                  sshExpanded ? '收起主机' : '切换主机（' + String(sshHosts.length) + '）',
+                )
+              : null,
           ),
           h('input', {
             'data-teleport': 'ssh-path',
@@ -1038,17 +1058,6 @@ export function TeleportPanel(): unknown {
     h(
       'div',
       { 'data-teleport': 'import' },
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-teleport': 'import-open',
-          disabled: snapshot?.connected !== true || busy !== null,
-          title: snapshot?.connected === true ? '列出远端已有的工作区，勾选后投影到本地侧栏' : '尚未连接远端',
-          onClick: () => void onLoadImportable(),
-        },
-        busy === 'import-list' ? '读取中…' : '导入远端工作区',
-      ),
       importable === null
         ? null
         : h(
@@ -1125,11 +1134,22 @@ export function TeleportPanel(): unknown {
         },
         busy === 'stop-remote' ? '结束中…' : '结束远端',
       ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-teleport': 'import-open',
+          disabled: snapshot?.connected !== true || busy !== null,
+          title: snapshot?.connected === true ? '列出远端已有的工作区，勾选后投影到本地侧栏' : '尚未连接远端',
+          onClick: () => void onLoadImportable(),
+        },
+        busy === 'import-list' ? '读取中…' : '导入远端工作区',
+      ),
     ),
     sshBox,
     h(
       'div',
-      { 'data-teleport': 'panel-workspaces' },
+      { 'data-teleport': 'panel-workspaces', 'data-empty': String(addRows.length === 0) },
       // 只有「既没有手工目录、也没有投影工作区」时才显示空态：
       // 否则会出现「明明侧栏里有工作区，这里却说还没有添加目录」的自相矛盾。
       ...(addRows.length === 0 && projectedRows.length === 0
