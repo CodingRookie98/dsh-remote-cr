@@ -127,7 +127,7 @@ function buildInspectScript(request: ResolveRemoteDshRequest, stagingSuffix: str
     // 2026-11-13 真机踩过：拿本地 home 拼出 `C:\\Users\\hui/.dsh-teleport/...` 当成远端目录，
     // 引导器于是对着一个不存在的路径装包。
     'S="$HOME/' + stagingSuffix + '"',
-    '[ -x "$S/npm/bin/dsh" ] && p TELEPORT_STAGING "$("$S/npm/bin/dsh" --version 2>/dev/null)"',
+    '[ -x "$S/npm/bin/dsh" ] && p TELEPORT_STAGING "$("$S/bin/node" "$S/npm/bin/dsh" --version 2>/dev/null)"',
     'p TELEPORT_END 1',
   ].join(String.fromCharCode(10))
 }
