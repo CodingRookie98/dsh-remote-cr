@@ -17,21 +17,21 @@
 | 门禁 | ✅ | `pnpm typecheck`（双 tsc）Exit 0、`pnpm test` **577 全绿**、`build` / `build:client`（20 modules / 91555 B） |
 | 子模块 | ✅ | `vendor/zcode` → `https://github.com/zai-org/ZCode`，`git ls-remote` 验证公开可达 |
 
-## 2. 需要你按下的（公开不可逆）
+## 2. 已执行（2026-11-14）
 
-```bash
-# 1) 建公开仓库并推送当前 master
-gh repo create dsh-remote-cr --public --source=. --remote=origin --push
+| 动作 | 结果 |
+|---|---|
+| 建公开仓库并推送 | `https://github.com/CodingRookie98/dsh-remote-cr` |
+| CI | 连续 3 次 **success**（28–31 s） |
+| tag `v0.1.1` + release | 已发布，`package.json#version` 与 tag 对齐 |
+| `lib/` 入库 | 593 文件 / 3.9 MB（GitHub 安装不跑 tsc，`main` → `lib/index.js`） |
+| 安装验证 | 临时 `DSH_HOME`：`+ dsh-remote-cr 0.1.1`（6.6 s） |
+| dsh-plugin.org | 仓库已加 `dsh-plugin` topic（按 topic 自动 review） |
 
-# 2) 打 tag 并发布
-git tag -a v0.1.0 -m 'v0.1.0：M1(WSL) + M2(SSH) 交付，M3 长任务闭环，M4 导入远端工作区'
-git push origin v0.1.0
-gh release create v0.1.0 --generate-notes
+### 两个坑（记录）
 
-# 3) 看 CI 是否绿
-gh run list --limit 3
-```
-
+1. **`lib/` 被 `.gitignore` 排除** → v0.1.0 从 GitHub 装会缺入口；v0.1.1 把 `lib/` 入库解决。
+2. **git stat 缓存**：`ops_edit_file` 改文件后 mtime 未变，`git add -A` 当成未变更 → 版本号没进提交；`touch` + `git add` 才能刷新。
 ## 3. 推送后
 
 1. `README` 的安装命令已经指向 `github:CodingRookie98/dsh-remote-cr#v0.1.0`，tag 打完后即可用。

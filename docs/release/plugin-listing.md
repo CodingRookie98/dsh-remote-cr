@@ -50,9 +50,12 @@ dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.1.1'
 - **端口固定**：同一 target 默认 `port + 1` 作隧道口，冲突时会回落启动。
 - **未验证**：远端整机重启后的重连、链路丢包下的握手、`verify/barrier` 阶段的 UI 呈现。
 
-## 8. 提交步骤（人工）
+## 8. 提交步骤（已执行，2026-11-14）
 
-1. 公开仓库（`package.json#repository` 与 README 已指向 `CodingRookie98/dsh-remote-cr`；换组织时同步替换）。
-2. 打 tag（与 `package.json#version` 对齐），确认 `pnpm build` 与 `pnpm build:client` 的产物已随仓库提交。
-3. 在 dsh-plugin.org 提交表单（或对应 PR），附：一句话、分类、安装命令、三张截图、兼容矩阵、§7 的已知限制。
-4. 上架后回填 URL 到 README 的安装段。
+dsh-plugin.org **不收表单**：流程是「公开仓库 + 打 `dsh-plugin` topic → 站点自动发现并 review → 自动生成 listing」。
+
+- ✅ 公开仓库：`https://github.com/CodingRookie98/dsh-remote-cr`
+- ✅ tag `v0.1.1` + release（`package.json#version` 与 tag 对齐，`lib/` 随仓库分发）
+- ✅ topic：`dsh-plugin`、`deepseek-harness`、`remote-development`、`remote-ssh`、`ssh`、`wsl`
+- ✅ 仓库描述：把整个 DSH 宿主搬到远端（SSH / WSL），长任务在远端继续跑，真实 API key 不出本机
+- ⏳ 站点 review 通过后：把 listing URL 回填 README 安装段
