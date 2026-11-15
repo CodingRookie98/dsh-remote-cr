@@ -57,7 +57,7 @@ DSH 插件市场里的远程插件多为 **A 型（远端执行）**：agent、�
 
 ```bash
 # 固定版本（推荐）
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.2.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.3.0'
 
 # 或链接本地检出（开发）
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'

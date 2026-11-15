@@ -1,6 +1,6 @@
 # 上架材料 · dsh-plugin.org
 
-> **状态**：材料已备好，**提交需要人工**（仓库公开 + 表单/PR）。版本号是占位，仓库地址已指向 `CodingRookie98/dsh-remote-cr`。
+> **状态**：当前版本 `0.3.0`（2026-11-15）。仓库已公开、topic 已加，站点 review 待回；更新与上架步骤见 §8 / §9。仓库地址 `CodingRookie98/dsh-remote-cr`。
 
 ## 1. 一句话
 
@@ -24,7 +24,7 @@
 ## 4. 安装
 
 ```bash
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.2.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.3.0'
 ```
 
 ## 5. 截图
@@ -59,3 +59,16 @@ dsh-plugin.org **不收表单**：流程是「公开仓库 + 打 `dsh-plugin` to
 - ✅ topic：`dsh-plugin`、`deepseek-harness`、`remote-development`、`remote-ssh`、`ssh`、`wsl`
 - ✅ 仓库描述：把整个 DSH 宿主搬到远端（SSH / WSL），长任务在远端继续跑，真实 API key 不出本机
 - ⏳ 站点 review 通过后：把 listing URL 回填 README 安装段
+
+## 9. v0.3.0 发布（2026-11-15）
+
+| 步骤 | 状态 |
+|---|---|
+| 版本号 | `package.json#version = 0.3.0`（minor：新增双栏工作台 + WSL 唤醒诊断） |
+| 变更说明 | [`CHANGELOG.md`](../../CHANGELOG.md)（0.3.0 条目含新增 / 变更 / 修复 / 未变） |
+| 产物 | `pnpm build` + `build:client` 重建 `lib/`，与源码分开提交 |
+| tag | `v0.3.0`（annotated，subject 与 0.1.x / 0.2.0 同格式） |
+| 安装命令 | README 与本文件均指向 `#v0.3.0` |
+| 待人工 | 推送分支与 tag（`git push origin master --follow-tags`）；站点 review 通过后回填 listing URL |
+
+发布前门禁（本地实测）：`pnpm typecheck` 0 · `pnpm test` 624 全绿 · `build`/`build:client` 通过且重建为 no-op（产物与源码同步）。
