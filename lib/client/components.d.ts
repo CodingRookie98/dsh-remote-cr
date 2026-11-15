@@ -15,29 +15,13 @@
  * `tsconfig.client.json`（含 DOM）。所以这里**只用两边都有的全局**，DOM 专属的
  * 东西（如 `navigator.clipboard`）一律走本地窄接口取，而不是依赖 `lib.dom`。
  */
-import type { WorkspaceRecord } from '../shared/api.ts';
 import { type WizardState } from './state.ts';
 type AnyProps = Record<string, unknown>;
-/**
- * 面板上的失败。A8 要求「结构化错误码 + 可复制日志 + 重试入口」，
- * 所以这里存的不是一句话，而是那三件东西本身。
- *
- * `report` 是给用户粘到 issue 里的整份文本：错误码、原因、下一步、以及原始异常；
- * 它必须自足——只复制错误码，收到的人还得回来问细节。
- */
-export interface PanelFailure {
-    readonly code: string;
-    readonly detail: string;
-    readonly nextActions: readonly string[];
-    readonly report: string;
-    /**
-     * 这次失败能用哪个动作重放。
-     *
-     * 与失败**一起**存，而不是另开一个 ref：读取类失败没有可重放的动作，若把「上一次写动作
-     * 的意图」留在旁边，点「重试」就会再跑一次接入 / 再建一个会话（R1-M-3）。
-     */
-    readonly intent?: RetryIntent;
-}
+export declare function messageOf(error: unknown): string;
+/** 更新 store 并返回新状态（读旧值会拿到上一帧，容易写出差一帧的 bug）。 */
+export declare function update(mutate: (state: WizardState) => WizardState): WizardState;
+/** 订阅 store；退订函数交给 `useEffect`。 */
+export declare function useWizard(): WizardState;
 /** 拼接子目录：本机用反斜杠，distro 内用正斜杠。 */
 export declare function joinPath(base: string, name: string): string;
 /**
@@ -58,41 +42,6 @@ export declare function wakeReportOf(state: WizardState): string;
  * （ui-renderer 的 scoped-slots 行为，M0 实测 V12），所以直接从 props 取。
  */
 export declare function DirectoryFlow(props: AnyProps): unknown;
-/** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
-export declare function TeleportIcon(): unknown;
-/**
- * 主面板：向导进度 + 已添加的目录 + 已投影的远端工作区与会话 + 会话取证。
- *
- * 三段式而不是一个大列表，因为它们回答三个不同的问题：
- * 1. **本机已添加**：向导交出去的那些路径（\`WorkspaceRecord\`），是「我知道哪些目录」；
- * 2. **远端投影**：远端 \`workspace/create\` 认下来的那些（\`ProjectedWorkspaceInfo\`），
- *    是「远端真的存在哪些工作区」——两者不合并（\`ui-design.md\` §3：本地与远端不合并）；
- * 3. **会话**：投影出来的只读摘要 + 一键取证，是 A2「宿主在远端」的证据面。
- *
- * 铁律 4：每个不能点的按钮都带 \`title\` 说明为什么不能点。
- */
-/**
- * 失败框「重试」按钮要重跑的那件事。
- *
- * 存意图、不存闭包：闭包会把失败那一刻的表单值一起冻住，用户改完路径点重试仍是旧路径；
- * 而且同一个失败框可能在组件重挂后被点到，闭包里的 `setState` 属于已卸载的实例。
- */
-type RetryIntent = {
-    readonly kind: 'attach';
-    readonly record: WorkspaceRecord;
-} | {
-    readonly kind: 'ssh-attach';
-} | {
-    readonly kind: 'create-session';
-    readonly workspaceId: string;
-} | {
-    readonly kind: 'link';
-    readonly action: 'disconnect' | 'reconnect';
-} | {
-    readonly kind: 'probe';
-    readonly sessionId: string;
-};
-export declare function TeleportPanel(): unknown;
 /** 初始状态导出给诊断面用（避免 `initialWizard` 在组件里被误当成可变单例）。 */
 export declare const WIZARD_INITIAL: WizardState;
 export {};

@@ -9,7 +9,8 @@
  */
 
 import type { FlowState } from '../shared/flow.ts'
-import { DirectoryFlow, TeleportIcon, TeleportPanel } from './components.ts'
+import { DirectoryFlow } from './components.ts'
+import { TeleportIcon, TeleportPanel } from './panel-view.ts'
 import type { SlotRecord } from './diagnostics.ts'
 import { HALF, describeSelf } from './half.ts'
 import { registerSlots, type RegistrationContext } from './registration.ts'

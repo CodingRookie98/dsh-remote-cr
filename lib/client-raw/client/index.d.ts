@@ -13,6 +13,7 @@ export type { PluginHalf } from './half.ts';
 export { apply, inject, PANEL_ID } from './plugin.ts';
 export { DIRECTORY_FLOW_SLOTS, PANEL_ORDER, registerSlots } from './registration.ts';
 export type { RegistrationContext, SlotRegistration, TeleportComponents } from './registration.ts';
-export { DirectoryFlow, TeleportIcon, TeleportPanel, WIZARD_INITIAL } from './components.ts';
+export { DirectoryFlow, WIZARD_INITIAL } from './components.ts';
+export { TeleportIcon, TeleportPanel } from './panel-view.ts';
 export { wizardStore } from './wizard-store.ts';
 export type { TeleportDiagnostics, SlotRecord } from './diagnostics.ts';
