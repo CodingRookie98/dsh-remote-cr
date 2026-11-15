@@ -195,7 +195,8 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
     expected: '路径框值 = ' + PROJECT_PATH,
     actual: typed,
     pass: typed === PROJECT_PATH,
-    note: before2 !== null && before2.pathValue !== PROJECT_PATH ? '输入框预填 ' + String(before2.pathValue) + '，未自动全选，必须自己 Ctrl+A' : null,
+    // 只在「实测没有全选」时提示：原先这句是硬编码，无论实际选没选都会打，把 R1 骗过一次（R2-D15）。
+    note: fullSelect === false ? '聚焦后没有全选（K1b 已失败），K2 只能自己 Ctrl+A' : null,
     detail: { activeMarker: after2 === null || after2.active === null ? null : after2.active.marker, beforeValue: before2 === null ? null : before2.pathValue },
   });
   await image(k2, '02-typed-path');

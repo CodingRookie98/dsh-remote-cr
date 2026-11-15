@@ -30,6 +30,14 @@ export function uncOf(posixPath) {
 
 export const DEFAULT_DEFAULTS = { port: 8899, remoteRoot: '/home/hui/.dsh-teleport' };
 
+/** 「一台主机都没有」的变体：让「SSH 点了没反应」这类死路也能在截图里看见（R2-D10）。 */
+const SSH_REPORT_EMPTY = {
+  configFile: ['C:', 'Users', 'hui', '.ssh', 'config'].join(BACKSLASH),
+  readable: true,
+  targets: [],
+  problems: [],
+};
+
 const SSH_REPORT = {
   configFile: ['C:', 'Users', 'hui', '.ssh', 'config'].join(BACKSLASH),
   readable: true,
@@ -278,6 +286,16 @@ export const PREVIEW_SCENES = [
       { wait: '[data-teleport="error"], [data-teleport="wizard"][data-step="failed"]', timeoutMs: 15000 },
     ],
   },
+  {
+    id: 'ssh-unavailable',
+    label: 'SSH 没有可用主机（原因内联灰显）',
+    theme: 'light',
+    targets: ['[data-teleport="source"][data-source="ssh"][data-availability="unavailable"]'],
+    steps: [
+      { wait: '[data-teleport="sources"]' },
+      { sleep: 200 },
+    ],
+  },
 ];
 
 export function findScene(id) {
@@ -286,13 +304,20 @@ export function findScene(id) {
 
 // ── 每个场景的应答体 ────────────────────────────────────────────────────
 
-function sourceOptions(wslAvailable, wslReason) {
+function sourceOptions(wslAvailable, wslReason, sshAvailable) {
   return [
     { id: 'local', label: '本机目录', availability: 'available', reason: '' },
     wslAvailable
       ? { id: 'wsl', label: 'WSL 发行版', availability: 'available', reason: '' }
       : { id: 'wsl', label: 'WSL 发行版', availability: 'unavailable', reason: wslReason },
-    { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' },
+    sshAvailable
+      ? { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' }
+      : {
+          id: 'ssh',
+          label: 'SSH 远端',
+          availability: 'unavailable',
+          reason: '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）',
+        },
     { id: 'docker', label: 'Docker 容器', availability: 'planned', reason: '计划在 M5' },
   ];
 }
@@ -302,7 +327,8 @@ function distroList(state) {
 }
 
 function sourcesPayload(input) {
-  const options = sourceOptions(input.wslAvailable, input.wslReason);
+  const sshAvailable = input.sshAvailable !== false;
+  const options = sourceOptions(input.wslAvailable, input.wslReason, sshAvailable);
   return {
     wslAvailable: input.wslAvailable,
     distros: input.distros,
@@ -310,7 +336,7 @@ function sourcesPayload(input) {
     options,
     selectable: options.filter((option) => option.availability === 'available').map((option) => option.id),
     defaults: DEFAULT_DEFAULTS,
-    ssh: SSH_REPORT,
+    ssh: sshAvailable ? SSH_REPORT : SSH_REPORT_EMPTY,
   };
 }
 
@@ -492,6 +518,7 @@ export function sceneFixtures(sceneId) {
     wslReason,
     distros: noDistro || noWsl ? [] : distroList(stopped ? 'Stopped' : 'Running'),
     probeError: null,
+    sshAvailable: id !== 'ssh-unavailable',
   });
   const terminal = id === 'done' ? doneSnapshot() : id === 'flow-failed' ? failedSnapshot() : doneSnapshot();
   return {
