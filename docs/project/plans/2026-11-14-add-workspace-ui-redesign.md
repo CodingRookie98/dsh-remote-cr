@@ -211,7 +211,13 @@ EXIT=-1
 | D13 | 键盘门禁默认开启（只在 `local` 场景跑），保留 `--no-keys`；`package.json` 加 `e2e:preview` / `e2e:host` | `preview-wizard.mjs` 全量跑即执行 K1–K9 |
 | D6 | `parseLsLine` 边界用例（前导空格 / 名字带空格 / 标记剥离 / `-` 开头 / 已知限制） | `browse.test.ts` 新增 3 条 |
 | D12 | `components.ts` 1802 → 978 行，面板拆成 `panel-view.ts`（830 行），依赖单向 | 619 单测 + 预览 harness + 真机探针 9/9 全绿 |
-| — | 未做：D4/D10/D11/D14–D16（`distro-install` 可达性、SSH 夹具变体、`lib` 与源码分离提交、CI 接入浏览器 e2e 等） | — |
+| D4 | `wsl --install` 命令移到来源行原因旁（`source-remedy`），不再藏在展不开的 distros 分支里 | `components.ts#sourceRail` |
+| D10 | 新增 `ssh-unavailable` 夹具场景（无主机时来源灰显 + 原因内联），11 场景全过 | `.preview/ssh-unavailable.png` |
+| D11 | 提交分层写进 `AGENTS.md` §4：源码提交 + `build:` 产物提交两步走 | 本轮 4 个提交即按此落盘 |
+| D14 | `seq` / `token` 改必填，代次门焊死（测试用 `listed/woke` 辅助函数传当前代次，两条「过期响应」用例仍显式传旧值） | 619 单测全绿 |
+| D15 | K2 的提示改成「仅当 K1b 实测没全选」才出现，硬编码文案不再骗人 | `preview-keys.mjs` |
+| D16 | `/` 快捷键（焦点不在输入框时跳路径框）+ 300ms 骨架行（CSS `animation-delay`，快目录不闪） | 真机探针 9/9 + 11 场景截图 |
+| — | 仅剩：CI 接入浏览器 e2e（Ubuntu runner 无 Chrome / 无 WSL，需自托管 runner） | — |
 
 ## 11. 已知限制（诚实口径）
 
