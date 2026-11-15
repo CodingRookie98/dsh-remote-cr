@@ -78,11 +78,11 @@
 |---|---|---|
 | `DistroInfo` | 新增可选 `health: 'running' \| 'stopped' \| 'unknown'`（由 `state` 推导，宿主半给，避免浏览器半重复解析本地化字符串） | 加法，旧消费者忽略 |
 | `SourceReport` | 新增可选 `wslDiagnosis: WslDiagnosis \| null`（探测阶段就失败时给结构化诊断） | 加法 |
-| 新 `WslDiagnosis` | `{ code, detail, hint, logTail }`；`code` 取 `wsl/not-installed` / `wsl/start-failed` / `wsl/disk-missing` / `wsl/access-denied` / `wsl/unknown` | 新类型 |
+| 新 `WslDiagnosis` | `{ code, detail, hint, logTail }`；`code` 取 `wsl/not-installed` / `wsl/start-failed` / `wsl/disk-missing` / `wsl/access-denied` / `wsl/timeout` / `wsl/unknown` | 新类型 |
 | 新 `WslWakeResult` | `{ distro, ok, ms, diagnosis }` | 新类型 |
 | `DirListing` | 不变 | — |
 
-新增路由：`POST /teleport/api/wsl/wake`，body `{ distro }`；宿主半执行 `wsl.exe -d <distro> --exec true`（超时 20s），成功回 `{ ok: true, ms }`，失败回 `{ ok: false, diagnosis }`（**200 + ok:false**，不是 5xx：这是可预期的用户环境状态，不是服务器故障）。
+新增路由：`POST /teleport/api/wsl/wake`，body `{ distro }`；宿主半执行 `wsl.exe -d <distro> --exec true`（超时 60s，见 `routes.ts#WAKE_TIMEOUT_MS`：真机冷启动 >20s，20 s 会把冷启动判成失败），成功回 `{ ok: true, ms }`，失败回 `{ ok: false, diagnosis }`（**200 + ok:false**，不是 5xx：这是可预期的用户环境状态，不是服务器故障）。
 
 ## 5. 状态机变更（`src/client/state.ts`）
 
@@ -132,7 +132,7 @@ interface WakeState { status: WakeStatus; distro: string | null; diagnosis: WslD
 | 风险 | 缓解 |
 |---|---|
 | DOM 结构变化打挂既有 CDP 探针 | §3 标记表逐一保留；探针在本迭代内一起更新并在 L3 跑通 |
-| 唤醒探测让「点 WSL」变慢（最慢 20s） | 探测结果按发行版缓存 60s；期间显示「唤醒中」+ 可取消；已 Running 的发行版跳过探测 |
+| 唤醒探测让「点 WSL」变慢（最慢 60s） | 探测结果按发行版缓存 60s；期间显示「唤醒中」+ 可取消；已 Running 的发行版跳过探测 |
 | 宿主看不清 `wsl.exe` 本地化文本（中文 Windows） | 只解析 `Error code:` 这类 ASCII 行做分类，其余原文进 `logTail`，不做本地化字符串匹配 |
 | 面板重排影响 M2/M3 已验收的截图基线 | 面板标记全保留；`docs/assets/panel-*.png` 在 P5 重新抓取并更新 |
 
@@ -157,8 +157,8 @@ interface WakeState { status: WakeStatus; distro: string | null; diagnosis: WslD
 | 方向键 / Enter / Backspace / Esc | 已实现，`preview-keys.mjs` K1–K9 逐条断言 |
 | 路径框 Enter 提交、非法路径内联报错 | 已实现 |
 | 聚焦路径框自动全选 | 已实现（原生 `focusin` + `setTimeout(0)`），K1b 断言 `selectionStart=0 && selectionEnd=length` |
-| `/` 聚焦路径框 | **未实现**（Tab 可到达），记入下一轮 |
-| 列目录 > 300ms 显示骨架 | **未实现**，当前直接显示「读取目录…」 |
+| `/` 聚焦路径框 | 已实现（2026-11-15 补，D16）：焦点不在输入框时 `/` 跳路径框（`components.ts` 文档级监听） |
+| 列目录 > 300ms 显示骨架 | 已实现（2026-11-15 补，D16）：三行骨架 + CSS `animation-delay`，快目录不闪 |
 | `busy` 期间禁用 sources / distro / confirm | 已实现（`sourceRail(state, busy, …)` / `distroRows(state, busy, …)` / `canConfirm(state, busy)`） |
 
 ### 10.3 §9 风险表的补充签字

@@ -11,7 +11,7 @@
 | 负控 | `NEGATIVE_CONTROL=1 node --test src/local/backend/wsl/diagnosis.test.ts` | 11 跑 10 过 1 红（可假性成立） |
 | 构建 | `pnpm build` + `pnpm build:client` | 均成功；浏览器半产物 `lib/client.js` 144546 B |
 | 浏览器 | `node scripts/preview-wizard.mjs --no-build` | 10/10 场景出图 + 标记 dump；**通过（exit 0）** |
-| 键盘 | `node scripts/preview-wizard.mjs --no-build --only=local --keys` | K1–K9 **9/9 PASS**，exit 0 |
+| 键盘 | `node scripts/preview-wizard.mjs --no-build --only=local` | K1–K9 **9/9 PASS**，exit 0（**D13 更正**：`--keys` 已随 D13 移除，键盘默认执行；照旧写法复跑会 `不认识的参数` → exit 1） |
 
 ## 2. B3 门禁的变异取证（我自己做的负控）
 
@@ -65,7 +65,7 @@ EXIT=0
 | `pnpm test` | 610 / 610 |
 | `pnpm build` + `build:client` | 成功 |
 | `node scripts/preview-wizard.mjs --no-build` | 通过（exit 0） |
-| `node scripts/preview-wizard.mjs --no-build --only=local --keys` | 10 / 10 PASS |
+| `node scripts/preview-wizard.mjs --no-build --only=local` | 10 / 10 PASS |
 
 ## 4'. 仍未验证（不得写成通过）
 
@@ -95,7 +95,7 @@ R2 裁决：**有条件放行，阻断 0**；驳回 R1 的 6 条、降级 1 条�
 | `pnpm test` | 610 / 610 |
 | `pnpm build` + `build:client` | 成功（`lib/client.js` 145293 B） |
 | `node scripts/preview-wizard.mjs --no-build` | 通过（exit 0，10 场景） |
-| `node scripts/preview-wizard.mjs --no-build --only=local --keys` | **10 / 10 PASS** |
+| `node scripts/preview-wizard.mjs --no-build --only=local` | **10 / 10 PASS** |
 
 ### 仍未验证（不变）
 
@@ -123,4 +123,4 @@ R2 裁决：**有条件放行，阻断 0**；驳回 R1 的 6 条、降级 1 条�
 
 顺带：唤醒探测 20s→60s，新增 `wsl/timeout`（冷启动被我们杀掉 ≠ 发行版起不来，文案与出路都分开）。
 
-最终门禁：`pnpm typecheck` 0 · `pnpm test` **612/612** · `preview-wizard --no-build` 通过 · `--keys` 10/10 · 真机探针 7/7。
+最终门禁：`pnpm typecheck` 0 · `pnpm test` **612/612** · `preview-wizard --no-build` 通过 · 键盘 10/10（D13 起默认执行） · 真机探针 7/7。

@@ -131,7 +131,7 @@
 
 **决策 2 的形态变更，不是决策反转**：`priority: -1` 顶掉两个 `directoryFlow` hole 的机制不变（V1 仍然成立），变的是洞里的东西——「四选一卡片 + 翻页」改为**左栏常驻 + 右栏目录浏览器 + 底部固定动作**；`local` 分支仍走插件自有路由列举目录（决策 2 的技术前提未变）。
 
-**新增决策 6 · WSL 分支必须先唤醒再浏览**：`/sources` 只能证明「列得出来」，不能证明「起得来」。所以在选中发行版时调 `POST /teleport/api/wsl/wake`（`wsl.exe -d <distro> --exec true`，20s 超时，只缓存成功结果 60s）；失败**不进浏览屏**，就地给 `WslDiagnosis`（码 / 人话 / `Error code:` 原文 / 下一步 / 原文尾巴）。
+**新增决策 6 · WSL 分支必须先唤醒再浏览**：`/sources` 只能证明「列得出来」，不能证明「起得来」。所以在选中发行版时调 `POST /teleport/api/wsl/wake`（`wsl.exe -d <distro> --exec true`，60s 超时——冷启动实测 >20s，20s 会把冷启动判成失败；另设 `wsl/timeout` 码把「我们自己杀掉的冷启动」与「发行版起不来」分开；只缓存成功结果 60s）；失败**不进浏览屏**，就地给 `WslDiagnosis`（码 / 人话 / `Error code:` 原文 / 下一步 / 原文尾巴）。
 
 依据（真机 2026-11-14）：发行版已停止且 vhdx 失效时 `wsl.exe -d ubuntu_dev --exec ls -1aF -- /` 给 `exitCode=-1`、**stderr 为空**、stdout 是 **UTF-16LE** 的挂载失败 + `Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG`。旧实现只看 stderr，于是用户看到的是「ls 退出码 -1」。
 

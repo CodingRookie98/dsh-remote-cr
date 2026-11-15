@@ -267,7 +267,7 @@ spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过�
 
 ### 10.3 WSL：先唤醒再浏览
 
-`POST /teleport/api/wsl/wake`（body `{distro}`，20s 超时，成功结果缓存 60s）-> `WslWakeResult`。
+`POST /teleport/api/wsl/wake`（body `{distro}`，60s 超时，成功结果缓存 60s）-> `WslWakeResult`。
 
 | 结果 | 界面 |
 |---|---|
