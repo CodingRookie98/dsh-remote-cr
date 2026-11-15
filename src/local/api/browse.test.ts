@@ -66,7 +66,7 @@ test('NEGATIVE_CONTROL 可假性：把目录后缀判定反转必须让第一条
  * UTF-16LE 编码（stdout）、**stderr 为空**、exitCode **-1**。UTF-8 解码得到的乱码
  * 今天被当成原因，于是用户只看到「ls 退出码 -1」。
  */
-const VHDX_PATH = String.raw`\\?\\D:\\My_Tools\\wsl2-ubuntu-dev\\ext4.vhdx`
+const VHDX_PATH = String.raw`\\?\D:\My_Tools\wsl2-ubuntu-dev\ext4.vhdx`
 const REAL_WSL_FAILURE = [
   `Failed to attach disk '${VHDX_PATH}' to WSL2: 系统找不到指定的文件。`,
   'Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG',
