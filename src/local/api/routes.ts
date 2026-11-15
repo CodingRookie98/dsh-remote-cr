@@ -418,6 +418,8 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   // 失败也回 200 + `ok:false` + 诊断：vhdx 丢了是用户的环境状态，不是服务器故障
   // （5xx 只会让 UI 把它当成网络错误去重试）。缓存只留**成功**的结论，见下。
   const wakeCache = new Map<string, { readonly at: number; readonly result: WslWakeResult }>()
+  /** 在飞去重：同一发行版的并发请求共享一次 spawn（R2-D1）。 */
+  const wakeInflight = new Map<string, Promise<WslWakeResult>>()
 
   mount('/wsl/wake', ['POST'], async (req, res) => {
     const record = asBody(await readJsonBody(req))
@@ -443,7 +445,14 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       sendJson(res, 200, okEnvelope(cached.result))
       return
     }
-    // 客户端断开（关弹窗 / 取消唤醒）就立刻收掉 wsl.exe：否则它会把 20 秒超时跑满，
+    // 在飞去重：缓存只在完成后写，没有这一层时 N 个并发就是 N 次 wsl.exe。
+    // 并发的调用方共享同一次 spawn，也共享同一份诊断。
+    const pending = wakeInflight.get(distro)
+    if (pending !== undefined) {
+      sendJson(res, 200, okEnvelope(await pending))
+      return
+    }
+    // 客户端断开（关弹窗 / 取消唤醒）就立刻收掉 wsl.exe：否则它会把超时跑满，
     // 用户以为取消了、机器还在转（R1-B1 的宿主半）。
     const controller = new AbortController()
     const onClose = (): void => {
@@ -452,12 +461,12 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     // 单测里的假 res 是普通对象，没有事件方法；有才挂，别让「取消能力」把正常路径也弄挂。
     const closable = typeof (res as { on?: unknown }).on === 'function'
     if (closable) res.on('close', onClose)
-    let result: WslWakeResult
-    try {
-      result = await deps.wakeDistro(distro, controller.signal)
-    } finally {
+    const task = deps.wakeDistro(distro, controller.signal).finally(() => {
+      wakeInflight.delete(distro)
       if (closable && typeof res.off === 'function') res.off('close', onClose)
-    }
+    })
+    wakeInflight.set(distro, task)
+    const result = await task
     if (controller.signal.aborted) return
     // 只缓存成功：失败若也缓存 60 秒，「重试启动」就成了装饰——用户刚修好 vhdx，
     // 点重试拿到的还是上一次的诊断。

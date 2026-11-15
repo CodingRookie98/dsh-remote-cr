@@ -191,9 +191,8 @@ function describeDetail(
     case 'wsl/timeout':
       return `发行版 ${distro} 在探测窗口内没有启动完成（这次探测已中止，冷启动第一次可能要几十秒）${cited}`
     case 'wsl/unknown':
+      // 不为「将来多一个码」留 default：穷举后加 default 会把编译期错误吃掉（R2-D9）。
       return `发行版 ${distro} 启动失败，且 wsl.exe 没有给出可读的报错${exited}`
-    default:
-      return `发行版 ${distro} 启动失败${exited}`
   }
 }
 
@@ -228,8 +227,6 @@ function nextActionsFor(code: WslDiagnosisCode, distro: string): readonly string
         '换一个发行版',
       ]
     case 'wsl/unknown':
-      return ['复制诊断贴到 issue']
-    default:
       return ['复制诊断贴到 issue']
   }
 }
