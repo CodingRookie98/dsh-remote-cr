@@ -3,7 +3,8 @@ import test from 'node:test'
 
 import { sourceOptions } from '../shared/choices.ts'
 import { startFlow, enterPhase, completeFlow, failFlow, cancelFlow } from '../shared/flow.ts'
-import type { DirListing, FlowSnapshot } from '../shared/api.ts'
+import type { DirListing, FlowSnapshot, WslWakeResult } from '../shared/api.ts'
+import type { WizardState } from './state.ts'
 import {
   activeEntry,
   addInputOf,
@@ -39,6 +40,18 @@ import {
   shouldPoll,
   upPathOf,
 } from './state.ts'
+
+
+/**
+ * 测试里落地一次「本轮的」响应：代次/令牌取当前状态自己的。
+ *
+ * 生产代码里这两个值是必填的（R2-D14），测试若到处手写 `state.navSeq` 只会把断言淹没在噪声里；
+ * 真正要验「过期响应被丢弃」的两条用例仍直接调用原函数并显式传旧代次。
+ */
+const listed = (state: WizardState, listing: DirListing) => receiveListing(state, listing, state.navSeq)
+const listedFail = (state: WizardState, message: string) => failListing(state, message, state.navSeq)
+const woke = (state: WizardState, result: WslWakeResult) => settleWake(state, result, state.wakeToken)
+const wokeFail = (state: WizardState, message: string) => failWake(state, message, state.wakeToken)
 
 const DEFAULTS = { port: 8899, remoteRoot: '/home/dev/harness' }
 
@@ -93,16 +106,16 @@ test('选中一个不存在的发行版不生效（防止前端凭空造名字�
 
 test('浏览结果把 path 归一成 listing 的 path（而不是回显用户输入）', () => {
   const browsing = enterBrowse(selectSource(withSources(), 'local'), 'C:\\')
-  const listed = receiveListing(browsing, LISTING)
-  assert.equal(listed.path, 'D:\\work')
-  assert.equal(listed.listingError, null)
-  assert.equal(failListing(listed, 'EACCES').listing, null)
+  const landed = listed(browsing, LISTING)
+  assert.equal(landed.path, 'D:\\work')
+  assert.equal(landed.listingError, null)
+  assert.equal(listedFail(landed, 'EACCES').listing, null)
 })
 
 test('addInputOf 带上来源与发行版；本机分支不带 distro', () => {
-  const local = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
+  const local = listed(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
   assert.deepEqual(addInputOf(local), { source: 'local', path: 'D:\\work' })
-  const wsl = receiveListing(enterBrowse(selectSource(withSources(), 'wsl'), '/'), {
+  const wsl = listed(enterBrowse(selectSource(withSources(), 'wsl'), '/'), {
     ...LISTING,
     path: '/home/hui',
   })
@@ -198,7 +211,7 @@ test('选中 WSL 只是选中分组：唤醒没过之前不许进浏览屏（点
 })
 
 test('唤醒成功才进浏览，起点是 POSIX 根，且记住唤醒过的发行版', () => {
-  const state = settleWake(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
+  const state = woke(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
   assert.equal(state.wake.status, 'ok')
   assert.equal(state.wake.distro, 'ubuntu_dev')
   assert.equal(state.step, 'browse')
@@ -207,7 +220,7 @@ test('唤醒成功才进浏览，起点是 POSIX 根，且记住唤醒过的发�
 })
 
 test('唤醒失败留在选择屏并挂上结构化诊断（不再把用户丢进目录页）', () => {
-  const state = settleWake(beginWake(withSources(), 'ubuntu_dev'), WAKE_FAIL)
+  const state = woke(beginWake(withSources(), 'ubuntu_dev'), WAKE_FAIL)
   assert.equal(state.step, 'choose')
   assert.equal(state.wake.status, 'failed')
   assert.equal(state.wake.diagnosis?.code, 'wsl/disk-missing')
@@ -216,7 +229,7 @@ test('唤醒失败留在选择屏并挂上结构化诊断（不再把用户丢�
 })
 
 test('换发行版会把上一条唤醒结论清掉（不能拿 A 的成功去开 B）', () => {
-  const ok = settleWake(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
+  const ok = woke(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
   const switched = selectDistro(ok, 'Ubuntu 22.04 LTS')
   assert.equal(switched.distro, 'Ubuntu 22.04 LTS')
   assert.equal(switched.wake.status, 'idle')
@@ -224,18 +237,18 @@ test('换发行版会把上一条唤醒结论清掉（不能拿 A 的成功去�
 })
 
 test('唤醒请求自己挂了也要变成看得见的失败，而不是静默 idle', () => {
-  const state = failWake(beginWake(withSources(), 'ubuntu_dev'), '路由 500')
+  const state = wokeFail(beginWake(withSources(), 'ubuntu_dev'), '路由 500')
   assert.equal(state.wake.status, 'failed')
   assert.match(state.wake.diagnosis?.detail ?? '', /路由 500/)
   assert.equal(state.step, 'choose')
 })
 
 test('导航只改路径并清列表，失败也不回吐用户输入（改一个字符就能重试）', () => {
-  const base = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
+  const base = listed(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
   const typed = navigateTo(base, 'D:\\workspace')
   assert.equal(typed.path, 'D:\\workspace')
   assert.equal(typed.listing, null)
-  const failed = failListing(typed, 'EACCES')
+  const failed = listedFail(typed, 'EACCES')
   assert.equal(failed.path, 'D:\\workspace', '错误不该清掉用户刚敲的路径')
   assert.equal(failed.listingError, 'EACCES')
 })
@@ -259,15 +272,15 @@ test('面包屑三种形态：POSIX / 盘符 / UNC，根都单独一条', () => 
 })
 
 test('上一级优先用宿主给的 parent（它才懂 UNC 与盘符根）', () => {
-  const base = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
+  const base = listed(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
   assert.equal(upPathOf(base), 'D:\\')
-  const root = receiveListing(base, { ...LISTING, path: 'D:\\', parent: null })
+  const root = listed(base, { ...LISTING, path: 'D:\\', parent: null })
   assert.equal(upPathOf(root), null, '已经在根上就没有上一级')
 })
 
 test('键盘游标只在目录之间走，Enter 不会落到文件上', () => {
   const base = enterBrowse(selectSource(withSources(), 'local'), 'D:\\')
-  const listing = receiveListing(base, {
+  const listing = listed(base, {
     path: 'D:\\mix',
     parent: 'D:\\',
     truncated: false,
@@ -282,7 +295,7 @@ test('键盘游标只在目录之间走，Enter 不会落到文件上', () => {
   const down = moveActive(listing, 1)
   assert.equal(activeEntry(down)?.name, 'c', '跳过文件')
   assert.equal(activeEntry(moveActive(down, 1))?.name, 'a', '循环回第一个')
-  const onlyFiles = receiveListing(base, {
+  const onlyFiles = listed(base, {
     path: 'D:\\files',
     parent: 'D:\\',
     truncated: false,
@@ -293,12 +306,12 @@ test('键盘游标只在目录之间走，Enter 不会落到文件上', () => {
 })
 
 test('能不能点「添加此目录」：来源与路径齐了、唤醒过了、且不是忙碌中', () => {
-  const local = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
+  const local = listed(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
   assert.equal(canConfirm(local, false), true)
   assert.equal(canConfirm(local, true), false, '忙碌时不许点')
   const wslIdle = selectSource(withSources(), 'wsl')
   assert.equal(canConfirm(wslIdle, false), false)
-  const wslReady = receiveListing(settleWake(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK), {
+  const wslReady = listed(woke(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK), {
     ...LISTING,
     path: '/home/hui',
   })
@@ -319,7 +332,7 @@ test('NEGATIVE_CONTROL 可假性：把唤醒门去掉必须让「没唤醒不许
   assert.equal(gate, false)
 })
 test('R1-B4：过期目录响应不许覆盖当前路径与游标', () => {
-  const base = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
+  const base = listed(enterBrowse(selectSource(withSources(), 'local'), 'C:\\'), LISTING)
   const navigated = navigateTo(base, 'D:\\work')
   const stale = receiveListing(navigated, { ...LISTING, path: 'C:\\old' }, base.navSeq)
   assert.equal(stale.path, 'D:\\work', '代次不符的响应必须被丢弃')
@@ -343,7 +356,7 @@ test('R1-B1：取消唤醒之后，晚到的结果不许再改屏', () => {
 })
 
 test('R1-B2：换发行版必须退回选择屏，否则失败诊断卡无处显示', () => {
-  const browsing = settleWake(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
+  const browsing = woke(beginWake(withSources(), 'ubuntu_dev'), WAKE_OK)
   assert.equal(browsing.step, 'browse')
   const switching = beginWake(browsing, 'Ubuntu 22.04 LTS')
   assert.equal(switching.step, 'choose')
@@ -351,7 +364,7 @@ test('R1-B2：换发行版必须退回选择屏，否则失败诊断卡无处显
   assert.equal(switching.wake.status, 'probing')
 })
 test('R2-D8：backToChoose 只退屏，不清选择（再点一次还能接着走）', () => {
-  const browsing = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
+  const browsing = listed(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
   const back = backToChoose(browsing)
   assert.equal(back.step, 'choose')
   assert.equal(back.listing, null)

@@ -103,7 +103,7 @@ export function joinPath(base: string, name: string): string {
  */
 async function browseTo(state: WizardState, path: string | undefined): Promise<void> {
   if (state.source === 'wsl' && (state.distro === null || state.distro === '')) {
-    update((current) => failListing(current, 'WSL 分支还没选定发行版，先在上面选一个'))
+    update((current) => failListing(current, 'WSL 分支还没选定发行版，先在上面选一个', state.navSeq))
     return
   }
   // 代次在发请求前取一次：回来时若用户又导航过，这次响应就作废（R1-B4）。
@@ -151,7 +151,7 @@ async function confirmPick(state: WizardState): Promise<void> {
     update((current) => beginFlow(current, snapshot))
   } catch (error) {
     const message = messageOf(error)
-    update((current) => failListing(current, message))
+    update((current) => failListing(current, message, state.navSeq))
   }
 }
 
@@ -162,7 +162,8 @@ async function cancelCurrent(id: string): Promise<void> {
     update((current) => receiveFlow(current, snapshot))
   } catch (error) {
     const message = messageOf(error)
-    update((current) => failListing(current, message))
+    // 取消失败发生在 running 屏：写 listingError 会看不见（同 R2-D2 那类），所以进 pollError。
+    update((current) => failPoll(current, message))
   }
 }
 
@@ -266,6 +267,7 @@ interface DocLike {
   addEventListener?: (type: string, listener: (event: unknown) => void) => void
   removeEventListener?: (type: string, listener: (event: unknown) => void) => void
   querySelector?: (selector: string) => unknown
+  activeElement?: { tagName?: string }
 }
 
 /**
@@ -458,7 +460,18 @@ function listingView(state: WizardState, handlers: WizardHandlers): unknown {
     )
   }
   const listing: DirListing | null = state.listing
-  if (listing === null) return h('div', { 'data-teleport': 'listing-loading' }, '读取目录…')
+  if (listing === null) {
+    // 骨架行本身 300ms 后才淡入（CSS animation-delay）：目录通常几十毫秒就回来，
+    // 立刻闪三行占位反而像「卡了一下」（RFC §7 / R2-D16）。
+    return h(
+      'div',
+      { 'data-teleport': 'listing-loading' },
+      h('div', { 'data-teleport': 'listing-loading-text' }, '读取目录…'),
+      ...[0, 1, 2].map((row) =>
+        h('div', { key: String(row), 'data-teleport': 'listing-skeleton', 'data-row': String(row) }),
+      ),
+    )
+  }
   const directoryCount = listing.entries.filter((entry) => entry.kind === 'directory').length
   const fileCount = listing.entries.length - directoryCount
   return h(
@@ -613,7 +626,27 @@ function sourceRail(state: WizardState, busy: boolean, handlers: WizardHandlers)
             },
             h('span', { 'data-teleport': 'source-label' }, option.label),
           ),
-          available ? null : h('div', { 'data-teleport': 'source-reason' }, option.reason),
+          available
+            ? null
+            : h(
+                'div',
+                { 'data-teleport': 'source-reason' },
+                h('span', { 'data-teleport': 'source-reason-text' }, option.reason),
+                // 没有 WSL 时那句「跑 wsl --install」原本只藏在 distros 分支里，而那时左栏
+                // 根本展不开、按钮点不到（R2-D4）。把可复制的命令直接放在原因旁边。
+                option.id === 'wsl'
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        'data-teleport': 'source-remedy',
+                        title: '复制 wsl --install',
+                        onClick: () => handlers.copy('wsl --install'),
+                      },
+                      '复制 wsl --install',
+                    )
+                  : null,
+              ),
           state.source === 'wsl' && option.id === 'wsl' ? distroRows(state, busy, handlers) : null,
         ),
       )
@@ -776,7 +809,18 @@ export function DirectoryFlow(props: AnyProps): unknown {
     const host = (globalThis as { document?: DocLike }).document
     if (host === undefined || typeof host.addEventListener !== 'function') return
     const onKey = (event: unknown): void => {
-      if (keyOf(event) !== 'Escape') return
+      const key = keyOf(event)
+      // `/` 跳到路径框（RFC §7）：焦点已经在输入框里时不抢，否则用户打不出斜杠本身。
+      if (key === '/') {
+        const active = host.activeElement
+        const tag = active === undefined ? undefined : active.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return
+        stopEvent(event)
+        const input = host.querySelector?.("[data-teleport='browser-path']") as { focus?: () => void } | undefined
+        if (input !== undefined && typeof input.focus === 'function') input.focus()
+        return
+      }
+      if (key !== 'Escape') return
       // 已经在别处处理过的 Esc 不再重复关一次（R2 过度工程项：2 行换一个幂等保证）。
       if ((event as KeyEvent).defaultPrevented === true) return
       stopEvent(event)

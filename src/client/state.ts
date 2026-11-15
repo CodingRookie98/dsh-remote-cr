@@ -253,9 +253,9 @@ export function beginWake(state: WizardState, distro: string): WizardState {
  * 失败 -> **留在选择屏**并把诊断挂上。这条是 RFC-0001 §6 的核心：绝不允许
  * 用户先掉进浏览屏、再在深处看到一个既无原因也无出路的红字。
  */
-export function settleWake(state: WizardState, result: WslWakeResult, token?: number): WizardState {
-  // 取消唤醒后才回来的结果不许再改屏（R1-B1）。
-  if (token !== undefined && token !== state.wakeToken) return state
+export function settleWake(state: WizardState, result: WslWakeResult, token: number): WizardState {
+  // 取消唤醒后才回来的结果不许再改屏（R1-B1）——代次必填，调用方无从「忘记传」（R2-D14）。
+  if (token !== state.wakeToken) return state
   if (result.ok) {
     const woke: WizardState = {
       ...state,
@@ -288,8 +288,8 @@ export function cancelWake(state: WizardState): WizardState {
 }
 
 /** 唤醒请求本身挂了（路由 500 / 网络断）：与「发行版起不来」分开记，但都留在选择屏。 */
-export function failWake(state: WizardState, message: string, token?: number): WizardState {
-  if (token !== undefined && token !== state.wakeToken) return state
+export function failWake(state: WizardState, message: string, token: number): WizardState {
+  if (token !== state.wakeToken) return state
   return {
     ...state,
     wake: {
@@ -338,9 +338,14 @@ export function backToChoose(state: WizardState): WizardState {
   return { ...state, step: 'choose', listing: null, listingError: null, active: -1 }
 }
 
-export function receiveListing(state: WizardState, listing: DirListing, seq?: number): WizardState {
-  // 代次对不上 = 这是上一轮导航的响应，丢弃（R1-B4）。
-  if (seq !== undefined && seq !== state.navSeq) return state
+/**
+ * 目录响应落地。
+ *
+ * `seq` 是**必填**的（R2-D14）：可选的代次门等于「调用方可以忘记传」，而忘记传的后果
+ * 正是 R1-B4 那条「旧响应覆盖错目录」。宁可让每个调用点多写三个字符。
+ */
+export function receiveListing(state: WizardState, listing: DirListing, seq: number): WizardState {
+  if (seq !== state.navSeq) return state
   const firstDirectory = listing.entries.findIndex((entry) => entry.kind === 'directory')
   return {
     ...state,
@@ -351,8 +356,8 @@ export function receiveListing(state: WizardState, listing: DirListing, seq?: nu
   }
 }
 
-export function failListing(state: WizardState, message: string, seq?: number): WizardState {
-  if (seq !== undefined && seq !== state.navSeq) return state
+export function failListing(state: WizardState, message: string, seq: number): WizardState {
+  if (seq !== state.navSeq) return state
   return { ...state, listing: null, listingError: message, active: -1 }
 }
 
