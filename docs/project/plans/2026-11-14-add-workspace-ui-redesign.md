@@ -197,6 +197,16 @@ EXIT=-1
 - 21:1x Delta 复核同时点出的三条也一并修：**D-N1** 路径框全选改成原生 `focusin`（不依赖渲染器合成事件，并因此可被断言）；**D-N2** `wakeDistro` 带 `AbortSignal` 且取消时 `abort()`，服务端取消路径从此可达；**D-N5** 已在浏览同一发行版时再点它不再重置界面。
 - 记账（接受的风险）：**D-N3/D-N4** 焦点恢复用的是模块级可变状态 —— 现状一个向导实例，且开关时都会复位，故接受；多实例（hero + sidebar 同时打开）时可能互相抢焦点，留待真机确认。`logTail` 会带出本机 vhdx 绝对路径（诊断卡片的价值就在这里，且不含凭据）。RFC §4 的 `DistroInfo.health` / `SourceReport.wslDiagnosis` / `WslDiagnosis.hint` 三个字段未落地，实现改用 `data-health` 由前端推导。
 
+### 下一轮（2026-11-15）已完成项
+
+| 项 | 内容 | 证据 |
+|---|---|---|
+| D1 | `/wsl/wake` 在飞去重（`Map<string, Promise>`）：并发请求共享一次 spawn | `routes.test.ts` 新增并发用例（`spawned === 1`） |
+| D5 | 向导里点 SSH 不再是无反应死路，改为一句「请用右侧瞬移面板的 SSH 直连区」 | `components.ts#wizardMain` |
+| D8 | 补 `backToChoose` / `failSources` 的语义断言 | `state.test.ts` 新增 2 条 |
+| D9 | 删 `diagnosis.ts` 两处 `default`，让新增第 6 个码时 `tsc` 直接报错 | 穷举 switch |
+| — | 未做：D7（`browse.test.ts` 里 vhdx 字符串的双重转义，纯表面、不影响断言）；D2/D3/D4/D6/D10–D16 仍留在 R2 报告 | — |
+
 ## 11. 已知限制（诚实口径）
 
 | 项 | 状态 |
