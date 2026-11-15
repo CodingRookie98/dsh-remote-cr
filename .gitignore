@@ -11,6 +11,8 @@ pnpm-lock.yaml.bak*
 .dsh-teleport/
 .remote-test/
 test-artifacts/
+# 预览 harness（scripts/preview-wizard.mjs）的截图与 dump：生成物，不入库
+.preview/
 
 # review runtime state (dual-round-review anchors; never versioned)
 .review-context/
