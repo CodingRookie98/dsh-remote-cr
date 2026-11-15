@@ -421,7 +421,14 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   /** 在飞去重：同一发行版的并发请求共享一次 spawn（R2-D1）。 */
   const wakeInflight = new Map<string, Promise<WslWakeResult>>()
 
-  mount('/wsl/wake', ['POST'], async (req, res) => {
+  /**
+   * 一次唤醒：校验发行版名 → 缓存 / 在飞去重 → spawn 一次 `--exec true`。
+   *
+   * 抽成局部函数只有一个理由：让「客户端断开 → abort」的监听包在 try/finally 里。监听**必须先挂**，
+   * 因为校验阶段要 spawn 一次 `wsl.exe --list --verbose`（15s 上限），那段时间里到达的断开
+   * 不会重放，挂晚了就永远收不到（R1-L1）。
+   */
+  const wakeOnce = async (req: IncomingMessage, res: ServerResponse, signal: AbortSignal): Promise<void> => {
     const record = asBody(await readJsonBody(req))
     const distro = record['distro']
     if (typeof distro !== 'string' || distro === '') {
@@ -433,6 +440,8 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     }
     // 名字必须是**当前清单里真实存在的**：否则任何字符串都能让宿主 spawn 一个 wsl.exe。
     const report = await deps.listSources()
+    // 断开发生在校验期间：close 事件已经过去，而 spawn 还没发生——直接收手，别白跑满超时。
+    if (signal.aborted) return
     if (!report.distros.some((item) => item.name === distro)) {
       throw new TeleportError({
         code: 'remote/unknown',
@@ -452,8 +461,23 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       sendJson(res, 200, okEnvelope(await pending))
       return
     }
+    const task = deps.wakeDistro(distro, signal).finally(() => {
+      wakeInflight.delete(distro)
+    })
+    wakeInflight.set(distro, task)
+    const result = await task
+    // 只缓存成功：失败若也缓存 60 秒，「重试启动」就成了装饰——用户刚修好 vhdx，
+    // 点重试拿到的还是上一次的诊断。缓存写入放在 aborted 判断**之前**：这次唤醒确实成功了，
+    // 调用方关没关窗是两件事，否则用户关窗再来一次就得再冷启动一遍（R1D-8）。
+    if (result.ok) wakeCache.set(distro, { at: Date.now(), result })
+    if (signal.aborted) return
+    sendJson(res, 200, okEnvelope<WslWakeResult>(result))
+  }
+
+  mount('/wsl/wake', ['POST'], async (req, res) => {
     // 客户端断开（关弹窗 / 取消唤醒）就立刻收掉 wsl.exe：否则它会把超时跑满，
-    // 用户以为取消了、机器还在转（R1-B1 的宿主半）。
+    // 用户以为取消了、机器还在转（R1-B1 的宿主半）。挂在这里而不是 spawn 之前，
+    // 是为了盖住校验阶段——理由见 wakeOnce 的注释。
     const controller = new AbortController()
     const onClose = (): void => {
       controller.abort()
@@ -461,17 +485,11 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     // 单测里的假 res 是普通对象，没有事件方法；有才挂，别让「取消能力」把正常路径也弄挂。
     const closable = typeof (res as { on?: unknown }).on === 'function'
     if (closable) res.on('close', onClose)
-    const task = deps.wakeDistro(distro, controller.signal).finally(() => {
-      wakeInflight.delete(distro)
+    try {
+      await wakeOnce(req, res, controller.signal)
+    } finally {
       if (closable && typeof res.off === 'function') res.off('close', onClose)
-    })
-    wakeInflight.set(distro, task)
-    const result = await task
-    if (controller.signal.aborted) return
-    // 只缓存成功：失败若也缓存 60 秒，「重试启动」就成了装饰——用户刚修好 vhdx，
-    // 点重试拿到的还是上一次的诊断。
-    if (result.ok) wakeCache.set(distro, { at: Date.now(), result })
-    sendJson(res, 200, okEnvelope<WslWakeResult>(result))
+    }
   })
 
   mount('/list', ['GET'], async (_req, res, url) => {

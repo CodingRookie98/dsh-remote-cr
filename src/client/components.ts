@@ -763,17 +763,32 @@ export function DirectoryFlow(props: AnyProps): unknown {
   /** onPicked 每次 open 恰好一次：ref 记住这一轮是否已经回传过。 */
   const reported = useRef(false)
 
+  /**
+   * 关窗语义：停掉在飞的唤醒 + 复位本轮回传标记 + 让代次前进。
+   *
+   * 三件事必须一起做（R1-2）：只 abort 不改状态，晚到结果仍会改屏；只改状态不 abort，
+   * wsl.exe 照旧跑满 60s。代次推进后，`settleWake`/`failWake` 的代次门再挡一层。
+   */
+  const closeNow = (): void => {
+    reported.current = false
+    restoreFocusAfterNav = false
+    wakeController?.abort()
+    wakeController = null
+    update((current) => cancelWake(closeWizard(current)))
+  }
+
   // owner 每次把 open 翻成 true 都算一轮新的选择。
+  // 关窗挂在 **cleanup** 而不是 body 的 !open 分支：owner 翻 false 与「组件被卸载」
+  // （切会话、宿主回收插槽）都会执行 cleanup，只写 body 就漏掉卸载那条入口（R1D-5）。
   useEffect(() => {
-    if (!open) {
-      reported.current = false
-      restoreFocusAfterNav = false
-      update(closeWizard)
-      return
+    if (open && wizardStore.get().step === 'closed') {
+      update(openWizard)
+      void loadSourcesInto()
     }
-    if (wizardStore.get().step !== 'closed') return
-    update(openWizard)
-    void loadSourcesInto()
+    // 只有**自己是打开者**的实例才持有「关窗」责任。关着的实例（另一个 slot 洞）既不注册
+    // cleanup 也不该在被卸载时去关别人的向导——那是把单实例设施的破坏面从「改屏」扩到「杀请求」（R1D-6）。
+    if (!open) return
+    return closeNow
   }, [open])
 
   // 成功：把本机绝对路径回传给 owner，恰好一次。
@@ -926,6 +941,15 @@ export function DirectoryFlow(props: AnyProps): unknown {
     },
   }
 
+  // 底栏显示的必须是**真正会提交的那个路径**（addInputOf 取 listing.path）：
+  // 显示 state.path 会让「刚敲进去还没回车」的输入看起来已被选中（R1-1 / R1D-2）。
+  const picked = addInputOf(state).path
+  const typedNotLoaded = state.listing !== null && state.path !== state.listing.path
+  const confirmHint = canConfirm(state, busy)
+    ? '把当前目录添加为工作区'
+    : typedNotLoaded
+      ? '路径框里的输入还没读取：按 Enter 后再添加'
+      : '先选一个可用的位置与目录'
   const terminal = renderTerminal(state, flowId, handlers)
   const workbench = h(
     'div',
@@ -938,7 +962,7 @@ export function DirectoryFlow(props: AnyProps): unknown {
       h(
         'div',
         { 'data-teleport': 'actions' },
-        h('span', { 'data-teleport': 'actions-path', title: state.path }, state.path === '' ? '尚未选择目录' : state.path),
+        h('span', { 'data-teleport': 'actions-path', title: picked }, picked === '' ? '尚未选择目录' : picked),
         state.step === 'browse'
           ? h('button', { type: 'button', 'data-teleport': 'back', onClick: () => handlers.back() }, '返回')
           : null,
@@ -948,7 +972,7 @@ export function DirectoryFlow(props: AnyProps): unknown {
             type: 'button',
             'data-teleport': 'confirm',
             disabled: !canConfirm(state, busy),
-            title: canConfirm(state, busy) ? '把当前目录添加为工作区' : '先选一个可用的位置与目录',
+            title: confirmHint,
             onClick: () => handlers.confirm(),
           },
           busy ? '正在创建工作区…' : '添加此目录',

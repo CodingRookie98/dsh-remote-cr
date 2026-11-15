@@ -50,7 +50,14 @@ interface Call {
   readonly json: unknown
 }
 
-function fakeRes(): { res: never; read(): Call } {
+interface FakeRes {
+  readonly res: never
+  read(): Call
+  /** 模拟客户端断开：只有带事件方法的假 res 才有意义（见 fakeClosableRes）。 */
+  close(): void
+}
+
+function fakeRes(): FakeRes {
   const headers: Record<string, string> = {}
   let status = 0
   let body = ''
@@ -71,6 +78,50 @@ function fakeRes(): { res: never; read(): Call } {
   return {
     res: res as never,
     read: () => ({ status, headers, body, json: body === '' ? undefined : JSON.parse(body) }),
+    close() {},
+  }
+}
+
+/**
+ * 带事件方法的假 res：用来验「客户端断开 → abort → kill wsl.exe」这条链。
+ *
+ * 为什么必须单独造：普通 fakeRes 没有 `on`/`off`，路由里 `closable` 恒为 false，
+ * 于是把 `res.on('close', onClose)` 整行删掉、甚至删掉 abort 分支，全部单测仍然全绿
+ * （R1D-7 实测 27/27）——取消能力等于零断言。
+ */
+function fakeClosableRes(): FakeRes {
+  const headers: Record<string, string> = {}
+  const listeners = new Set<() => void>()
+  let status = 0
+  let body = ''
+  const res = {
+    set statusCode(value: number) {
+      status = value
+    },
+    get statusCode() {
+      return status
+    },
+    setHeader(name: string, value: string) {
+      headers[name.toLowerCase()] = value
+    },
+    end(chunk?: string) {
+      body = chunk ?? ''
+    },
+    on(event: string, listener: () => void) {
+      if (event === 'close') listeners.add(listener)
+      return res
+    },
+    off(event: string, listener: () => void) {
+      if (event === 'close') listeners.delete(listener)
+      return res
+    },
+  }
+  return {
+    res: res as never,
+    read: () => ({ status, headers, body, json: body === '' ? undefined : JSON.parse(body) }),
+    close: () => {
+      for (const listener of [...listeners]) listener()
+    },
   }
 }
 
@@ -105,6 +156,7 @@ function rig(
     resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
     homeDir?: string
   } = {},
+  makeRes: () => FakeRes = fakeRes,
 ): Rig {
   const calls: string[] = []
   const deps: HostDeps = {
@@ -157,7 +209,7 @@ function rig(
       for (const [key, value] of Object.entries(input.query ?? {})) url.searchParams.set(key, value)
       const handler = routes.get(url.pathname)
       assert.notEqual(handler, undefined, '没有挂载 ' + url.pathname)
-      const { res, read } = fakeRes()
+      const { res, read } = makeRes()
       await handler?.(
         fakeReq({
           url: url.pathname + url.search,
@@ -622,6 +674,97 @@ test('/wsl/wake 失败不缓存：修好 vhdx 后点重试必须真的重试', a
   await r.call({ path: '/wsl/wake', method: 'POST', body })
   assert.equal(spawned, 2, '失败被缓存 60 秒会把「重试启动」变成装饰')
 })
+test('/wsl/wake 客户端断开必须真的打断 wsl.exe（取消不是装饰）', async () => {
+  let seen: AbortSignal | undefined
+  let abortedAtEnd = false
+  let last: FakeRes | null = null
+  const makeRes = (): FakeRes => {
+    const made = fakeClosableRes()
+    last = made
+    return made
+  }
+  const { call } = rig(
+    {
+      wakeDistro: async (distro, signal) => {
+        seen = signal
+        const deadline = Date.now() + 800
+        while (signal?.aborted !== true && Date.now() < deadline) {
+          await new Promise((done) => setTimeout(done, 5))
+        }
+        abortedAtEnd = signal?.aborted === true
+        return { distro, ok: false, ms: 5, diagnosis: DISK_MISSING }
+      },
+    },
+    {},
+    makeRes,
+  )
+  const pending = call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  await new Promise((done) => setTimeout(done, 40))
+  assert.notEqual(seen, undefined, '唤醒必须真的开跑，否则这条用例什么都没验到')
+  ;(last as FakeRes | null)?.close()
+  await pending
+  assert.equal(abortedAtEnd, true, '客户端断开必须把 abort 送到 wakeDistro（否则 wsl.exe 会跑满超时）')
+})
+
+test('/wsl/wake 校验阶段就断开：连 spawn 都不该发生', async () => {
+  let spawned = 0
+  let last: FakeRes | null = null
+  const makeRes = (): FakeRes => {
+    const made = fakeClosableRes()
+    last = made
+    return made
+  }
+  const { call } = rig(
+    {
+      listSources: async () => {
+        await new Promise((done) => setTimeout(done, 60))
+        return { wslAvailable: true, distros: DISTROS, probeError: null, ssh: NO_SSH }
+      },
+      wakeDistro: async (distro) => {
+        spawned += 1
+        return { distro, ok: true, ms: 1, diagnosis: null }
+      },
+    },
+    {},
+    makeRes,
+  )
+  const pending = call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  await new Promise((done) => setTimeout(done, 10))
+  ;(last as FakeRes | null)?.close()
+  const reply = await pending
+  assert.equal(spawned, 0, '校验期断开之后不许再 spawn wsl.exe（R1-L1）')
+  assert.equal(reply.body, '', '断开之后不许再往已关闭的 res 上写响应')
+})
+
+test('/wsl/wake 成功那一刻断开：成功结果照样进缓存（下次不该再冷启动）', async () => {
+  let spawned = 0
+  let last: FakeRes | null = null
+  const makeRes = (): FakeRes => {
+    const made = fakeClosableRes()
+    last = made
+    return made
+  }
+  const { call } = rig(
+    {
+      wakeDistro: async (distro) => {
+        spawned += 1
+        await new Promise((done) => setTimeout(done, 40))
+        return { distro, ok: true, ms: 40, diagnosis: null }
+      },
+    },
+    {},
+    makeRes,
+  )
+  const first = call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  // 20ms 时断开，40ms 时唤醒才成功：缓存必须在 aborted 判断**之前**写（R1D-8）。
+  await new Promise((done) => setTimeout(done, 20))
+  ;(last as FakeRes | null)?.close()
+  await first
+  const second = await call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  assert.equal(spawned, 1, '这次唤醒确实成功了，调用方断开不该让下一次再 spawn 一遍')
+  assert.equal((second.json as { ok?: boolean }).ok, true, '第二次必须是缓存里的成功结果')
+})
+
 test('/wsl/wake 并发去重：同一发行版的并发请求只 spawn 一次', async () => {
   let spawned = 0
   const r = rig({

@@ -363,6 +363,49 @@ test('R1-B2：换发行版必须退回选择屏，否则失败诊断卡无处显
   assert.equal(switching.listing, null)
   assert.equal(switching.wake.status, 'probing')
 })
+test('R1-1：路径框里还没回车的输入不许变成「添加此目录」', () => {
+  const browsing = listed(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
+  assert.equal(canConfirm(browsing, false), true, '目录已经列出来，本来可以点')
+  // 用户在路径框里打了新路径但没按 Enter：底栏显示新路径，listing 还是旧目录。
+  const typing: WizardState = { ...browsing, path: 'D:\\new\\typed' }
+  assert.equal(canConfirm(typing, false), false, '显示值与提交值不是同一个真值时不许放行')
+  assert.equal(addInputOf(typing).path, LISTING.path, '提交端仍取 listing.path —— 所以门必须挡在 canConfirm')
+  const submitted = listed(navigateTo(browsing, 'D:\\new\\typed'), { ...LISTING, path: 'D:\\new\\typed' })
+  assert.equal(canConfirm(submitted, false), true, '回车并落地之后才放行')
+})
+
+test('R1-2：关窗之后晚到的唤醒/轮询结果不许改屏', () => {
+  const probing = beginWake(withSources(), 'ubuntu_dev')
+  const closed = closeWizard(probing)
+  assert.equal(closed.step, 'closed')
+  // 不假设调用方记得 cancelWake：代次**对得上**时状态机也必须自己挡住（关窗是一条独立入口）。
+  const lateWake = settleWake(closed, WAKE_OK, closed.wakeToken)
+  assert.equal(lateWake.step, 'closed', '关窗后晚到的唤醒结果不许把 closed 翻成 browse')
+  assert.equal(failWake(closed, '超时', closed.wakeToken).wake.status, probing.wake.status, '晚到的失败同样不许改屏')
+  // 组件在 !open 分支里还会 abort + cancelWake，两道门叠加也不许互相打架。
+  const closedAndCancelled = cancelWake(closed)
+  const latePoll = receiveFlow(closedAndCancelled, {
+    id: 'flow-close',
+    state: completeFlow(enterPhase(startFlow(), 'attach')),
+    record: { localPath: 'D:\\tmp', source: 'local', distro: null, posixPath: null, unc: null, remote: null },
+  })
+  assert.equal(latePoll.step, 'closed', '关窗后晚到的 done 快照同样不许翻案')
+  assert.equal(pickedPathOf(latePoll), null, '更不许顺手把上一条路径回传给 owner')
+  // 第 4 条晚到写入者：点完「添加此目录」立刻 Esc 时，晚到的 /workspace 响应不许把 closed 翻成 running（R1D-4）。
+  const lateStart = beginFlow(closed, { id: 'flow-start', state: startFlow(), record: null })
+  assert.equal(lateStart.step, 'closed', '晚到的 /workspace 响应不许改屏')
+  assert.equal(lateStart.flow, null, '连快照都不许落进来')
+  // 没关窗的同一序列照旧生效，别把正常路径一起关死。
+  const open = beginFlow(openWizard(initialWizard()), { id: 'flow-open', state: startFlow(), record: null })
+  const done = receiveFlow(open, {
+    id: 'flow-open',
+    state: completeFlow(enterPhase(startFlow(), 'attach')),
+    record: { localPath: 'D:\\ok', source: 'local', distro: null, posixPath: null, unc: null, remote: null },
+  })
+  assert.equal(done.step, 'done')
+  assert.equal(pickedPathOf(done), 'D:\\ok')
+})
+
 test('R2-D8：backToChoose 只退屏，不清选择（再点一次还能接着走）', () => {
   const browsing = listed(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
   const back = backToChoose(browsing)
