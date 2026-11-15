@@ -120,3 +120,24 @@ test('ls 自己失败（路径不存在）仍按目录读不到报，不冒充�
     },
   )
 })
+
+// ── D6：ls -1aF 输出的边界（真机复现过的那几种） ──────────────────────────
+
+test('parseLsLine：前导空格被吃掉，但名字里的空格保留', () => {
+  assert.deepEqual(parseLsLine('  spaced/'), { name: 'spaced', kind: 'directory' })
+  assert.deepEqual(parseLsLine('name with space/'), { name: 'name with space', kind: 'directory' })
+})
+
+test('parseLsLine：只有行尾那一个标记被剥掉，名字本身不动', () => {
+  assert.deepEqual(parseLsLine('weird*'), { name: 'weird', kind: 'file' })
+  assert.deepEqual(parseLsLine('link@'), { name: 'link', kind: 'file' })
+  assert.deepEqual(parseLsLine('-dash'), { name: '-dash', kind: 'file' })
+  // 已知限制（不假装修复）：真名以标记字符结尾时会被吃掉一个字符，`ls -F` 无法区分。
+  assert.deepEqual(parseLsLine('a*'), { name: 'a', kind: 'file' })
+})
+
+test('parseLsLine：. 与 .. 不进列表，空行忽略', () => {
+  assert.equal(parseLsLine('.'), undefined)
+  assert.equal(parseLsLine('..'), undefined)
+  assert.equal(parseLsLine('   '), undefined)
+})
