@@ -11,6 +11,7 @@ import {
   beginWake,
   canBrowse,
   canBrowseNow,
+  backToChoose,
   canConfirm,
   cancelWake,
   closeWizard,
@@ -18,6 +19,7 @@ import {
   distroHealthOf,
   enterBrowse,
   failListing,
+  failSources,
   failWake,
   initialWizard,
   isTerminal,
@@ -346,4 +348,19 @@ test('R1-B2：换发行版必须退回选择屏，否则失败诊断卡无处显
   assert.equal(switching.step, 'choose')
   assert.equal(switching.listing, null)
   assert.equal(switching.wake.status, 'probing')
+})
+test('R2-D8：backToChoose 只退屏，不清选择（再点一次还能接着走）', () => {
+  const browsing = receiveListing(enterBrowse(selectSource(withSources(), 'local'), 'D:\\'), LISTING)
+  const back = backToChoose(browsing)
+  assert.equal(back.step, 'choose')
+  assert.equal(back.listing, null)
+  assert.equal(back.source, 'local', '来源选择要留着，否则用户得从头点一遍')
+  assert.equal(back.path, 'D:\\work', '路径留着，回来时还在原处')
+})
+
+test('R2-D8：failSources 清空四选一并留下原因（探测失败 ≠ 没有 WSL）', () => {
+  const failed = failSources(withSources(), '路由 500')
+  assert.equal(failed.options, null)
+  assert.deepEqual(failed.distros, [])
+  assert.equal(failed.sourcesError, '路由 500')
 })
