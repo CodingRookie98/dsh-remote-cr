@@ -51,7 +51,13 @@ interface Envelope<T> {
  */
 export async function callApi<T>(
   path: string,
-  init: { method?: string; query?: Record<string, string | undefined>; body?: unknown } = {},
+  init: {
+    method?: string
+    query?: Record<string, string | undefined>
+    body?: unknown
+    /** 取消信号：只有「用户在等的东西」才需要（唤醒探测），其它读接口留着不管。 */
+    signal?: AbortSignal
+  } = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<T> {
   const url = new URL(API_BASE + path, 'http://teleport.invalid')
@@ -59,6 +65,7 @@ export async function callApi<T>(
     if (value !== undefined && value !== '') url.searchParams.set(key, value)
   }
   const request: RequestInit = { method: init.method ?? 'GET' }
+  if (init.signal !== undefined) request.signal = init.signal
   if (init.body !== undefined) {
     request.headers = { 'content-type': 'application/json' }
     request.body = JSON.stringify(init.body)
@@ -107,6 +114,27 @@ export interface SourcesPayload {
 /** 读四选一的可用性 + WSL 发行版清单 + SSH 主机清单。 */
 export function loadSources(fetchImpl?: typeof fetch): Promise<SourcesPayload> {
   return callApi<SourcesPayload>('/sources', {}, fetchImpl)
+}
+
+/**
+ * 试把发行版唤醒（`wsl.exe -d <distro> --exec true`）。
+ *
+ * 为什么要有这一步：`/sources` 只能证明「列得出来」，而发行版 Stopped / vhdx 失效时
+ * 真正启动会失败。把探测前移到「选发行版」这一刻，失败就能停在选择屏给诊断，
+ * 而不是让用户先掉进目录浏览、再在深处看到一条既无原因也无出路的红字。
+ *
+ * 失败**不抛异常**：`ok:false` 是用户环境的正常状态，带着结构诊断回给 UI。
+ */
+export function wakeDistro(
+  distro: string,
+  options: { readonly signal?: AbortSignal } = {},
+  fetchImpl?: typeof fetch,
+): Promise<import('../shared/api.ts').WslWakeResult> {
+  return callApi(
+    '/wsl/wake',
+    { method: 'POST', body: { distro }, ...(options.signal === undefined ? {} : { signal: options.signal }) },
+    fetchImpl,
+  )
 }
 
 /** 列目录。`distro` 为空表示本机；否则列该发行版内的路径。 */

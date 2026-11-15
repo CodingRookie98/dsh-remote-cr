@@ -43,17 +43,19 @@ export declare function joinPath(base: string, name: string): string;
 /**
  * 剪贴板写入。
  *
- * 不直接用 `navigator.clipboard`：本文件也被根 `tsconfig.json`（`lib: es2024`，
- * 无 DOM）编译，那里没有 `Navigator.clipboard` 这个成员。用一个窄接口取，
- * 拿不到就返回 false —— 某些上下文会拒剪贴板权限，不能因此抛错。
+ * 不直接用 navigator.clipboard：本文件也被根 tsconfig.json（lib: es2024，无 DOM）编译，
+ * 那里没有 Navigator.clipboard 这个成员。用一个窄接口取，拿不到就返回 false ——
+ * 某些上下文会拒剪贴板权限，不能因此抛错。
  */
 export declare function copyText(text: string): Promise<boolean>;
+/** 「复制诊断」的内容：码 / 发行版 / wsl 错误码 / 人话 / 下一步 / 原文，缺一段就没法贴给别人看。 */
+export declare function wakeReportOf(state: WizardState): string;
 /**
- * 「添加工作区」向导。
+ * 「添加工作区」向导（RFC-0001 双栏工作台）。
  *
- * 挂在 `conversation.hero.workspace.directoryFlow` 与 `sidebar.workspaces.directoryFlow`
- * 两个洞上，用 `priority: -1` 抢在官方浏览对话框之前。owner props 是摊平进来的
- * （`ui-renderer` 的 scoped-slots 行为，M0 实测 V12），所以直接从 props 取。
+ * 挂在 conversation.hero.workspace.directoryFlow 与 sidebar.workspaces.directoryFlow
+ * 两个洞上，用 priority: -1 抢在官方浏览对话框之前。owner props 是摊平进来的
+ * （ui-renderer 的 scoped-slots 行为，M0 实测 V12），所以直接从 props 取。
  */
 export declare function DirectoryFlow(props: AnyProps): unknown;
 /** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
