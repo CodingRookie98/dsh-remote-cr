@@ -23,7 +23,7 @@
 |---|---|
 | [requirements.md](./design/requirements.md) | 需求、用户故事、验收标准、非目标 |
 | [architecture.md](./design/architecture.md) | 总体架构、嵌入路线、后端抽象、凭据代理、安装器、后端矩阵（§14） |
-| [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、瞬移面板、四选一添加工作区、状态视觉映射、同步面板 |
+| [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、瞬移面板、添加工作区（§4 四选一已被 §10 双栏工作台取代）、状态视觉映射、同步面板 |
 | [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M5） |
 | [keep-alive.md](./design/keep-alive.md) | **驻留模式**：`keepAlive` 控制行、实例登记、TTL、与 A7「不留孤儿」的冲突 |
 
@@ -44,11 +44,18 @@
 | [ADR-0004-plugin-sync.md](./decisions/ADR-0004-plugin-sync.md) | 插件同步：远端原生安装优先、三分类、不覆盖、凭据不同步 |
 | [ADR-0005-workspace-entry-ui.md](./decisions/ADR-0005-workspace-entry-ui.md) | 工作区入口与身份：另起瞬移面板、顶掉 directoryFlow、WSL=UNC / SSH=锚点 |
 
+## proposals/ — 方案 RFC（评审中的契约变更）
+
+| 文件 | 内容 |
+|---|---|
+| [RFC-0001-add-workspace-ui-v2.md](./proposals/RFC-0001-add-workspace-ui-v2.md) | **添加工作区双栏重做 + WSL 启动失败可见化**：契约增量（`WslDiagnosis` / `WslWakeResult` / `POST /wsl/wake`）、状态机变更、失败态矩阵、交互与视觉规范、断言面清单 |
+
 ## project/ — 项目运行记录（非长期知识）
 
 | 文件 | 内容 |
 |---|---|
 | [m0-spike/README.md](../spikes/m0/README.md) | **交接单**：项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 步骤与踩坑 |
+| [plans/2026-11-14-add-workspace-ui-redesign.md](./project/plans/2026-11-14-add-workspace-ui-redesign.md) | **「添加工作区」重做（唯一真相源）**：P-1 三条路线取舍、WSL 报错的四条根因与真机证据、P1 测试裁定（L0–L3 + 负控）、P2 原子任务表、滚动执行记录 |
 | [plans/2026-10-31-m1-wsl-closed-loop.md](./project/plans/2026-10-31-m1-wsl-closed-loop.md) | **M1 执行计划（唯一真相源）**：12 项未裁决的书面裁决（§0 A1–A6 / B1–B6）、验收口径与明确不验收项（§1.0）、依赖选型与严禁事项（§1.2/§1.3）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**动 M1 代码前先读它** |
 | [m1-spike/README.md](../spikes/m1/README.md) | **交接单**：M1 地基五条实测（UNC 读写闭环 / 反向通路逐档定档：③ stdio 桥默认、① `mirrored` 优化、② 网关退役 / 两级 dispose / T5 跨机字节 / T6 跨机失败可见）、桥的代价形态（区间，不承诺倍数）、对实现的三个落点、未验证 6 条；子包 [`wsl-closed-loop/`](../spikes/m1/wsl-closed-loop/README.md)、[`cross-machine-t5/`](../spikes/m1/cross-machine-t5/README.md)、[`cross-machine-t6/`](../spikes/m1/cross-machine-t6/README.md) 为可复跑探针 |
 | [reviews/2026-10-19-design-baseline/](./project/reviews/2026-10-19-design-baseline/) | 上一轮双轮审查归档（历史，不改） |

@@ -232,3 +232,80 @@ spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过�
 - **远端 Host（真正的 B 型）下这套槽位与投影是否等价**——spike 全部跑在**本地** Host 上，`directoryPicker` 的 capability 解析与 `ctx.fs` 的实现都会在远端换一套。**这是 §9.2 唯一剩下的机制风险**；
 - **锚点后端的路径映射**（V15 的推论，机制未验证，**已在 M2 立项**）：UNC 后端靠 share 根白拿了 POSIX 等价，SSH/Docker 的本地锚点是盘符路径，`/etc/hostname` 会落到 `C:\etc\hostname`。锚点后端需要独立的「虚拟根 → 远端路径」映射，且这份映射必须同时喂给提示词投影与工具层。承载条目见 `milestones.md` M2「锚点工作区 + 虚拟根映射」（验收项：锚点工作区里 `read /etc/hostname` 必须读到**远端**文件，`write`/`edit` 走同一映射闭环，映射表落插件存储且 `doctor` 可打印）。R1-14 修订：原文写「M1 之后随 SSH 后端一起做」是错的——SSH 后端在 **M2**，该能力与 M2 同时交付，不往后推；
 - **`write` / `edit` 的路径等价性未单独验证**：V15 只跑了 `read`。三者共用 `sessionResolveOptions`（`packages/fs/tool-fs/src/session-cwd.ts:17-24`）与 `fs-local.resolve`，机制上应当同结论，但「应当」不是证据，M1 写路径落地时要补测。
+
+## 10. 2026-11-14 重做（RFC-0001）：双栏工作台与 WSL 失败可见化
+
+> **结论先行**：§4 的「四选一卡片 + 翻页」已废弃，改为**左栏常驻位置 + 右栏目录浏览器 + 底部固定动作**；WSL 分支改为「先唤醒再浏览」，起不来就在原地给诊断卡。决策与契约见 [RFC-0001](../proposals/RFC-0001-add-workspace-ui-v2.md)，执行计划见 [2026-11-14 计划](../project/plans/2026-11-14-add-workspace-ui-redesign.md)。
+
+### 10.1 为什么改
+
+| 旧实现的事实 | 后果 |
+|---|---|
+| `DirectoryFlow` 的 10 个 `data-teleport` 容器在 `styles.ts` 里**零命中**（24 个样式区块全挂在 `[data-teleport='panel']` 下） | 弹窗是一排浏览器原生按钮，用户原话「太丑」 |
+| 目录列表**没有上一级**（只在错误分支才渲染） | 进了子目录只能退回来源屏重来 |
+| 点来源卡片立即跳转，没有确认步，`busy` 不作用于来源按钮 | 手滑即离开当前位置；任务进行中还能继续点 |
+| 失败时整块列表被红字替换 | 路径、面包屑、已选发行版全部消失，改一个字符也要从头点 |
+| `wslAvailable = distros.length > 0` | Stopped / vhdx 失效的发行版被标成「可用」，用户点进去才炸，报错只剩「ls 退出码 -1」 |
+
+### 10.2 新线框
+
+```
++ 添加工作区 ------------------------------------------ 取消 +      <- wizard-head
+| 运行位置       |  C: / Users / hui / workspace   [路径框] 上一级 刷新 |
+| (*) 本机目录   |  ------------------------------------------------ |
+| ( ) WSL 发行版 |  [dir] docs   [dir] src   [file] package.json      |
+|    (*) ubuntu  |  [dir] lib    [dir] test                           |
+|    (x) gcp-wsl |  ------------------------------------------------ |
+| ( ) SSH 远端   |  5 个目录 · 2 个文件                              |
+| (~) Docker M5  |  已选：C:\Users\hui\workspace  [返回] [添加此目录] |
++-------------------------------------------------------------------+
+```
+
+- 左栏 (`sources`) 三态点：运行中 / 已停止 / 启动失败；不可用来源的原因**内联在行下**（`source-reason`），不再塞进按钮文案。
+- 右栏 (`browser`)：面包屑 (`browser-crumbs`/`crumb`) + 可编辑路径 (`browser-path`) + `up` + `browser-reload`；列表 `entries`/`entry[data-kind][data-active]`；错误就地显示（`listing-error` + `listing-retry`），面包屑与路径框**保留**。
+- 底栏 (`actions`)：`actions-path`（当前绝对路径）+ `back`（仅浏览态出现）+ `confirm`。
+
+### 10.3 WSL：先唤醒再浏览
+
+`POST /teleport/api/wsl/wake`（body `{distro}`，20s 超时，成功结果缓存 60s）-> `WslWakeResult`。
+
+| 结果 | 界面 |
+|---|---|
+| `ok:true` | 直接进浏览，起点 `/` |
+| `ok:false` | **停在选择屏**，右栏渲染 `wake-error` 卡：码 + 人话 + `wake-code`（`Error code:` 原文）+ `wake-next`（下一步）+ `wake-log`（原文尾巴）+ [重试唤醒][换一个发行版][复制诊断] |
+| 请求本身失败 | `failWake` 兜底成 `wsl/unknown` + 原因，同样停在选择屏 |
+
+失败态矩阵见 RFC-0001 §6；分类只认 ASCII 证据（`Error code:` / `WSL_E_*`），中文 Windows 的本地化原文只进 `logTail`。
+
+### 10.4 断言面（探针与 E2E 的唯一契约）
+
+保留原样、语义不变：
+`wizard, title, sources-loading, sources, source[data-source][data-availability], distros, distro[data-selected], listing-loading, listing, listing-path, listing-truncated, entries, entry[data-kind], up, listing-error, actions, back, confirm, progress, progress-label, progress-track, progress-fill, progress-percent, error, report, copy, retry, cancel, done-path, close`
+
+新增（只增不改）：
+`wizard-head, wizard-hint, wizard-cancel, wizard-body, wizard-main, browser-pane, source-group, source-label, source-reason, distro-name, distro-state, distro-empty, distro-install, browser, browser-bar, browser-crumbs, crumb[data-current], browser-path, browser-reload, listing-empty, listing-foot, listing-retry, listing-error-text, wake-progress, wake-progress-text, wake-progress-hint, wake-cancel, wake-error[data-code], wake-title, wake-detail, wake-code, wake-next, wake-log, wake-actions, wake-retry, wake-switch, wake-copy, actions-path, wizard-empty, wizard-empty-text, wizard-terminal-body, error-actions`
+
+### 10.5 面板重排（§3 的现行版）
+
+顶栏一条状态栏（`panel-head` = `panel-title` + `panel-head-main`（流程/相位/终态）+ `panel-status`（连接点 + 环境档）+ `panel-link-actions` 右对齐），主体两栏（`panel-body`：左 `panel-column` 放 `panel-workspaces` 与 `panel-projected`，右 `panel-side` 放 SSH 表单与导入折叠区），底部 `panel-sessions` 表格。全部既有 `data-teleport` 标记保留，只新增容器与 `panel-error-actions`。
+
+### 10.6 未验证（交付时的诚实口径）
+
+- 真实 DSH 宿主 slot 容器内的最终像素：预览 harness 用的是同一份 `styles.ts` + 真 Chrome，但不是宿主 slot 容器。
+- 窄视口（< 760px）与触屏：只有媒体查询，未做真机断言。
+
+### 10.7 真机取证（2026-11-14，隔离 DSH_HOME + 真 Chrome 1440×900）
+
+探针：`node spikes/m4/add-workspace-ui/probe.cjs`（起真 `dsh web`、装 link 插件、真 Chrome 点官方「Add workspace」）。七条断言全 PASS，证据图 `docs/assets/host-wizard-*.png`。
+
+**真机推翻了实现里两个前提（都是本轮修掉的真 bug）**：
+
+| # | 真机看到的事实 | 修法 |
+|---|---|---|
+| 1 | 官方 `sidebar.workspaces.directoryFlow` 那个洞真机只有 **242 px 宽**；卡片直接渲染进洞里时被压成 105×624，顶部还被裁掉 34 px | 向导改成**覆盖层里的模态卡**（`wizard-overlay` + `wizard-frame`）：`position: fixed`、居中、宽 `min(880px, 100%)`，真机实测 882×422 |
+| 2 | 卡片高度会塌成 **38 px**（`wizard-body` 是 `flex:1` + `min-height:0`，没有下限） | 根节点加 `min-height: min(420px, 60vh)` |
+| 3 | 在浏览屏里点另一个来源，标题已经变成「选择目录 · <新来源>」而右栏还挂着上一个来源的目录/加载态 | `selectSource` 退回选择屏（清 `path`/`listing`，`navSeq+1`） |
+
+**顺带纠正一个文档级误解**：`directoryFlow` 的官方语义是**模态框**，不是内联块。预览 harness 把组件铺在 1280 宽的画布上，三轮审查都没看见这件事——所以真机探针是本轮的必要证据，不是锦上添花。
+
+**探针自己的两个坑（已写进代码注释）**：① 隔离 DSH_HOME 首启会依次弹「Preview Notice」「Get started」，必须用**可信鼠标事件**（CDP `Input.dispatchMouseEvent`）点掉，`el.click()` 对它们无效，否则截图里一直压着一层；② 组件自己的按钮用 `el.click()` 就够，可信点击反而会因为坐标/滚动漂移而点空。

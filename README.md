@@ -61,6 +61,17 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 > 截图由 `GATE=shots` 的 CDP 探针在真机上抓取（1440×900），不是示意图；会话行里的「空闲/运行中」就是 M3-2a 的可见性。
 
+### 添加工作区（2026-11-14 重做：模态双栏工作台）
+
+| 选目录（真机） | WSL 发行版（真机） | 深色（预览 harness） |
+|---|---|---|
+| ![选目录](./docs/assets/host-wizard-local.png) | ![WSL](./docs/assets/host-wizard-wsl.png) | ![深色](./docs/assets/preview/wizard-local-dark.png) |
+
+> 前两张是**真机截图**：隔离 `DSH_HOME` + 真 `dsh web` + 真 Chrome 1440×900，点官方侧栏「Add workspace」由本插件的 `directoryFlow` 占位渲染（`node spikes/m4/add-workspace-ui/probe.cjs`，七条断言全 PASS）。第三张来自预览 harness（同一份 `styles.ts`，深色主题靠宿主令牌模拟）。
+>
+> 形态：**覆盖层里的模态卡**——左栏常驻位置（本机 / WSL 发行版 / SSH / Docker），右栏面包屑 + 可编辑路径 + 上一级 + 键盘导航（`↑↓ / Enter / Backspace / Esc`），底栏显示当前绝对路径与主操作。WSL 先在原地唤醒，起不来就给诊断卡（`Error code` 原文 + 下一步 + 复制诊断），不再把人丢进目录页。
+
+
 ### 兼容矩阵
 
 | 组件 | 支持范围 |

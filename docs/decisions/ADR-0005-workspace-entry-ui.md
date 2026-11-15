@@ -126,3 +126,16 @@
 - 由上述结论推出的两条待办：锚点后端的路径映射（`milestones.md` M2 锚点工作区行）、`write`/`edit` 的路径等价补测（V15/V16 只覆盖读类工具）。
 
 > **R1-19 回填说明**：本 ADR 原先在此处仍列四条「仍未验证」，与 `milestones.md` M0 出口「§9.2 原有 4 条已消掉 3 条」及 `ui-design.md` §9.2 现行口径互斥，敌对审查（R1 delta 轮 R1-19）据此判定「风险台账出现两个版本」。现按 V13–V16 的实测结论回填，三份文档的剩余风险数一致。
+
+## 变更记录（2026-11-14，RFC-0001）
+
+**决策 2 的形态变更，不是决策反转**：`priority: -1` 顶掉两个 `directoryFlow` hole 的机制不变（V1 仍然成立），变的是洞里的东西——「四选一卡片 + 翻页」改为**左栏常驻 + 右栏目录浏览器 + 底部固定动作**；`local` 分支仍走插件自有路由列举目录（决策 2 的技术前提未变）。
+
+**新增决策 6 · WSL 分支必须先唤醒再浏览**：`/sources` 只能证明「列得出来」，不能证明「起得来」。所以在选中发行版时调 `POST /teleport/api/wsl/wake`（`wsl.exe -d <distro> --exec true`，20s 超时，只缓存成功结果 60s）；失败**不进浏览屏**，就地给 `WslDiagnosis`（码 / 人话 / `Error code:` 原文 / 下一步 / 原文尾巴）。
+
+依据（真机 2026-11-14）：发行版已停止且 vhdx 失效时 `wsl.exe -d ubuntu_dev --exec ls -1aF -- /` 给 `exitCode=-1`、**stderr 为空**、stdout 是 **UTF-16LE** 的挂载失败 + `Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG`。旧实现只看 stderr，于是用户看到的是「ls 退出码 -1」。
+
+**记账**：
+- 「决策 3：WSL 用 UNC」不受影响（唤醒探测复用 UNC 判定，不新增身份方案）。
+- 「决策 5：v1 单台远端在线」不受影响。
+- 未验证：唤醒探测在真 DSH 宿主 slot 容器内的最终观感（预览 harness 用的是同一份样式与真 Chrome，但不是宿主容器）。
