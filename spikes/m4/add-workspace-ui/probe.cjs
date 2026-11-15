@@ -293,6 +293,24 @@ async function main() {
   const missing = needed.filter((name) => !Array.isArray(marks) || !marks.includes(name))
   record('R5 断言面完整（既有 + 新增标记都在）', missing.length === 0, { missing, total: Array.isArray(marks) ? marks.length : 0 })
 
+
+  // R6 无障碍语义：左栏 radiogroup / 选中项 aria-checked；列表 listbox / 游标项 aria-selected。
+  // 之前这三处只有可视状态（data-selected / data-active），读屏拿不到（R2-D3）。
+  const a11y = await cdp.evaluate(
+    '(() => { const problems = [];' +
+    ' const rail = document.querySelector("[data-teleport=\'sources\']");' +
+    ' if (rail === null) problems.push("缺少 sources");' +
+    ' else { if (rail.getAttribute("role") !== "radiogroup") problems.push("sources 缺 role=radiogroup");' +
+    ' const picked = rail.querySelector("[data-teleport=\'source\'][data-selected=\'true\']");' +
+    ' if (picked !== null && picked.getAttribute("aria-checked") !== "true") problems.push("选中来源缺 aria-checked"); }' +
+    ' const list = document.querySelector("[data-teleport=\'entries\']");' +
+    ' if (list !== null) { if (list.getAttribute("role") !== "listbox") problems.push("entries 缺 role=listbox");' +
+    ' const active = list.querySelector("[data-teleport=\'entry\'][data-active=\'true\']");' +
+    ' if (active !== null && active.getAttribute("aria-selected") !== "true") problems.push("游标条目缺 aria-selected"); }' +
+    ' return problems; })()',
+  )
+  record('R6 无障碍语义（radiogroup / aria-checked / listbox / aria-selected）', Array.isArray(a11y) && a11y.length === 0, { problems: a11y })
+
   cdp.close()
 }
 
