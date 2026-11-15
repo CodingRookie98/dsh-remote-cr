@@ -2,7 +2,7 @@
 
 - 状态：**进行中（P3 实现）**——P-1/P0 已过，User Nod：A 双栏 + 面板重排 + 宿主原子智能体
 - 通道：Heavy Track（跨 client / 宿主 / 后端三层 + 契约面）
-- Active Checkpoint：`P5 已完成：真机探针 7/7 PASS（隔离 DSH_HOME + 真 Chrome），真机暴露的 3 个布局/状态 bug 已修；剩 R2 列出的 16 项下一轮待办` —— B1/B2/B4 已修并有回归测试（610 绿）、QA-Q1/Q2/Q3 已修并 K1–K9 全 PASS；剩余 **B3**（harness `targetReached`/`wake-error` 仍只记录不判）与 delta 裁决。恢复会话先读 §10 执行记录、§11 已知限制、`docs/project/reviews/2026-11-14-add-workspace-ui-v2/R1-red-team.md`
+- Active Checkpoint：`R2 的 16 项下一轮待办**已全部清零**（D1–D16）；门禁：typecheck 0 / 619 单测 / 11 场景 + 键盘 10/10 / 真机探针 9/9。唯一未接入的是浏览器 e2e 的 CI（Ubuntu runner 无 Chrome/WSL，需自托管 runner）` —— B1/B2/B4 已修并有回归测试（610 绿）、QA-Q1/Q2/Q3 已修并 K1–K9 全 PASS；剩余 **B3**（harness `targetReached`/`wake-error` 仍只记录不判）与 delta 裁决。恢复会话先读 §10 执行记录、§11 已知限制、`docs/project/reviews/2026-11-14-add-workspace-ui-v2/R1-red-team.md`
 
 ## 0. 结论先行
 
