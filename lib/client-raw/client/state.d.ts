@@ -127,7 +127,7 @@ export declare function beginWake(state: WizardState, distro: string): WizardSta
  * 失败 -> **留在选择屏**并把诊断挂上。这条是 RFC-0001 §6 的核心：绝不允许
  * 用户先掉进浏览屏、再在深处看到一个既无原因也无出路的红字。
  */
-export declare function settleWake(state: WizardState, result: WslWakeResult, token?: number): WizardState;
+export declare function settleWake(state: WizardState, result: WslWakeResult, token: number): WizardState;
 /**
  * 取消唤醒：**真正作废**进行中的那次请求（代次 +1），不只是把按钮文案改回去。
  *
@@ -136,7 +136,7 @@ export declare function settleWake(state: WizardState, result: WslWakeResult, to
  */
 export declare function cancelWake(state: WizardState): WizardState;
 /** 唤醒请求本身挂了（路由 500 / 网络断）：与「发行版起不来」分开记，但都留在选择屏。 */
-export declare function failWake(state: WizardState, message: string, token?: number): WizardState;
+export declare function failWake(state: WizardState, message: string, token: number): WizardState;
 /**
  * 能否进入目录浏览（**纯能力判定**，不含唤醒结论）。
  *
@@ -150,8 +150,14 @@ export declare function canBrowseNow(state: WizardState): boolean;
 export declare function enterBrowse(state: WizardState, startPath: string): WizardState;
 /** 回到选择屏：只清选择与列表，不动来源探测结果。 */
 export declare function backToChoose(state: WizardState): WizardState;
-export declare function receiveListing(state: WizardState, listing: DirListing, seq?: number): WizardState;
-export declare function failListing(state: WizardState, message: string, seq?: number): WizardState;
+/**
+ * 目录响应落地。
+ *
+ * `seq` 是**必填**的（R2-D14）：可选的代次门等于「调用方可以忘记传」，而忘记传的后果
+ * 正是 R1-B4 那条「旧响应覆盖错目录」。宁可让每个调用点多写三个字符。
+ */
+export declare function receiveListing(state: WizardState, listing: DirListing, seq: number): WizardState;
+export declare function failListing(state: WizardState, message: string, seq: number): WizardState;
 /**
  * 导航到另一条路径（路径输入框 / 面包屑 / 上一级共用）。
  *
