@@ -7,13 +7,17 @@
  *    argv 元素传递，空格与中文都安全，也不会被 `cmd.exe` 改写引号。
  * 2. **两套解码器**：管理类命令走 `decodeWslManagementOutput`（UTF-16LE），
  *    `--exec` 命令走 `decodeWslExecOutput`（UTF-8）。混用会得到 `u\0b\0…` 或
- *    `洯瑮搯…`。所以这一层**保留原始字节**，由各个入口决定怎么解。
+ *    `洯瑮搯…`。所以这一层**保留原始字节**，由各个入口决定怎么解。**失败**的诊断
+ *    尤其不能只看解码结果：`wsl.exe` 自己的启动失败落在 stdout 且是 UTF-16LE
+ *    （真机 2026-11-14），双解码择优在 `diagnosis.ts` 里做。
  * 3. **绝不 `wsl --terminate`**：进程回收靠 dispose 掉 Windows 侧的 `wsl.exe` 句柄
  *    （真机 A7 实测：杀句柄即回收 distro 侧子进程）。这一层只 kill 自己启动的子进程。
  */
 
 import { spawn } from 'node:child_process'
 
+import type { WslDiagnosis } from '../../../shared/api.ts'
+import { describeWslFailure } from './diagnosis.ts'
 import { decodeWslExecOutput, decodeWslManagementOutput } from './distro.ts'
 
 export interface WslRunOptions {
@@ -116,4 +120,37 @@ export async function runInDistro(
     stdoutText: decodeWslExecOutput(result.stdout),
     stderrText: decodeWslExecOutput(result.stderr),
   }
+}
+
+/** 一次「执行 + 诊断」的结果：成功时 `diagnosis` 为 null（成功不编诊断）。 */
+export interface WslCheckedResult {
+  readonly result: WslRunResult & { stdoutText: string; stderrText: string }
+  readonly diagnosis: WslDiagnosis | null
+}
+
+/**
+ * 在 distro 里执行一条命令，失败时**顺带**给出结构化诊断。
+ *
+ * 与 `runInDistro` 的区别只有一件事：退出码非 0 时把**原始字节**交给
+ * `describeWslFailure`（它在 UTF-16LE / UTF-8 之间择优），而不是让调用方拿
+ * `stderrText`（几乎恒为空）去猜。spawn 逻辑仍然只有 `runWsl` 一份。
+ */
+export async function runInDistroChecked(
+  executable: string,
+  distro: string,
+  command: readonly string[],
+  options: WslRunOptions = {},
+): Promise<WslCheckedResult> {
+  const result = await runInDistro(executable, distro, command, options)
+  const diagnosis =
+    result.exitCode === 0
+      ? null
+      : describeWslFailure({
+          distro,
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        })
+  return { result, diagnosis }
 }

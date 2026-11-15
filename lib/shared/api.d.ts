@@ -237,4 +237,34 @@ export interface ProbeOutcome {
     /** 截断后的终端文本，供「可复制日志」。 */
     readonly transcript: string;
 }
+/**
+ * 一条 WSL 侧的结构化诊断（`wsl.exe` 起不来发行版时用）。
+ *
+ * 为什么不是一句 `detail` 字符串：`wsl.exe` 的报错文本在中文 Windows 上是本地化且常落
+ * 在 **stdout**（UTF-16LE）里，直接当 `detail` 展示会出现乱码或只剩「退出码 -1」。
+ * 分类只依赖 ASCII 的 `Error code:` 行，其余原文进 `logTail` 供复制，不做本地化匹配。
+ */
+export interface WslDiagnosis {
+    /** 归类后的码；UI 按它选文案与出路，不解析自然语言。 */
+    readonly code: 'wsl/not-installed' | 'wsl/start-failed' | 'wsl/disk-missing' | 'wsl/access-denied'
+    /** 冷启动超过探测窗口：**不是**「起不来」，只是还没起完。文案与出路都必须区别于失败。 */
+     | 'wsl/timeout' | 'wsl/unknown';
+    /** 一句人话（含发行版名与归类原因）。 */
+    readonly detail: string;
+    /** 已知错误码映射出的下一步；为空表示只能看原文。 */
+    readonly nextActions: readonly string[];
+    /** `wsl.exe` 报告的 `Error code:` 行（没有则 null）。 */
+    readonly wslCode: string | null;
+    /** 解码后的原文尾巴（最多 800 字符），供「复制诊断」。 */
+    readonly logTail: string;
+}
+/** 一次「唤醒发行版」的结果。`ok:false` 是**可预期的用户环境状态**，不是服务器故障。 */
+export interface WslWakeResult {
+    readonly distro: string;
+    readonly ok: boolean;
+    /** 唤醒耗时（毫秒）；失败时为已等待的时长。 */
+    readonly ms: number;
+    /** 成功时为 null。 */
+    readonly diagnosis: WslDiagnosis | null;
+}
 //# sourceMappingURL=api.d.ts.map

@@ -11,7 +11,7 @@
  * 假 deps），不需要真的装 WSL。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput } from '../../shared/api.ts';
+import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput, type WslWakeResult } from '../../shared/api.ts';
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts';
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
 export interface TeleportWebServer {
@@ -32,6 +32,13 @@ export interface HostDeps {
     listDistro(distro: string, path: string, signal?: AbortSignal): Promise<DirListing>;
     probeFacts(distro: string, signal?: AbortSignal): Promise<RemoteFacts>;
     isDirectory(path: string): Promise<boolean>;
+    /**
+     * 唤醒一个发行版（`wsl.exe -d <distro> --exec true`）。
+     *
+     * 失败**不抛**：回 `ok:false` + 诊断。用户机器上没有可用的 vhdx 是可预期的环境
+     * 状态，抛成异常会让路由把它当服务器故障。
+     */
+    wakeDistro(distro: string, signal?: AbortSignal): Promise<WslWakeResult>;
 }
 export interface RouteOptions {
     /** `wsl.exe` 的可执行文件名或绝对路径；测试可换。 */
@@ -69,6 +76,16 @@ export interface RouteOptions {
      */
     readonly homeDir?: string;
 }
+/** 唤醒探测的超时：首次挂载 vhdx 比后续慢，再慢就说明它起不来了。 */
+/**
+ * 唤醒探测的超时。
+ *
+ * 真机实测（2026-11-14 22:2x）：冷启动一次 ubuntu_dev 超过 20 s 还没好，被我们杀掉后
+ * 用户看到的是「启动失败」——那是假阴性。60 s 既覆盖冷启动，又不会让一次点击挂到离谱。
+ */
+export declare const WAKE_TIMEOUT_MS = 60000;
+/** 唤醒结果的缓存窗口：同一发行版短时间内重复点不再 spawn（RFC-0001 §9 风险缓解）。 */
+export declare const WAKE_CACHE_MS = 60000;
 /** 默认 `wsl.exe`；允许用环境变量指向特定版本（多 WSL 安装时用得上）。 */
 export declare function defaultWslExecutable(): string;
 /**

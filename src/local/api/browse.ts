@@ -8,6 +8,10 @@
  * distro 内用 `ls -1aF`：`-F` 给目录补 `/`，是所有 coreutils/busybox 都支持的
  * 最小标记手段；不用 `find -printf`（busybox 没有），也不用解析 `stat`（多进程）。
  * 代价是**文件名里带换行的目录会裂成两条**——已在下面显式记账，不做假装修复。
+ *
+ * 失败原因**不靠 stderr 猜**：`wsl.exe` 自己的启动失败落在 stdout 且是 UTF-16LE
+ * （真机 2026-11-14：exitCode -1、stderr 为空、stdout 是挂载失败 + `Error code:` 行），
+ * 所以非 0 退出码统一交给 `describeWslFailure` 归类。
  */
 
 import { readdir } from 'node:fs/promises'
@@ -15,7 +19,8 @@ import { win32 } from 'node:path'
 
 import type { DirEntry, DirListing } from '../../shared/api.ts'
 import { TeleportError } from '../backend/errors.ts'
-import { runInDistro } from '../backend/wsl/exec.ts'
+import { describeWslFailure } from '../backend/wsl/diagnosis.ts'
+import { runInDistro, type WslRunOptions, type WslRunResult } from '../backend/wsl/exec.ts'
 
 /** 单次最多返回的条目数；超出如实置 `truncated`。 */
 export const MAX_ENTRIES = 500
@@ -118,27 +123,56 @@ export async function listLocalDirectory(path: string): Promise<DirListing> {
   return { path: normalizeLocalPath(path), entries: sortEntries(entries), truncated, parent: winParent(path) }
 }
 
+/**「在 distro 里跑一条命令」这一件事；抽成类型是为了让失败路径能注入（见下）。 */
+export type DistroListingRunner = (
+  executable: string,
+  distro: string,
+  command: readonly string[],
+  options?: WslRunOptions,
+) => Promise<WslRunResult & { readonly stdoutText: string; readonly stderrText: string }>
+
 /**
  * 列 distro 内目录。
  *
  * `--` 终止选项解析：路径里出现 `-` 开头的目录名时不会被当成 flag。
+ *
+ * 非 0 退出码分两种，**错因不能混**（RFC-0001 §6 把「目录不可读」与「发行版启动失败」
+ * 列成两行）：`ls` 自己报了错（coreutils/busybox 都以 `ls:` 开头）说明发行版是起来的，
+ * 照旧按「读不到这个目录」报；其余是 WSL 级失败，码取诊断的 `wsl/*`。
  */
 export async function listDistroDirectory(
   executable: string,
   distro: string,
   path: string,
   signal?: AbortSignal,
+  /** 测试注入点：换掉 `runInDistro` 就能对着真机字节验失败路径，不必装 WSL。 */
+  run: DistroListingRunner = runInDistro,
 ): Promise<DirListing> {
-  const result = await runInDistro(executable, distro, ['ls', '-1aF', '--', path], {
+  const result = await run(executable, distro, ['ls', '-1aF', '--', path], {
     timeoutMs: 15_000,
     ...(signal === undefined ? {} : { signal }),
   })
   if (result.exitCode !== 0) {
-    const reason = result.stderrText.trim() === '' ? `ls 退出码 ${String(result.exitCode)}` : result.stderrText.trim()
+    const diagnosis = describeWslFailure({
+      distro,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    })
+    // 今天这条分支只解 stderr，于是退化成「ls 退出码 -1」——真机上 stderr 恒为空。
+    if (result.stderrText.trimStart().startsWith('ls:')) {
+      throw new TeleportError({
+        code: 'remote/path-unreadable',
+        detail: `读不到 ${distro} 内的 ${path}：${result.stderrText.trim()}`,
+        nextActions: ['换一个目录', '确认该路径在发行版内存在'],
+        logTail: diagnosis.logTail,
+      })
+    }
     throw new TeleportError({
-      code: 'remote/path-unreadable',
-      detail: `读不到 ${distro} 内的 ${path}：${reason}`,
-      nextActions: ['换一个目录', '确认该路径在发行版内存在'],
+      code: diagnosis.code,
+      detail: diagnosis.detail,
+      nextActions: diagnosis.nextActions,
+      logTail: diagnosis.logTail,
     })
   }
   const parsed = parseLsOutput(result.stdoutText)

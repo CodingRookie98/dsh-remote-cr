@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parseLsLine, parseLsOutput, posixParent, sortEntries, winParent } from './browse.ts'
+import { TeleportError } from '../backend/errors.ts'
+import {
+  type DistroListingRunner,
+  listDistroDirectory,
+  parseLsLine,
+  parseLsOutput,
+  posixParent,
+  sortEntries,
+  winParent,
+} from './browse.ts'
 
 test('ls -F 的目录后缀 / 判定为目录，其余一律按文件', () => {
   assert.deepEqual(parseLsLine('src/'), { name: 'src', kind: 'directory' })
@@ -50,4 +59,64 @@ test('NEGATIVE_CONTROL 可假性：把目录后缀判定反转必须让第一条
   const negate = process.env.NEGATIVE_CONTROL === '1'
   const entry = parseLsLine(negate ? 'src' : 'src/')
   assert.deepEqual(entry, { name: 'src', kind: 'directory' })
+})
+
+/**
+ * 真机字节（2026-11-14）：发行版已停止且 vhdx 失效时，`ls` 这一路拿到的就是下面这段的
+ * UTF-16LE 编码（stdout）、**stderr 为空**、exitCode **-1**。UTF-8 解码得到的乱码
+ * 今天被当成原因，于是用户只看到「ls 退出码 -1」。
+ */
+const VHDX_PATH = String.raw`\\?\\D:\\My_Tools\\wsl2-ubuntu-dev\\ext4.vhdx`
+const REAL_WSL_FAILURE = [
+  `Failed to attach disk '${VHDX_PATH}' to WSL2: 系统找不到指定的文件。`,
+  'Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG',
+  '',
+].join('\r\n')
+
+test('发行版启动失败：错误码取 wsl/*，detail 带 E_INVALIDARG，而不是「ls 退出码 -1」', async () => {
+  const bytes = Buffer.from(REAL_WSL_FAILURE, 'utf16le')
+  const failing: DistroListingRunner = async () => ({
+    exitCode: -1,
+    signal: null,
+    stdout: bytes,
+    stderr: new Uint8Array(),
+    timedOut: false,
+    // 这就是今天 UTF-8 解出来的东西——它不该再被当成失败原因。
+    stdoutText: '\u6d6f\u3f6f\u8b6f',
+    stderrText: '',
+  })
+  await assert.rejects(
+    () => listDistroDirectory('wsl.exe', 'ubuntu_dev', '/', undefined, failing),
+    (error: unknown) => {
+      assert.ok(error instanceof TeleportError)
+      assert.equal(error.code, 'wsl/disk-missing')
+      assert.ok(error.detail.includes('E_INVALIDARG'), error.detail)
+      assert.ok(error.detail.includes('ubuntu_dev'), error.detail)
+      assert.equal(error.detail.includes('ls 退出码'), false, '退化成退出码正是这条缺陷的现场')
+      assert.ok(error.logTail.includes('E_INVALIDARG'), error.logTail)
+      return true
+    },
+  )
+})
+
+test('ls 自己失败（路径不存在）仍按目录读不到报，不冒充发行版启动失败', async () => {
+  const stderr = "ls: cannot access '/nope': No such file or directory"
+  const failing: DistroListingRunner = async () => ({
+    exitCode: 2,
+    signal: null,
+    stdout: new Uint8Array(),
+    stderr: Buffer.from(stderr + '\n', 'utf8'),
+    timedOut: false,
+    stdoutText: '',
+    stderrText: stderr,
+  })
+  await assert.rejects(
+    () => listDistroDirectory('wsl.exe', 'ubuntu_dev', '/nope', undefined, failing),
+    (error: unknown) => {
+      assert.ok(error instanceof TeleportError)
+      assert.equal(error.code, 'remote/path-unreadable', 'ls 跑得起来 = 发行版是起来的')
+      assert.ok(error.detail.includes('No such file or directory'), error.detail)
+      return true
+    },
+  )
 })

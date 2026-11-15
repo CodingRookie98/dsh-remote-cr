@@ -26,6 +26,16 @@ export interface SourceOption {
     readonly reason: string;
 }
 /**
+ * 不可用时那一句话：区分「没装 WSL」「装了但没有发行版」「探测本身失败」。
+ *
+ * 三种情况用户要做的事完全不同（装 WSL / `wsl --install` / 看诊断），
+ * 合成一句笼统话等于把他推向错误方向（铁律 4：失败要响，且要响对地方）。
+ */
+export declare function wslUnavailableReason(input: {
+    readonly wslProbeError?: string | null;
+    readonly wslDistroCount?: number;
+}): string;
+/**
  * 由「本机能力」推导出四选一的展示状态。
  *
  * `wslAvailable` 是探测结果（`wsl.exe --list` 能不能跑通），**不是配置项**：
@@ -35,6 +45,15 @@ export declare function sourceOptions(input: {
     readonly wslAvailable: boolean;
     /** `~/.ssh/config` 里至少有一个可连主机（探测结果，不是配置项）。 */
     readonly sshAvailable?: boolean;
+    /**
+     * 探测阶段的原话（没有 `wsl.exe` / 服务未启用）。
+     *
+     * 与「装了 WSL 但一个发行版都没有」是**两件事**：前者要用户装东西，后者只要一句
+     * `wsl --install`。合成一句笼统的「未检测到可用的 wsl.exe」会让人去查错方向。
+     */
+    readonly wslProbeError?: string | null;
+    /** 已探测到的发行版数量；用来区分上面两种情况。 */
+    readonly wslDistroCount?: number;
 }): SourceOption[];
 /** 当前可点的来源 id 列表——宿主半用它拒绝未实现的来源。 */
 export declare function selectableSources(options: readonly SourceOption[]): WorkspaceSource[];

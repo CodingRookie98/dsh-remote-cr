@@ -8,8 +8,13 @@
  * distro 内用 `ls -1aF`：`-F` 给目录补 `/`，是所有 coreutils/busybox 都支持的
  * 最小标记手段；不用 `find -printf`（busybox 没有），也不用解析 `stat`（多进程）。
  * 代价是**文件名里带换行的目录会裂成两条**——已在下面显式记账，不做假装修复。
+ *
+ * 失败原因**不靠 stderr 猜**：`wsl.exe` 自己的启动失败落在 stdout 且是 UTF-16LE
+ * （真机 2026-11-14：exitCode -1、stderr 为空、stdout 是挂载失败 + `Error code:` 行），
+ * 所以非 0 退出码统一交给 `describeWslFailure` 归类。
  */
 import type { DirEntry, DirListing } from '../../shared/api.ts';
+import { type WslRunOptions, type WslRunResult } from '../backend/wsl/exec.ts';
 /** 单次最多返回的条目数；超出如实置 `truncated`。 */
 export declare const MAX_ENTRIES = 500;
 /** 按「目录在前、再按名字」排序，且与区域设置无关（同样的输入永远同样的输出）。 */
@@ -40,10 +45,21 @@ export declare function normalizeLocalPath(path: string): string;
 export declare function winParent(path: string): string | null;
 /** 列本机目录。`path` 必须是绝对路径；UNC 也能读（M0 实测 V9）。 */
 export declare function listLocalDirectory(path: string): Promise<DirListing>;
+/**「在 distro 里跑一条命令」这一件事；抽成类型是为了让失败路径能注入（见下）。 */
+export type DistroListingRunner = (executable: string, distro: string, command: readonly string[], options?: WslRunOptions) => Promise<WslRunResult & {
+    readonly stdoutText: string;
+    readonly stderrText: string;
+}>;
 /**
  * 列 distro 内目录。
  *
  * `--` 终止选项解析：路径里出现 `-` 开头的目录名时不会被当成 flag。
+ *
+ * 非 0 退出码分两种，**错因不能混**（RFC-0001 §6 把「目录不可读」与「发行版启动失败」
+ * 列成两行）：`ls` 自己报了错（coreutils/busybox 都以 `ls:` 开头）说明发行版是起来的，
+ * 照旧按「读不到这个目录」报；其余是 WSL 级失败，码取诊断的 `wsl/*`。
  */
-export declare function listDistroDirectory(executable: string, distro: string, path: string, signal?: AbortSignal): Promise<DirListing>;
+export declare function listDistroDirectory(executable: string, distro: string, path: string, signal?: AbortSignal, 
+/** 测试注入点：换掉 `runInDistro` 就能对着真机字节验失败路径，不必装 WSL。 */
+run?: DistroListingRunner): Promise<DirListing>;
 //# sourceMappingURL=browse.d.ts.map

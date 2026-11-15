@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import type { DirListing, DistroInfo, RemoteFacts, SourceReport, SshSourceReport } from '../../shared/api.ts'
+import type {
+  DirListing,
+  DistroInfo,
+  RemoteFacts,
+  SourceReport,
+  SshSourceReport,
+  WslDiagnosis,
+  WslWakeResult,
+} from '../../shared/api.ts'
 import { API_PREFIX } from '../../shared/api.ts'
 import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '../projection/service.ts'
 import { ProjectionStore } from '../projection/store.ts'
@@ -111,6 +119,7 @@ function rig(
     },
     probeFacts: async () => FACTS,
     isDirectory: async (path) => path !== 'D:\\nope',
+    wakeDistro: async (distro) => ({ distro, ok: true, ms: 12, diagnosis: null }),
     ...overrides,
   }
 
@@ -163,7 +172,7 @@ function rig(
   }
 }
 
-test('十四条路由全部挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('全部路由都挂载在 /teleport/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
@@ -185,6 +194,7 @@ test('十四条路由全部挂载在 /teleport/api 下，且各自声明允许�
   '/teleport/api/workspace/import POST',
   '/teleport/api/workspace/importable GET',
       '/teleport/api/workspaces GET',
+      '/teleport/api/wsl/wake POST',
     ],
   )
 })
@@ -209,6 +219,17 @@ test('/sources 回四选一 + 可点清单；探测失败也回 200（灰显不�
   const degradedValue = (degraded.json as { value: { selectable: string[]; probeError: string } }).value
   assert.deepEqual(degradedValue.selectable, ['local'])
   assert.equal(degradedValue.probeError, 'wsl.exe 不存在')
+
+  // 装了 WSL 但一个发行版都没有：原因必须与「没装 WSL」不同（RFC-0001 §6 前两行），
+  // 这条断言同时证明 wslDistroCount 真的被传进了 sourceOptions。
+  const noDistro = await rig({
+    listSources: async () => ({ wslAvailable: false, distros: [], probeError: null, ssh: NO_SSH }),
+  }).call({ path: '/sources' })
+  const noDistroOptions = (noDistro.json as { value: { options: { id: string; reason: string }[] } }).value.options
+  assert.equal(
+    noDistroOptions.find((option) => option.id === 'wsl')?.reason,
+    '没有已安装的发行版（在 PowerShell 里跑 wsl --install）',
+  )
 })
 
 test('/list 不带 distro 走本机，带 distro 走发行版（两条分支都要真的分叉）', async () => {
@@ -518,4 +539,86 @@ test('/anchors 打印本机锚点映射；没有锚点时是空清单而不是�
   assert.equal(entry.id, resolved.map.id)
   assert.equal(entry.ok, true)
   assert.ok(entry.lines.some((line) => line.includes('映射：')), entry.lines.join(' | '))
+})
+
+/** 一条真实的磁盘丢失诊断（真机 2026-11-14 的 E_INVALIDARG 现场，细节见 diagnosis.test.ts）。 */
+const DISK_MISSING: WslDiagnosis = {
+  code: 'wsl/disk-missing',
+  detail: '发行版 ubuntu_dev 的虚拟磁盘挂载失败：WSL 找不到或打不开它的 ext4.vhdx（WSL 自报 Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG）',
+  nextActions: ['确认诊断里的 ext4.vhdx 路径真实存在'],
+  wslCode: 'Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG',
+  logTail: 'Failed to attach disk ext4.vhdx to WSL2: 系统找不到指定的文件。',
+}
+
+test('/wsl/wake 成功：200 + ok:true + ms，诊断恒为 null', async () => {
+  const seen: string[] = []
+  const answer = await rig({
+    wakeDistro: async (distro) => {
+      seen.push(distro)
+      return { distro, ok: true, ms: 37, diagnosis: null }
+    },
+  }).call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  assert.equal(answer.status, 200)
+  const value = (answer.json as { value: WslWakeResult }).value
+  assert.deepEqual(value, { distro: 'ubuntu_dev', ok: true, ms: 37, diagnosis: null })
+  assert.deepEqual(seen, ['ubuntu_dev'], '唤醒必须按名字落到那一个发行版上')
+})
+
+test('/wsl/wake 失败：仍是 200 + ok:false + 诊断（可预期失败，不是服务器故障）', async () => {
+  const answer = await rig({
+    wakeDistro: async () => ({ distro: 'ubuntu_dev', ok: false, ms: 41, diagnosis: DISK_MISSING }),
+  }).call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
+  assert.equal(answer.status, 200, '5xx 只会让 UI 把它当网络错误去重试')
+  const value = (answer.json as { value: WslWakeResult }).value
+  assert.equal(value.ok, false)
+  assert.equal(value.diagnosis?.code, 'wsl/disk-missing')
+  assert.ok(value.diagnosis?.wslCode?.includes('E_INVALIDARG'), value.diagnosis?.wslCode ?? '')
+})
+
+test('/wsl/wake 未知发行版：remote/unknown，且根本不 spawn', async () => {
+  let woken = 0
+  const answer = await rig({
+    wakeDistro: async (distro) => {
+      woken += 1
+      return { distro, ok: true, ms: 1, diagnosis: null }
+    },
+  }).call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'not-a-distro' }) })
+  assert.equal(answer.status, 200)
+  const payload = answer.json as { ok: boolean; code: string; detail: string }
+  assert.equal(payload.ok, false)
+  assert.equal(payload.code, 'remote/unknown')
+  assert.ok(payload.detail.includes('not-a-distro'), payload.detail)
+  assert.equal(woken, 0, '不在清单里的名字不该换来一次 wsl.exe')
+})
+
+test('/wsl/wake 缓存命中：60 秒内同一发行版只 spawn 一次', async () => {
+  let spawned = 0
+  const r = rig({
+    wakeDistro: async (distro) => {
+      spawned += 1
+      return { distro, ok: true, ms: 20 + spawned, diagnosis: null }
+    },
+  })
+  const body = JSON.stringify({ distro: 'ubuntu_dev' })
+  const first = await r.call({ path: '/wsl/wake', method: 'POST', body })
+  const second = await r.call({ path: '/wsl/wake', method: 'POST', body })
+  assert.equal(spawned, 1, '重复点同一发行版不该再 spawn')
+  const firstValue = (first.json as { value: WslWakeResult }).value
+  const secondValue = (second.json as { value: WslWakeResult }).value
+  assert.deepEqual(secondValue, firstValue)
+  assert.equal(secondValue.ms, 21)
+})
+
+test('/wsl/wake 失败不缓存：修好 vhdx 后点重试必须真的重试', async () => {
+  let spawned = 0
+  const r = rig({
+    wakeDistro: async (distro) => {
+      spawned += 1
+      return { distro, ok: false, ms: 5, diagnosis: DISK_MISSING }
+    },
+  })
+  const body = JSON.stringify({ distro: 'ubuntu_dev' })
+  await r.call({ path: '/wsl/wake', method: 'POST', body })
+  await r.call({ path: '/wsl/wake', method: 'POST', body })
+  assert.equal(spawned, 2, '失败被缓存 60 秒会把「重试启动」变成装饰')
 })

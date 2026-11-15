@@ -33,11 +33,12 @@ import {
   type SourceReport,
   type WorkspaceAddInput,
   type WorkspaceRecord,
+  type WslWakeResult,
 } from '../../shared/api.ts'
 import { selectableSources, sourceOptions, type WorkspaceSource } from '../../shared/choices.ts'
 import { TeleportError } from '../backend/errors.ts'
 import { parseWslVerboseList } from '../backend/wsl/distro.ts'
-import { runInDistro, runWslManagement } from '../backend/wsl/exec.ts'
+import { runInDistro, runInDistroChecked, runWslManagement } from '../backend/wsl/exec.ts'
 import { describeAnchors, resolveAnchorPath as resolveAnchor } from '../backend/ssh/anchor-runtime.ts'
 import { listSshSources, nodeSshSourcesOptions, resolveTargetByAlias } from '../backend/ssh/targets.ts'
 import { toUnc, uncCandidates } from '../backend/wsl/unc.ts'
@@ -71,6 +72,13 @@ export interface HostDeps {
   listDistro(distro: string, path: string, signal?: AbortSignal): Promise<DirListing>
   probeFacts(distro: string, signal?: AbortSignal): Promise<RemoteFacts>
   isDirectory(path: string): Promise<boolean>
+  /**
+   * 唤醒一个发行版（`wsl.exe -d <distro> --exec true`）。
+   *
+   * 失败**不抛**：回 `ok:false` + 诊断。用户机器上没有可用的 vhdx 是可预期的环境
+   * 状态，抛成异常会让路由把它当服务器故障。
+   */
+  wakeDistro(distro: string, signal?: AbortSignal): Promise<WslWakeResult>
 }
 
 export interface RouteOptions {
@@ -109,6 +117,18 @@ export interface RouteOptions {
    */
   readonly homeDir?: string
 }
+
+/** 唤醒探测的超时：首次挂载 vhdx 比后续慢，再慢就说明它起不来了。 */
+/**
+ * 唤醒探测的超时。
+ *
+ * 真机实测（2026-11-14 22:2x）：冷启动一次 ubuntu_dev 超过 20 s 还没好，被我们杀掉后
+ * 用户看到的是「启动失败」——那是假阴性。60 s 既覆盖冷启动，又不会让一次点击挂到离谱。
+ */
+export const WAKE_TIMEOUT_MS = 60_000
+
+/** 唤醒结果的缓存窗口：同一发行版短时间内重复点不再 spawn（RFC-0001 §9 风险缓解）。 */
+export const WAKE_CACHE_MS = 60_000
 
 /** 默认 `wsl.exe`；允许用环境变量指向特定版本（多 WSL 安装时用得上）。 */
 export function defaultWslExecutable(): string {
@@ -231,6 +251,19 @@ export function createHostDeps(
         return (await stat(path)).isDirectory()
       } catch {
         return false
+      }
+    },
+    wakeDistro: async (distro, signal) => {
+      const startedAt = Date.now()
+      const checked = await runInDistroChecked(executable, distro, ['true'], {
+        timeoutMs: WAKE_TIMEOUT_MS,
+        ...(signal === undefined ? {} : { signal }),
+      })
+      return {
+        distro,
+        ok: checked.result.exitCode === 0,
+        ms: Date.now() - startedAt,
+        diagnosis: checked.diagnosis,
       }
     },
   }
@@ -365,13 +398,71 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
 
   mount('/sources', ['GET'], async (_req, res) => {
     const report = await deps.listSources()
-    const options4 = sourceOptions({ wslAvailable: report.wslAvailable, sshAvailable: report.ssh.targets.length > 0 })
+    // 三个探测结果都要传：`wslAvailable:false` 有三种成因（没装 WSL / 装了但一个发行版
+    // 都没有 / 探测本身失败），行下的原因文案完全不同（RFC-0001 §6 前三行）。
+    const options4 = sourceOptions({
+      wslAvailable: report.wslAvailable,
+      sshAvailable: report.ssh.targets.length > 0,
+      wslProbeError: report.probeError,
+      wslDistroCount: report.distros.length,
+    })
     sendJson(res, 200, okEnvelope({
       ...report,
       options: options4,
       selectable: selectableSources(options4),
       defaults: readDefaults(),
     }))
+  })
+
+  // ── 唤醒发行版（RFC-0001 §4）──────────────────────────────────────────
+  // 失败也回 200 + `ok:false` + 诊断：vhdx 丢了是用户的环境状态，不是服务器故障
+  // （5xx 只会让 UI 把它当成网络错误去重试）。缓存只留**成功**的结论，见下。
+  const wakeCache = new Map<string, { readonly at: number; readonly result: WslWakeResult }>()
+
+  mount('/wsl/wake', ['POST'], async (req, res) => {
+    const record = asBody(await readJsonBody(req))
+    const distro = record['distro']
+    if (typeof distro !== 'string' || distro === '') {
+      throw new TeleportError({
+        code: 'remote/unknown',
+        detail: '缺少 distro',
+        nextActions: ['刷新页面后重新选择一个发行版'],
+      })
+    }
+    // 名字必须是**当前清单里真实存在的**：否则任何字符串都能让宿主 spawn 一个 wsl.exe。
+    const report = await deps.listSources()
+    if (!report.distros.some((item) => item.name === distro)) {
+      throw new TeleportError({
+        code: 'remote/unknown',
+        detail: `${distro} 不在当前发行版清单里`,
+        nextActions: ['刷新页面后重新选择', '先装一个发行版：wsl --install'],
+      })
+    }
+    const cached = wakeCache.get(distro)
+    if (cached !== undefined && Date.now() - cached.at < WAKE_CACHE_MS) {
+      sendJson(res, 200, okEnvelope(cached.result))
+      return
+    }
+    // 客户端断开（关弹窗 / 取消唤醒）就立刻收掉 wsl.exe：否则它会把 20 秒超时跑满，
+    // 用户以为取消了、机器还在转（R1-B1 的宿主半）。
+    const controller = new AbortController()
+    const onClose = (): void => {
+      controller.abort()
+    }
+    // 单测里的假 res 是普通对象，没有事件方法；有才挂，别让「取消能力」把正常路径也弄挂。
+    const closable = typeof (res as { on?: unknown }).on === 'function'
+    if (closable) res.on('close', onClose)
+    let result: WslWakeResult
+    try {
+      result = await deps.wakeDistro(distro, controller.signal)
+    } finally {
+      if (closable && typeof res.off === 'function') res.off('close', onClose)
+    }
+    if (controller.signal.aborted) return
+    // 只缓存成功：失败若也缓存 60 秒，「重试启动」就成了装饰——用户刚修好 vhdx，
+    // 点重试拿到的还是上一次的诊断。
+    if (result.ok) wakeCache.set(distro, { at: Date.now(), result })
+    sendJson(res, 200, okEnvelope<WslWakeResult>(result))
   })
 
   mount('/list', ['GET'], async (_req, res, url) => {

@@ -31,6 +31,22 @@ export interface SourceOption {
 }
 
 /**
+ * 不可用时那一句话：区分「没装 WSL」「装了但没有发行版」「探测本身失败」。
+ *
+ * 三种情况用户要做的事完全不同（装 WSL / `wsl --install` / 看诊断），
+ * 合成一句笼统话等于把他推向错误方向（铁律 4：失败要响，且要响对地方）。
+ */
+export function wslUnavailableReason(input: {
+  readonly wslProbeError?: string | null
+  readonly wslDistroCount?: number
+}): string {
+  const probe = input.wslProbeError
+  if (typeof probe === 'string' && probe !== '') return probe
+  if (input.wslDistroCount === 0) return '没有已安装的发行版（在 PowerShell 里跑 wsl --install）'
+  return '未检测到可用的 wsl.exe，或 wsl.exe 无法列出发行版'
+}
+
+/**
  * 由「本机能力」推导出四选一的展示状态。
  *
  * `wslAvailable` 是探测结果（`wsl.exe --list` 能不能跑通），**不是配置项**：
@@ -40,7 +56,17 @@ export function sourceOptions(input: {
   readonly wslAvailable: boolean
   /** `~/.ssh/config` 里至少有一个可连主机（探测结果，不是配置项）。 */
   readonly sshAvailable?: boolean
+  /**
+   * 探测阶段的原话（没有 `wsl.exe` / 服务未启用）。
+   *
+   * 与「装了 WSL 但一个发行版都没有」是**两件事**：前者要用户装东西，后者只要一句
+   * `wsl --install`。合成一句笼统的「未检测到可用的 wsl.exe」会让人去查错方向。
+   */
+  readonly wslProbeError?: string | null
+  /** 已探测到的发行版数量；用来区分上面两种情况。 */
+  readonly wslDistroCount?: number
 }): SourceOption[] {
+  const wslReason = wslUnavailableReason(input)
   return [
     { id: 'local', label: '本机目录', availability: 'available', reason: '' },
     input.wslAvailable
@@ -49,7 +75,7 @@ export function sourceOptions(input: {
           id: 'wsl',
           label: 'WSL 发行版',
           availability: 'unavailable',
-          reason: '未检测到可用的 wsl.exe，或 wsl.exe 无法列出发行版',
+          reason: wslReason,
         },
     input.sshAvailable === true
       ? { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' }
