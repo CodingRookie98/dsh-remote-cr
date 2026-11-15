@@ -207,7 +207,11 @@ EXIT=-1
 | D9 | 删 `diagnosis.ts` 两处 `default`，让新增第 6 个码时 `tsc` 直接报错 | 穷举 switch |
 | D2 | 轮询失败可见：新增 `pollError` 槽（与 `listingError` 分开），running 屏渲染「查不到进度了」+ 重试 + 关闭；拿到快照即清空 | `state.test.ts` 新增用例；`components.ts#renderTerminal` |
 | D3 | 无障碍语义：左栏 `role=radiogroup` + 子项 `role=radio/aria-checked`；列表子项 `role=option/aria-selected` + 文件 `aria-disabled` | 真机探针 **R6** 断言（`problems: []`） |
-| — | 未做：D7（`browse.test.ts` 里 vhdx 字符串的双重转义，纯表面、不影响断言）；D4/D6/D10–D16 仍留在 R2 报告 | — |
+| D7 | 已修：vhdx 夹具路径改成与真机一致的 `\\?\D:\...` | `browse.test.ts` + `lib` 产物重新对齐 |
+| D13 | 键盘门禁默认开启（只在 `local` 场景跑），保留 `--no-keys`；`package.json` 加 `e2e:preview` / `e2e:host` | `preview-wizard.mjs` 全量跑即执行 K1–K9 |
+| D6 | `parseLsLine` 边界用例（前导空格 / 名字带空格 / 标记剥离 / `-` 开头 / 已知限制） | `browse.test.ts` 新增 3 条 |
+| D12 | `components.ts` 1802 → 978 行，面板拆成 `panel-view.ts`（830 行），依赖单向 | 619 单测 + 预览 harness + 真机探针 9/9 全绿 |
+| — | 未做：D4/D10/D11/D14–D16（`distro-install` 可达性、SSH 夹具变体、`lib` 与源码分离提交、CI 接入浏览器 e2e 等） | — |
 
 ## 11. 已知限制（诚实口径）
 
