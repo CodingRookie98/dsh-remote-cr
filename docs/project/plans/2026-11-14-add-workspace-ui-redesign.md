@@ -205,7 +205,9 @@ EXIT=-1
 | D5 | 向导里点 SSH 不再是无反应死路，改为一句「请用右侧瞬移面板的 SSH 直连区」 | `components.ts#wizardMain` |
 | D8 | 补 `backToChoose` / `failSources` 的语义断言 | `state.test.ts` 新增 2 条 |
 | D9 | 删 `diagnosis.ts` 两处 `default`，让新增第 6 个码时 `tsc` 直接报错 | 穷举 switch |
-| — | 未做：D7（`browse.test.ts` 里 vhdx 字符串的双重转义，纯表面、不影响断言）；D2/D3/D4/D6/D10–D16 仍留在 R2 报告 | — |
+| D2 | 轮询失败可见：新增 `pollError` 槽（与 `listingError` 分开），running 屏渲染「查不到进度了」+ 重试 + 关闭；拿到快照即清空 | `state.test.ts` 新增用例；`components.ts#renderTerminal` |
+| D3 | 无障碍语义：左栏 `role=radiogroup` + 子项 `role=radio/aria-checked`；列表子项 `role=option/aria-selected` + 文件 `aria-disabled` | 真机探针 **R6** 断言（`problems: []`） |
+| — | 未做：D7（`browse.test.ts` 里 vhdx 字符串的双重转义，纯表面、不影响断言）；D4/D6/D10–D16 仍留在 R2 报告 | — |
 
 ## 11. 已知限制（诚实口径）
 
