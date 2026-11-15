@@ -58,6 +58,8 @@
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
+    "e2e:preview": "node scripts/preview-wizard.mjs --no-build",
+    "e2e:host": "node spikes/m4/add-workspace-ui/probe.cjs",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",
     "spike:t6": "node spikes/m1/cross-machine-t6/probe.cjs"
   },

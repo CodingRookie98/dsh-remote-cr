@@ -60,7 +60,7 @@ const HELP = [
   '  --keep             跑完不杀 Chrome（便于手工接着看；会打印 CDP 端口）',
   '  --no-build         跳过 pnpm build:client，复用 lib/client.js',
   '  --viewport=WxH     视口尺寸（默认 1280x900；窄档用 900x700、720x640）',
-  '  --keys             场景跑完后用 CDP Input.dispatchKeyEvent 走一遍键盘路径（D-A）',
+  '  --no-keys          跳过键盘路径（默认会跑；只在 local 场景执行，D-A）',
   '  --timeout=<毫秒>   单个场景等待上限（默认 25000）',
   '  -h, --help         显示本帮助',
 ].join('\n');
@@ -74,14 +74,15 @@ function parseArgs(argv) {
     build: true,
     timeoutMs: 25000,
     help: false,
-    keys: false,
+    // 默认就开：键盘断言「平时不设防」等于没有门禁（R2-D13）。
+    keys: true,
     viewport: { width: VIEWPORT.width, height: VIEWPORT.height },
   };
   for (const arg of argv) {
     if (arg === '--keep') options.keep = true;
     else if (arg === '--no-build') options.build = false;
     else if (arg === '--help' || arg === '-h') options.help = true;
-    else if (arg === '--keys') options.keys = true;
+    else if (arg === '--no-keys') options.keys = false;
     else if (arg.startsWith('--port=')) options.port = Number(arg.slice('--port='.length));
     else if (arg.startsWith('--only=')) options.only = arg.slice('--only='.length);
     else if (arg.startsWith('--out=')) options.out = arg.slice('--out='.length);
@@ -655,7 +656,8 @@ async function main() {
       const record = await captureScene({ cdp, baseUrl, scene, outDir, consoleLog, timeoutMs: options.timeoutMs, viewport: options.viewport });
       results.push(record);
       printSceneLine(record);
-      if (options.keys === true) {
+      // 键盘路径是照着 local 的浏览屏写的（K1 Tab 到路径框、K4 进条目），其它场景跑它只会假红。
+      if (options.keys === true && scene.id === 'local') {
         const suite = await runKeyboardSuite({ cdp, outDir, sceneId: scene.id, viewportTag: viewportTagOf(options.viewport) });
         keyResults.push(suite);
         printKeySuite(suite);
