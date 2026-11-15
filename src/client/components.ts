@@ -64,6 +64,7 @@ import {
   distroHealthOf,
   enterBrowse,
   failListing,
+  failPoll,
   failSources,
   failWake,
   initialWizard,
@@ -232,7 +233,8 @@ async function pollOnce(id: string): Promise<void> {
     const snapshot = await readFlow(id)
     update((current) => receiveFlow(current, snapshot))
   } catch (error) {
-    update((current) => failListing(current, messageOf(error)))
+    // 进 pollError，不进 listingError：进度屏（running）不渲染 listingError，写进去就是永久转圈（R2-D2）。
+    update((current) => failPoll(current, messageOf(error)))
   }
 }
 
@@ -628,6 +630,10 @@ function listingView(state: WizardState, handlers: WizardHandlers): unknown {
                 'data-teleport': 'entry',
                 'data-kind': entry.kind,
                 'data-active': String(state.active === index),
+                // listbox 的子项要自报 option + 选中态；文件不可进用 aria-disabled 同时说明。
+                role: 'option',
+                'aria-selected': String(state.active === index),
+                ...(entry.kind === 'directory' ? {} : { 'aria-disabled': 'true' }),
                 disabled: entry.kind !== 'directory',
                 onClick: () => {
                   if (entry.kind === 'directory') handlers.navigate(joinPath(listing.path, entry.name))
@@ -708,7 +714,9 @@ function sourceRail(state: WizardState, busy: boolean, handlers: WizardHandlers)
               'data-source': option.id,
               'data-availability': option.availability,
               'data-selected': String(state.source === option.id),
-              'aria-pressed': String(state.source === option.id),
+              // radiogroup 里子项要用 aria-checked（aria-pressed 是 toggle 按钮的语义，读屏会念错）。
+              role: 'radio',
+              'aria-checked': String(state.source === option.id),
               disabled: !available || busy,
               title: available ? option.label : option.reason,
               onClick: () => handlers.choose(option.id),
@@ -721,7 +729,7 @@ function sourceRail(state: WizardState, busy: boolean, handlers: WizardHandlers)
       )
     }
   }
-  return h('aside', { 'data-teleport': 'sources', 'aria-label': '运行位置' }, ...children)
+  return h('aside', { 'data-teleport': 'sources', role: 'radiogroup', 'aria-label': '运行位置' }, ...children)
 }
 
 /** 右栏：选位置前的空态 / 唤醒中 / 启动失败诊断 / 目录浏览。 */
@@ -762,6 +770,22 @@ function renderTerminal(
       'div',
       { 'data-teleport': 'wizard-terminal-body' },
       progressBar(state),
+      // 轮询失败必须看得见并可操作：否则一次 404 / 断网就是永久转圈（R2-D2）。
+      state.pollError === null
+        ? null
+        : h(
+            'div',
+            { 'data-teleport': 'poll-error', role: 'alert' },
+            h('div', { 'data-teleport': 'poll-error-text' }, '查不到进度了：' + state.pollError),
+            h(
+              'div',
+              { 'data-teleport': 'poll-error-actions' },
+              flowId === undefined
+                ? null
+                : h('button', { type: 'button', 'data-teleport': 'poll-retry', onClick: () => handlers.retryPoll(flowId) }, '重试'),
+              h('button', { type: 'button', 'data-teleport': 'poll-close', onClick: () => handlers.cancel() }, '关闭'),
+            ),
+          ),
       flow !== undefined && canCancel(flow) && flowId !== undefined
         ? h('button', { type: 'button', 'data-teleport': 'cancel', onClick: () => handlers.cancelFlow(flowId) }, '取消')
         : null,
@@ -960,6 +984,9 @@ export function DirectoryFlow(props: AnyProps): unknown {
     cancelFlow: (id) => {
       void cancelCurrent(id)
     },
+    retryPoll: (id) => {
+      void pollOnce(id)
+    },
     copy: (text) => {
       void copyText(text)
     },
@@ -1053,6 +1080,7 @@ interface WizardHandlers {
   readonly cancelWake: () => void
   readonly cancel: () => void
   readonly cancelFlow: (id: string) => void
+  readonly retryPoll: (id: string) => void
   readonly copy: (text: string) => void
 }
 

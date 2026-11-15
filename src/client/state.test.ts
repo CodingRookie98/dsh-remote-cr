@@ -19,6 +19,7 @@ import {
   distroHealthOf,
   enterBrowse,
   failListing,
+  failPoll,
   failSources,
   failWake,
   initialWizard,
@@ -363,4 +364,15 @@ test('R2-D8：failSources 清空四选一并留下原因（探测失败 ≠ 没�
   assert.equal(failed.options, null)
   assert.deepEqual(failed.distros, [])
   assert.equal(failed.sourcesError, '路由 500')
+})
+test('R2-D2：轮询失败落在 pollError 且留在 running 屏（不是退回选择屏，也不是 listingError）', () => {
+  const base = enterBrowse(selectSource(withSources(), 'local'), 'D:\\')
+  const running = beginFlow(base, { id: 'flow-9', state: startFlow(), record: null })
+  assert.equal(running.step, 'running')
+  const failed = failPoll(running, '查不到进度：HTTP 404')
+  assert.equal(failed.step, 'running', '进度屏必须留着，错误显示在同一屏')
+  assert.match(failed.pollError ?? '', /404/)
+  assert.equal(failed.listingError, null, '轮询失败不许写成目录错误')
+  const recovered = receiveFlow(failed, { id: 'flow-9', state: enterPhase(startFlow(), 'attach'), record: null })
+  assert.equal(recovered.pollError, null, '拿到快照就说明链路恢复，错误要清掉')
 })

@@ -82,6 +82,13 @@ export interface WizardState {
   /** 后台流程快照；未发起时为 null。 */
   readonly flow: FlowSnapshot | null
   /**
+   * 轮询失败的原因（404 / 断网）。
+   *
+   * 与 `listingError` 分开：那是「目录读不到」，这是「进度问不到」。以前轮询失败写进
+   * listingError，跑起来的进度屏根本不显示它 —— 用户看到的是永久转圈（R2-D2）。
+   */
+  readonly pollError: string | null
+  /**
    * 接入远端用的默认值（端口 + 检出根）。
    *
    * 跟着 /sources 一起回来：它们是同一台机器的部署事实，分两次请求只会让
@@ -124,6 +131,7 @@ export function initialWizard(): WizardState {
     active: -1,
     navSeq: 0,
     wakeToken: 0,
+    pollError: null,
     flow: null,
     defaults: { port: 8899, remoteRoot: '' },
   }
@@ -142,6 +150,7 @@ export function openWizard(state: WizardState): WizardState {
     listingError: null,
     active: -1,
     flow: null,
+    pollError: null,
   }
 }
 
@@ -439,6 +448,15 @@ export function canConfirm(state: WizardState, busy: boolean): boolean {
   return state.source === 'local'
 }
 
+/**
+ * 轮询失败：**留在 running 屏**并把原因显示出来，可选择重试或关闭。
+ *
+ * 不退回选择屏：用户可能只是想看进度，被一脚踢回去还要重新选目录。
+ */
+export function failPoll(state: WizardState, message: string): WizardState {
+  return { ...state, pollError: message }
+}
+
 /** 把当前选择包成宿主半要的入参。 */
 export function addInputOf(state: WizardState): WorkspaceAddInput {
   const path = state.listing?.path ?? state.path
@@ -450,7 +468,7 @@ export function addInputOf(state: WizardState): WorkspaceAddInput {
 
 /** 发起后台流程：立刻进 running 屏（宿主回的是 running 快照）。 */
 export function beginFlow(state: WizardState, snapshot: FlowSnapshot): WizardState {
-  return { ...state, step: stepOf(snapshot.state), flow: snapshot }
+  return { ...state, step: stepOf(snapshot.state), flow: snapshot, pollError: null }
 }
 
 /**
@@ -461,7 +479,8 @@ export function beginFlow(state: WizardState, snapshot: FlowSnapshot): WizardSta
  */
 export function receiveFlow(state: WizardState, snapshot: FlowSnapshot): WizardState {
   if (isTerminal(state) && snapshot.state.status === 'running') return state
-  return { ...state, step: stepOf(snapshot.state), flow: snapshot }
+  // 拿到快照就说明链路是通的：上一次的轮询失败到此为止。
+  return { ...state, step: stepOf(snapshot.state), flow: snapshot, pollError: null }
 }
 
 /** 流程状态 -> 屏幕。终态之后不再被后续快照改回 running（轮询晚到的旧快照不能翻案）。 */

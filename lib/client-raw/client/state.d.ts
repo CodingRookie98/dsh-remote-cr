@@ -70,6 +70,13 @@ export interface WizardState {
     /** 后台流程快照；未发起时为 null。 */
     readonly flow: FlowSnapshot | null;
     /**
+     * 轮询失败的原因（404 / 断网）。
+     *
+     * 与 `listingError` 分开：那是「目录读不到」，这是「进度问不到」。以前轮询失败写进
+     * listingError，跑起来的进度屏根本不显示它 —— 用户看到的是永久转圈（R2-D2）。
+     */
+    readonly pollError: string | null;
+    /**
      * 接入远端用的默认值（端口 + 检出根）。
      *
      * 跟着 /sources 一起回来：它们是同一台机器的部署事实，分两次请求只会让
@@ -170,6 +177,12 @@ export declare function upPathOf(state: WizardState): string | null;
 export declare function crumbsOf(path: string): Crumb[];
 /** 能不能点「添加此目录」：来源与路径齐了、且没有走错分支。 */
 export declare function canConfirm(state: WizardState, busy: boolean): boolean;
+/**
+ * 轮询失败：**留在 running 屏**并把原因显示出来，可选择重试或关闭。
+ *
+ * 不退回选择屏：用户可能只是想看进度，被一脚踢回去还要重新选目录。
+ */
+export declare function failPoll(state: WizardState, message: string): WizardState;
 /** 把当前选择包成宿主半要的入参。 */
 export declare function addInputOf(state: WizardState): WorkspaceAddInput;
 /** 发起后台流程：立刻进 running 屏（宿主回的是 running 快照）。 */
