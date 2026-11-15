@@ -217,7 +217,7 @@ EXIT=-1
 | D14 | `seq` / `token` 改必填，代次门焊死（测试用 `listed/woke` 辅助函数传当前代次，两条「过期响应」用例仍显式传旧值） | 619 单测全绿 |
 | D15 | K2 的提示改成「仅当 K1b 实测没全选」才出现，硬编码文案不再骗人 | `preview-keys.mjs` |
 | D16 | `/` 快捷键（焦点不在输入框时跳路径框）+ 300ms 骨架行（CSS `animation-delay`，快目录不闪） | 真机探针 9/9 + 11 场景截图 |
-| — | 仅剩：CI 接入浏览器 e2e（Ubuntu runner 无 Chrome / 无 WSL，需自托管 runner） | — |
+| — | **决策（2026-11-15，用户）**：浏览器 e2e **不进 CI**。`ci.yml` 只跑 typecheck / test / build；`e2e:preview` 与 `e2e:host` 留在本地（前者要 Chrome，后者还要 Windows + WSL2）。理由记在 `ci.yml` 顶部注释里，避免下一个人当成「忘了接」 | — |
 
 ## 11. 已知限制（诚实口径）
 

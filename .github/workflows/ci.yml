@@ -1,3 +1,11 @@
+# CI
+#
+# 范围**只到静态与单测**：typecheck / test / build。
+# 两条浏览器 e2e（`pnpm e2e:preview` 与 `pnpm e2e:host`）**故意不进 CI**：
+#   前者要 Chrome，后者还要 Windows + WSL2；`ubuntu-latest` 两样都没有，
+#   强行挂上去只会得到一条永久红的流水线。它们在本地跑，命令见 package.json（决定记录见
+#   `docs/project/plans/2026-11-14-add-workspace-ui-redesign.md` 的「决策」行）。
+
 name: CI
 
 on:
