@@ -1,7 +1,7 @@
 # 驻留模式（M3-2b）设计
 
 > **结论先行（2026-11-13）**
-> 1. 用一条**看门狗控制行**区分两件相反的事：`TELEPORT_WATCHDOG_EXIT` = 回收（A7 的「不留孤儿」），`TELEPORT_WATCHDOG_KEEP` = **放手**（长任务）。
+> 1. 用一条**看门狗控制行**区分两件相反的事：`REMOTE_CR_WATCHDOG_EXIT` = 回收（A7 的「不留孤儿」），`REMOTE_CR_WATCHDOG_KEEP` = **放手**（长任务）。
 > 2. 真机已证：`keepRemote:true` 时 `dispose()` 后 30 s，远端 dsh 仍活、端口仍监听（`dshAliveAfterWait:true / portBusyAfterWait:true`）；默认 `false` 时同一探针得到 `false`（A7 语义不变）。
 > 3. **还差跨进程复用**：驻留后旧实例占着端口，新进程再接入会冲突（实测重连卡住）。下一片必须做「实例登记 + 探测复用 + TTL」，否则驻留只有留下、没有接回。
 
@@ -9,8 +9,8 @@
 
 | 控制行 | 远端脚本行为 | 用途 |
 |---|---|---|
-| `TELEPORT_WATCHDOG_EXIT` | 退出循环 → `kill` dsh → 打 `TELEPORT_WATCHDOG_KILLED` | 默认：A7「不留孤儿」 |
-| `TELEPORT_WATCHDOG_KEEP` | `exit 0`（**不 kill**） | 驻留：本地离开、远端继续跑 |
+| `REMOTE_CR_WATCHDOG_EXIT` | 退出循环 → `kill` dsh → 打 `REMOTE_CR_WATCHDOG_KILLED` | 默认：A7「不留孤儿」 |
+| `REMOTE_CR_WATCHDOG_KEEP` | `exit 0`（**不 kill**） | 驻留：本地离开、远端继续跑 |
 
 本地侧：`handle.keepAlive()` 发 KEEP 行并关 stdin；`SshRemoteHandle` 与中立的 `RemoteDshHandle` 都把它列为**可选能力**（WSL 后端不支持——`wsl.exe` 句柄一退就把 distro 子进程带走）。
 

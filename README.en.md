@@ -128,6 +128,10 @@ pnpm install
 pnpm typecheck                     # host half + browser half, two tsconfigs
 pnpm test                          # node --test (676 tests)
 pnpm check:cjk                     # UI-copy gate: no hard-coded Chinese in client/shared
+pnpm check:boot                    # boot fragility: patch row id / dsh manifest / legacy names
+pnpm check:errors                  # error-code index matches the dictionaries
+pnpm check:docs                    # doc images: exist, real PNG, minimum size
+pnpm doctor                        # can the installed package load (entries/exports/client/patch/state root)
 pnpm build && pnpm build:client    # lib/ is committed; rebuild after touching sources
 ```
 

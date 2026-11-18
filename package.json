@@ -62,6 +62,8 @@
     "gen:errors": "node scripts/gen-error-index.mjs",
     "check:errors": "node scripts/gen-error-index.mjs --check",
     "check:docs": "node scripts/check-doc-images.mjs",
+    "check:boot": "node scripts/check-boot-constraints.mjs",
+    "doctor": "node lib/local/doctor.js",
     "e2e:preview": "node scripts/preview-wizard.mjs --no-build",
     "e2e:host": "node spikes/m4/add-workspace-ui/probe.cjs",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",
