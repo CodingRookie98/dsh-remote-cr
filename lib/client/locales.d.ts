@@ -77,6 +77,9 @@ export declare const zh: {
     readonly 'sync.group.skipped': "不可同步（{count}）";
     readonly 'sync.apply': "同步选中项（{count}）";
     readonly 'sync.applying': "同步中…";
+    readonly 'sync.applyingHint': "同步中，请勿关闭面板或退出应用：远端安装跟着这次连接走，断开会被一起中断。";
+    readonly 'sync.retryHint': "失败的条目可能只装了一半：重跑是安全的（dsh plugin add 幂等），不用先手工清理。";
+    readonly 'sync.noRuntime': "这台远端还没有可用的 dsh（既没有引导安装，也没有检出）：先在面板里接入一次，再回来同步。";
     readonly 'sync.result.ok': "成功";
     readonly 'sync.result.failed': "失败";
     readonly 'sync.done': "完成：成功 {ok} · 失败 {failed}";

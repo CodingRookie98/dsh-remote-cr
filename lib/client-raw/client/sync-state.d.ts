@@ -11,6 +11,10 @@ export declare const SYNC_REASON_KEYS: Readonly<Record<SyncReasonId, RemoteCrKey
  * 为什么单独一层：对话框有 5 个状态、3 组列表、勾选集合与逐条结果，塞进组件里既难测
  * 也难在预览里复现。这里只做「收到什么事件 → 变成什么状态」，组件只负责画。
  */
+/** 远端运行时（只用到「有没有」这一件事；字段本身是服务端的形状）。 */
+export interface SyncRuntimeLike {
+    readonly dshCommand: string;
+}
 export interface SyncPlanLike {
     readonly targetId: string;
     readonly profile: string;
@@ -21,6 +25,11 @@ export interface SyncPlanLike {
         readonly skipped: number;
     };
     readonly muted: boolean;
+    /**
+     * 远端有没有可用的 dsh：`null` = 明确没有（staging 与检出都没有）→ 不许同步。
+     * 字段缺省（旧宿主）时按「未知」放行，不拿一个不存在的门禁去拦老版本。
+     */
+    readonly runtime?: SyncRuntimeLike | null;
 }
 export interface FailureLikeShape {
     readonly code: string;
@@ -86,6 +95,8 @@ export declare function syncTargetOf(target: {
     port: number;
     remoteRoot: string;
 } | null;
+/** 远端没装 dsh 时不能同步：命令会指向一个不存在的入口（审查 B1）。 */
+export declare function syncBlockedReason(plan: SyncPlanLike): 'no-runtime' | null;
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */
 export declare function syncGroups(plan: SyncPlanLike): {
     readonly installable: readonly SyncEntry[];

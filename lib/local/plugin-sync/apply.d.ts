@@ -10,13 +10,17 @@ import type { SyncExec } from './read.ts';
  *
  * 命令形态（契约 §2）：`PATH=<nodeBin>:$PATH <dsh> plugin --profile <p> add <name>@<version>`。
  * 带 PATH 是因为 dsh 是 `#!/usr/bin/env node`，无系统 node 的机器上会 127（真机踩过）。
+ * 检出形态（WSL 默认）则走 `node <bin.js>`：构建产物不一定带 +x，与 `ssh/runtime.ts`
+ * 的 `argvPrefix=['node', <bin>]` 同一个约定。
  */
 export interface ApplySyncRequest {
     readonly exec: SyncExec;
     /** 远端 dsh 入口，绝对路径（staging/<id>/npm/bin/dsh 或检出里的 bin.js）。 */
     readonly dshCommand: string;
-    /** 远端 node 的 bin 目录，用于 PATH 前缀。 */
+    /** 远端 node 的 bin 目录，用于 PATH 前缀；空串表示「不加前缀」（不知道 node 在哪）。 */
     readonly nodeBin: string;
+    /** 跑 `dshCommand` 的解释器（检出形态给 node 路径）；staging 形态给 null。 */
+    readonly interpreter?: string | null;
     readonly profile?: string;
     readonly entries: readonly SyncEntry[];
     readonly deadlineMs?: number;
@@ -27,6 +31,7 @@ export interface ApplySyncRequest {
 export declare function buildInstallCommand(request: {
     readonly dshCommand: string;
     readonly nodeBin: string;
+    readonly interpreter?: string | null;
     readonly profile: string;
     readonly name: string;
     readonly version: string | null;
