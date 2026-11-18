@@ -124,12 +124,12 @@ test('规则表本身自洽：码不重复、正则可复现、文案非空', ()
 
 test('认证成功但随后启动失败：不许误判成 auth-failed（真机回归）', () => {
   const stderr = [
-    'Authenticated to 34.92.25.11 ([34.92.25.11]:22) using "publickey".',
+    'Authenticated to 203.0.113.10 ([203.0.113.10]:22) using "publickey".',
     'REMOTE_CR_WATCHDOG_PID=203435',
     'sh: 2: /home/hui/.dsh-remote-cr/staging/x/bin/node: not found',
     'TIMEOUT after 180000ms',
   ].join('\n')
-  const error = classifySshFailure(stderr, { target: 'hui@34.92.25.11', auth: 'key' })
+  const error = classifySshFailure(stderr, { target: 'hui@203.0.113.10', auth: 'key' })
   assert.notEqual(error.code, 'remote/auth-failed', '成功行里的 publickey 不是失败证据')
 })
 
