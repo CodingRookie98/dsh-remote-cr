@@ -13,7 +13,7 @@ Maintained by [@CodingRookie98](https://github.com/CodingRookie98) · [Changelog
 >
 > Shaped like VS Code Remote-SSH / Zed Remote — but what moves is not "commands", it is the agent runtime itself.
 
-<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/main/docs/assets/panel-remote-cr.png" alt="Remote Workbench panel: status strip plus two-level master/detail (hosts → projected workspaces / sessions)" width="1200"/>
+<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/master/docs/assets/panel-remote-cr.png" alt="Remote Workbench panel: status strip plus two-level master/detail (hosts → projected workspaces / sessions)" width="1200"/>
 
 *Screenshots come from real CDP probes (1280×900), not mockups. Narrow layout: [panel-narrow.png](./docs/assets/panel-narrow.png); workspace wizard: [host-wizard.png](./docs/assets/host-wizard.png).*
 

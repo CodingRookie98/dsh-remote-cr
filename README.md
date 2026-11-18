@@ -13,7 +13,7 @@
 >
 > 形态对标 VS Code Remote-SSH / Zed Remote —— 但搬过去的不是「命令」，是 agent 运行时本身。
 
-<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/main/docs/assets/panel-remote-cr.png" alt="「远端工作台」面板：状态带 + 两级主从（主机 → 投影工作区 / 会话）" width="1200"/>
+<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/master/docs/assets/panel-remote-cr.png" alt="「远端工作台」面板：状态带 + 两级主从（主机 → 投影工作区 / 会话）" width="1200"/>
 
 *截图来自真机 CDP 探针（1280×900），不是示意图。窄屏单列见 [panel-narrow.png](./docs/assets/panel-narrow.png)，添加工作区向导见 [host-wizard.png](./docs/assets/host-wizard.png)。*
 

@@ -38,14 +38,16 @@ for (const file of FILES) {
     if (/^(https?:|data:)/.test(ref)) {
       remoteCount += 1
       // 指向本仓库的 raw 链接：把 URL 还原成仓库路径再查一次存在性
-      const own = ref.match(/^https:\/\/raw\.githubusercontent\.com\/CodingRookie98\/dsh-remote-cr\/[^/]+\/(.+)$/)
+      const own = ref.match(/^https:\/\/raw\.githubusercontent\.com\/CodingRookie98\/dsh-remote-cr\/([^/]+)\/(.+)$/)
       if (own !== null) {
+        // 分支名写错 = 线上 404，而「文件存在」的本地检查抓不到（我们真栽过：写了 main，默认分支是 master）。
+        if (own[1] !== 'master') problems.push(file + ': raw 链接的分支名应为 master（当前 ' + own[1] + '）→ ' + ref)
         // 指向本仓库的 raw 链接等价于本地图：既查存在性，也计入「门面页有图」的覆盖率。
         ownedCount += 1
         try {
-          statSync(join(root, own[1]))
+          statSync(join(root, own[2]))
         } catch {
-          problems.push(file + ': 指向本仓库的图片不存在 → ' + own[1])
+          problems.push(file + ': 指向本仓库的图片不存在 → ' + own[2])
         }
       }
       continue
