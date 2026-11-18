@@ -60,6 +60,17 @@ export declare function SyncDialog(props: {
     readonly onOptout: (muted: boolean) => void;
 }): unknown;
 /**
+ * 会话行 `⋯` 菜单里的「重新连接」（RFC-0003 R2-4）。
+ *
+ * 只对**远端会话**出现（查 remoteSessionIndex）；DSH 会把这个洞渲染成 `role="menuitem"`。
+ * 说明：DSH 建议通过 `useMenuOpenState` 主动关菜单；那是个 hook，而我们的「是不是远端会话」
+ * 判断必须在 hook 之前完成（否则违反 hook 调用规则），所以这里不注入 hook ——
+ * 点击后菜单由宿主自己的点击外部/焦点逻辑收起，功能不受影响。
+ */
+export declare function sessionReconnectItem(props?: {
+    readonly sessionId?: unknown;
+}): unknown;
+/**
  * 「添加工作区」向导（RFC-0001 双栏工作台）。
  *
  * 挂在 conversation.hero.workspace.directoryFlow 与 sidebar.workspaces.directoryFlow

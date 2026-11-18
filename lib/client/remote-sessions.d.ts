@@ -10,6 +10,8 @@ import type { ProjectionSnapshotInfo } from '../shared/api.ts';
  */
 export interface RemoteSessionIndex {
     has(sessionId: string): boolean;
+    /** 该会话属于哪个远端工作区（菜单项要用它判断「是不是远端会话」）。 */
+    workspaceOf(sessionId: string): string | null;
     hasWorkspace(workspaceId: string): boolean;
     readonly size: number;
     subscribe(listener: () => void): () => void;
