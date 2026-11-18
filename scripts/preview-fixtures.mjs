@@ -325,9 +325,13 @@ export const PREVIEW_SCENES = [
       '[data-remote-cr="panel-detail"]',
       '[data-remote-cr="panel-head"]',
       '[data-remote-cr="panel"]',
+      '[data-remote-cr="projected-badge"]',
+      '[data-remote-cr="row-reconnect"]',
     ],
-    // 需求② 的徽标/重连标记要等「选中主机」才出现，放在专门的 panel-remote 场景里断言
-    // （下一轮补；这轮先不把它挂到空态场景上，避免门禁假红）。
+    // 需求② 的可见面：徽标必须有、离线行必须给得出重连（RFC-0003 R2-1/R2-2）。
+    // 上一轮误判成「要选中主机才渲染」，实际是 **--no-build 用了旧 bundle**；现已确认面板
+    // 一进入就渲染两条投影行（panel.json 里 projected-badge / row-reconnect 均出现）。
+    requireMarkers: ['projected-badge', 'row-reconnect'],
     // 向导是模态：不挂它，面板才完整可见。
     hideFlow: true,
     // 结构门禁的期望值在 harness 代码里（REQUIRED_ORDER_SCENES），不写在这里 —— 避免两处真相。
