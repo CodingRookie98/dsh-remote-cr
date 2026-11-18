@@ -21,6 +21,7 @@
 | **T4** | 宿主路由：`GET /plugin-sync`（差集）、`POST /plugin-sync`（执行）、`optout` 读写 | T2,T3 | `src/local/api/{routes.ts,plugin-sync.ts}` + 路由用例 |
 | **T5** | 客户端：面板「远端工作区」区（图标/灰显/重连）+ 会话行徽标与菜单项 + 同步对话框 + 文案 | T4（数据面） | `src/client/{panel-view,components,state,locales}.ts` + 预览场景 |
 | **T6** | 上游提案：`workspace.row.leading` / `workspace.menu.item` 两个 hole 的补丁要点与 issue 文本 | 无（可与 T5 并行） | `docs/proposals/upstream-workspace-row-holes.md` |
+| **T7** | WSL 目标的插件同步（方案 A：同步期间保持 `wsl.exe` 句柄 + UI 提示 + 失败可重跑） | T2,T3,T4 | `src/local/plugin-sync/{wire,read,apply,service}.ts` + 真机探针 |
 
 > 接线契约见 [docs/design/plugin-sync-contract.md](../../design/plugin-sync-contract.md)（类型 / 四个路由 / 三个错误码 / UI 状态与文案键 / 断言清单）。
 
@@ -57,6 +58,12 @@
 - T1 结论（2026-11-18，`spikes/m3-reconnect-wsl/probe.cjs`）：**5/5** —— attach → disconnect（工作区标 offline）→ reconnectNow（13.7 s / 16.8 s，工作区 id 不变）→ 对已有会话 probe（`pwd` 落在远端、`uname` 含 Linux）→ dispose。**WSL 提供重连按钮**。
   - 首跑 4/5 是探针自身缺陷（没先建会话，T1-4 空 detail），已修并复跑 5/5。
 - T6：上游 hole 提案已成文（`docs/proposals/upstream-workspace-row-holes.md`）
+- **T7（WSL 插件同步）已完成**（2026-11-18，本轮）：`wire.resolve()` 增加 WSL 分支（`wsl.exe -d <distro> --exec sh -c <脚本>`，脚本不二次转义）；
+  读取脚本顺带探明**检出形态**运行时（`dshCommand=<remoteRoot>/apps/cli/lib/bin.js`、`interpreter=node`），apply 走 `node <bin.js>`；
+  `nodeBin` 未知时不拼 `PATH=`（不把当前目录塞进搜索路径）。**真机**：`wsl-handle-probe` 13/13（45 s 句柄稳、杀句柄 3 s 回收）、
+  `remote-probe --wsl` 7/7（差集 3，真装 `dsh-better-sidebar@0.32.1` 41 s，重读 3→2）。**变异**：去掉 `sh -c` → 1 条红；去掉 `PATH=` → 3 条红（含新增那条）。
+  UI：`sync-applying-hint` / `sync-retry-hint` 两个新标记，L4 场景 `sync-applying` / `sync-done` 全绿（17/17 截图）。
+  顺带修一处真机才暴露的缺陷：读取脚本拼错一个右括号（`Unexpected token '}'`），已加单测用 `new vm.Script(READER_SOURCE)` 兜住。
 - **T5-a（需求② 面板面）已完成**：投影行 `data-kind=remote` + 徽标 + 离线降饱和 + 行内「重新连接」；L4 场景断言 `projected-badge` / `row-reconnect`（panel.json 57 标记）
 - **T5-b（会话行徽标）已完成代码**：`remote-sessions.ts`（模块级索引，3 条用例）+ `sidebar.session.row.leading` 注册 + 5 处注册的门禁用例。
   **未验证**：预览 harness 不渲染 DSH 侧栏，徽标的真实外观只能在真机 GUI 里看；这条记入「未验证」而不是「已支持」。
@@ -81,6 +88,9 @@
 | R2-3 会话行徽标 | ✅ 代码 / ❌ 外观 | 索引 3 条用例 + 注册门禁；DSH 侧栏不在预览内 |
 | R2-4 会话菜单「重新连接」 | ✅ 代码 / ❌ 外观 | 同上；未注入 `useMenuOpenState`（已记取舍） |
 | R2-5 本地工作区零变化 | ✅ | 既有 729 条用例全绿，未新增本地路径分支 |
+| R1-6 WSL 目标可同步（原「只支持 SSH」解除） | ✅ 真机 | `remote-probe.cjs --wsl` 7/7（含真装一条 41 s）；L2 `wire.test.ts` 断言 `--exec sh -c` 形态 |
+| R1-7 同步期间句柄稳定（方案 A 前提） | ✅ 真机 | `wsl-handle-probe.cjs` 13/13：45 s 全程存活、期间旁路可用、杀句柄 3 s 回收 |
+| R1-8 「同步中请勿关闭」+ 失败可重跑提示 | ✅ L4 | `sync-applying` / `sync-done` 两个预览场景断言 `sync-applying-hint` / `sync-retry-hint`；真机外观未验证 |
 
 **变异自检（本轮自查）**：去掉 `PATH=` → `apply.test.ts` 1 条红；删掉 `action !== 'install'` 过滤 → 1 条红。两条都真实生效。
 
@@ -91,3 +101,12 @@
 - **Delta-2：可签，新阻断 0**。仅剩 1 条非阻断：`sessionErrorRef` 用字符串比较导致「成功只撤这一条」永不触发 → 已改为**对象身份比较**（`sessionErrorRef` 存 PanelFailure 引用），并补「成功只撤自己那条」的语义；
   审查观察「接线门禁只数次数」→ 门禁改为**语义位置断言**（必须在 `catch (caught)` 之前），变异验证：把调用挪进 catch → 1 条红。
 - 审查报告归档：`docs/project/reviews/2026-11-18-remote-sync-and-workspace-affordance/{R1-focused,delta-r1,delta-r1-2}.md`。
+
+### T7 的定向红队（2026-11-18，WSL 同步）
+
+- 结论：**不可签**，3 条阻断 → 全部修复并做变异反证。
+  - B1「没有 runtime 时回落到一条必然 ENOENT 的命令，还把它当手动出路」→ 后端 `requiresRuntime` 直接拒绝（执行 0 次）+ 客户端 `syncBlockedReason` 禁用按钮并给 `sync-no-runtime`（新 L4 场景）。
+  - B2「`wsl.exe` 自身失败时诊断被丢弃（UTF-16LE 在 stdout）」→ WSL `exec` 改走 `runInDistroChecked`，把 `describeWslFailure` 的 detail/logTail 拼进 stderr 尾巴。
+  - B3「新增读取分支可整行删除而全绿」→ 新增**执行级**用例：用假 fs 把 `READER_SOURCE` 真跑一遍；地板断言改字面量下界（`>= 45_000`）。
+- 顺带修的非阻断：超时一律记 124（原来 `exitCode ?? 124`，Windows 上被杀常回 0/1）；`targetId` 对 distro 名 `toLowerCase()`（否则 `wsl:Ubuntu` 绕过静音与并发锁）；`stagingDir` 改名 `dshRoot`（检出形态下它不是 staging）。
+- 流程教训：审查期间 reviewer 的变异实验一度改动工作区（含 `WSL_MIN_EXEC_MS`），已用哈希自证还原；后续派发审查须在 brief 里写明「变异只在副本上做」。

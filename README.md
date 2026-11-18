@@ -118,6 +118,7 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 - 四个入口，同一仓库：`./local`（本地宿主半）、`./client`（浏览器半）、`./companion`（远端伴生）、`./installer`（引导器）
 - 宿主半提供 `/remote-cr/api/*` 路由（来源探测、目录浏览、唤醒、投影、接入与断连），全部只答本机回环
+- **插件同步**：远端缺的第三方插件由**远端原生安装**（ADR-0004，不搬文件）；SSH 走 `ssh host sh -c`，WSL 走 `wsl.exe -d <distro> --exec sh -c`，并在安装期间**保持句柄**（方案 A，见 [契约 §7](./docs/design/plugin-sync-contract.md)）
 - **命名**：包名、插件 id 与运行时标识统一为 `remote-cr` —— `~/.dsh-remote-cr`、`DSH_REMOTE_CR_*`、`/remote-cr/api`、`data-remote-cr` DOM、`cordis.patch.yml` 行 id 是同一个名字（[ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)）。旧版曾用名 `dsh-teleport` 的兼容读取集中在 `src/local/migration/`，0.5.0 移除
 - **界面语言**：中文与英文（跟随 设置 → 通用 → 语言，即时切换；其余语言回落英文）
 
@@ -126,7 +127,7 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 ```bash
 pnpm install
 pnpm typecheck                     # 宿主半 + 浏览器半双 tsconfig
-pnpm test                          # node --test（676 条）
+pnpm test                          # node --test（750 条）
 pnpm check:cjk                     # 界面文案门禁：客户端/共享层不许再写死中文
 pnpm check:boot                    # 启动脆弱性：补丁行 id / dsh 三件套 / 旧名残留
 pnpm check:errors                  # 错误码索引与字典一致（改了字典要 pnpm gen:errors）
@@ -135,7 +136,7 @@ pnpm build && pnpm build:client    # lib/ 是入库产物，改源码后必须�
 pnpm doctor                        # 装好的包能不能加载（入口/导出/浏览器半/补丁/状态根）
 ```
 
-浏览器侧验收需要真 Chrome，**不进 CI**，本地跑（14 个场景 + 键盘链路）：
+浏览器侧验收需要真 Chrome，**不进 CI**，本地跑（17 个场景 + 键盘链路）：
 
 ```bash
 pnpm e2e:preview    # 场景截图 + 键盘链路（Chrome headless）
@@ -173,6 +174,7 @@ docs/          调研、设计、决策、计划与审查归档
 - **Docker**：界面灰显，实装排到 M5
 - **没有版本探针**：老远端 + 新本地混跑表现为 `remote/port-in-use`（`remote/version-mismatch` 这个码不存在）
 - **WSL 后端不支持驻留**：`wsl.exe` 句柄一退就把 distro 侧子进程带走（`keepAlive` 是可选能力）
+- **WSL 插件同步期间别关面板/退应用**：安装跟着 `wsl.exe` 句柄走，句柄一断远端安装会被一起中断（`dsh plugin add` 幂等，重跑安全；UI 已当面提示）
 - **取消是分级的**：`probe/bootstrap/launch/tunnel` 保证可取消；`attach` RPC 尽力而为
 - **浏览器**：只在 Chrome 上验证；Edge / Firefox / WebKit 未验证
 - **无障碍**：读屏路径未验证（`radiogroup` / `listbox` 语义与键盘链路已实现并有断言）

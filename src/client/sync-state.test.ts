@@ -15,6 +15,7 @@ import {
   syncReport,
   syncTargetOf,
   selectAllSync,
+  syncBlockedReason,
   syncGroups,
   toggleSyncEntry,
   type SyncPlanLike,
@@ -34,6 +35,13 @@ function plan(entries: readonly SyncEntry[]): SyncPlanLike {
     muted: false,
   }
 }
+
+test('runtime=null（远端没有 dsh）→ 明确拦下；字段缺省（旧宿主）不拦', () => {
+  const base = plan([entry('a')])
+  assert.equal(syncBlockedReason({ ...base, runtime: null }), 'no-runtime')
+  assert.equal(syncBlockedReason({ ...base, runtime: { dshCommand: '/w/apps/cli/lib/bin.js' } }), null)
+  assert.equal(syncBlockedReason(base), null, '没有这个字段的老宿主不该被误拦')
+})
 
 test('打开 → loading；计划到达 → ready 且默认全选可同步项', () => {
   assert.deepEqual(openSync(), { phase: 'loading' })

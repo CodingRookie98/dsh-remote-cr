@@ -12,13 +12,17 @@ import type { SyncExec } from './read.ts'
  *
  * 命令形态（契约 §2）：`PATH=<nodeBin>:$PATH <dsh> plugin --profile <p> add <name>@<version>`。
  * 带 PATH 是因为 dsh 是 `#!/usr/bin/env node`，无系统 node 的机器上会 127（真机踩过）。
+ * 检出形态（WSL 默认）则走 `node <bin.js>`：构建产物不一定带 +x，与 `ssh/runtime.ts`
+ * 的 `argvPrefix=['node', <bin>]` 同一个约定。
  */
 export interface ApplySyncRequest {
   readonly exec: SyncExec
   /** 远端 dsh 入口，绝对路径（staging/<id>/npm/bin/dsh 或检出里的 bin.js）。 */
   readonly dshCommand: string
-  /** 远端 node 的 bin 目录，用于 PATH 前缀。 */
+  /** 远端 node 的 bin 目录，用于 PATH 前缀；空串表示「不加前缀」（不知道 node 在哪）。 */
   readonly nodeBin: string
+  /** 跑 `dshCommand` 的解释器（检出形态给 node 路径）；staging 形态给 null。 */
+  readonly interpreter?: string | null
   readonly profile?: string
   readonly entries: readonly SyncEntry[]
   readonly deadlineMs?: number
@@ -34,6 +38,7 @@ function shellQuote(value: string): string {
 export function buildInstallCommand(request: {
   readonly dshCommand: string
   readonly nodeBin: string
+  readonly interpreter?: string | null
   readonly profile: string
   readonly name: string
   readonly version: string | null
@@ -45,9 +50,15 @@ export function buildInstallCommand(request: {
       nextActions: ['在面板里刷新插件清单后重试'],
     })
   }
+  // PATH 前缀只在知道 nodeBin 时加：`PATH=''` 会把当前目录塞进搜索路径，那不是「不知道」的语义。
+  const prefix = request.nodeBin === '' ? '' : 'PATH=' + shellQuote(request.nodeBin) + ':$PATH '
+  const interpreter = request.interpreter ?? null
+  const entry =
+    interpreter === null
+      ? shellQuote(request.dshCommand)
+      : shellQuote(interpreter) + ' ' + shellQuote(request.dshCommand)
   return (
-    'PATH=' + shellQuote(request.nodeBin) + ':$PATH ' +
-    shellQuote(request.dshCommand) + ' plugin --profile ' + shellQuote(request.profile) +
+    prefix + entry + ' plugin --profile ' + shellQuote(request.profile) +
     ' add ' + shellQuote(request.name + '@' + request.version)
   )
 }
@@ -68,6 +79,7 @@ export async function applySync(request: ApplySyncRequest): Promise<readonly Syn
     const command = buildInstallCommand({
       dshCommand: request.dshCommand,
       nodeBin: request.nodeBin,
+      interpreter: request.interpreter ?? null,
       profile,
       name: entry.name,
       version: entry.localVersion,

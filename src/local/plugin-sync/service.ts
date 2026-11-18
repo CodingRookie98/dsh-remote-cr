@@ -19,6 +19,15 @@ export interface SyncBackend {
   readonly nodeBin: string
   /** 远端 home（定位 profile）。 */
   readonly homeDir: string
+  /** 远端 dsh 检出根（WSL 必给）：同一次读取里顺带探明检出形态的运行时。 */
+  readonly checkoutRoot?: string
+  /** 兜底解释器（检出形态）；真实值由读取脚本回报的 runtime 优先。 */
+  readonly interpreter?: string | null
+  /**
+   * 没有 runtime 就**不能**执行（WSL：dsh 只可能来自 staging 或检出，PATH 上没有）。
+   * 为 true 时 `runtime === null` 直接给结构化错误，而不是拼一条必然 ENOENT 的命令。
+   */
+  readonly requiresRuntime?: boolean
   readonly profile?: string
 }
 
@@ -28,7 +37,10 @@ export interface SyncPlanView {
   readonly entries: readonly SyncEntry[]
   readonly totals: { readonly install: number; readonly upToDate: number; readonly skipped: number }
   readonly muted: boolean
-  /** 同一次读取里探明的远端运行时；为 null 时前端应提示「先接入一次」而不是给同步按钮。 */
+  /**
+   * 同一次读取里探明的远端运行时。为 null = 远端没有可用的 dsh：面板据此禁用同步按钮并提示
+   * 「先接入一次」，后端（`requiresRuntime`）据此拒绝执行。
+   */
   readonly runtime: RemoteRuntimePaths | null
 }
 
@@ -47,6 +59,7 @@ export async function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView>
     exec: request.backend.exec,
     nodeCommand: request.backend.nodeCommand,
     homeDir: request.backend.homeDir,
+    ...(request.backend.checkoutRoot === undefined ? {} : { checkoutRoot: request.backend.checkoutRoot }),
     profile,
     ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
   })
@@ -89,11 +102,20 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
   applying.add(request.targetId)
   try {
     const runtime = request.runtime ?? null
+    // 没有 runtime 时兜底命令按定义指向不存在的入口（检出不存在才判 null）——不能把它当出路。
+    if (runtime === null && request.backend.requiresRuntime === true) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-read-failed',
+        detail: '远端没有可用的 dsh：既没有 staging 安装，也没有检出（' + request.backend.dshCommand + '）',
+        nextActions: ['先在面板里接入这台远端（会启动远端 dsh），再回来同步', '或确认远端目录里有一份 dsh 检出（含 apps/cli/lib/bin.js）'],
+      })
+    }
     return await applySync({
       entries: request.entries,
       exec: request.backend.exec,
       dshCommand: runtime?.dshCommand ?? request.backend.dshCommand,
       nodeBin: runtime?.nodeBin ?? request.backend.nodeBin,
+      interpreter: runtime?.interpreter ?? request.backend.interpreter ?? null,
       profile: request.backend.profile ?? 'web',
       ...(request.onResult === undefined ? {} : { onResult: request.onResult }),
       ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),

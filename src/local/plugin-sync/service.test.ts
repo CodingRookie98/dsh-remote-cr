@@ -67,6 +67,42 @@ test('buildSyncPlan：远端已装同版本 → up-to-date（不产生 install�
   assert.equal(plan.muted, true)
 })
 
+test('applySyncPlan：requiresRuntime 且没有 runtime → 结构化拒绝，执行 0 次（不拼必然 ENOENT 的命令）', async () => {
+  resetApplyingForTest()
+  const calls: string[] = []
+  const stub: SyncBackend = {
+    nodeCommand: 'auto',
+    dshCommand: '/w/dsh/apps/cli/lib/bin.js',
+    nodeBin: '',
+    interpreter: null,
+    homeDir: '',
+    requiresRuntime: true,
+    exec: async (script: string) => {
+      calls.push(script)
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  }
+  await assert.rejects(
+    () => applySyncPlan({ backend: stub, runtime: null, targetId: 'wsl:ubuntu_dev', entries: [{ name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null }] }),
+    (error: unknown) => {
+      const typed = error as { code?: string; nextActions?: readonly string[] }
+      assert.equal(typed.code, 'remote/plugin-sync-read-failed')
+      assert.ok((typed.nextActions ?? []).length > 0, '铁律 4：失败必须带下一步')
+      return true
+    },
+  )
+  assert.equal(calls.length, 0, '拒绝时不许执行任何命令（否则用户会照抄一条跑不通的命令）')
+  // 负控：给了 runtime 就必须照常执行（别把门禁写成永远拒绝）
+  const results = await applySyncPlan({
+    backend: stub,
+    runtime: { homeDir: '/home/hui', nodeCommand: '/usr/bin/node', nodeBin: '/usr/bin', dshCommand: '/w/dsh/apps/cli/lib/bin.js', interpreter: '/usr/bin/node', dshRoot: '/w/dsh' },
+    targetId: 'wsl:ubuntu_dev',
+    entries: [{ name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null }],
+  })
+  assert.deepEqual(results.map((result) => result.ok), [true])
+  assert.equal(calls.length, 1)
+})
+
 test('buildSyncPlan：远端读取失败 → remote/plugin-sync-read-failed（不让空列表冒充成功）', async () => {
   const { backend: stub } = backend('', 3)
   await assert.rejects(

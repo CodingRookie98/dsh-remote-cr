@@ -151,8 +151,14 @@ function installFetchInterceptor(fixtures) {
     // 延迟夹具：D-S 要拍「唤醒中」与「骨架行」，对应请求必须慢一点回（见 preview-fixtures 的 wakeDelayMs / listDelayMs）。
     const wakeDelayMs = url.pathname.endsWith('/wake') && typeof fixtures.wakeDelayMs === 'number' ? fixtures.wakeDelayMs : 0;
     const listDelayMs = url.pathname === '/remote-cr/api/list' && typeof fixtures.listDelayMs === 'number' ? fixtures.listDelayMs : 0;
+    // 同步执行态：apply 的 POST 必须慢回，否则对话框一闪就到 done，拍不到「同步中」（方案 A 的提示）。
+    const syncDelayMs =
+      url.pathname === '/remote-cr/api/plugin-sync' && String(method).toUpperCase() === 'POST' && typeof fixtures.syncDelayMs === 'number'
+        ? fixtures.syncDelayMs
+        : 0;
     if (wakeDelayMs > 0) await sleep(wakeDelayMs);
     if (listDelayMs > 0) await sleep(listDelayMs);
+    if (syncDelayMs > 0) await sleep(syncDelayMs);
     return new Response(JSON.stringify(envelope), {
       status: 200,
       headers: { 'content-type': 'application/json' },

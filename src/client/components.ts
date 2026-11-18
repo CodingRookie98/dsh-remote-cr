@@ -24,7 +24,7 @@ import { canCancel, type FlowState } from '../shared/flow.ts'
 import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
 import { requestReconnect } from './session-actions.ts'
-import { resultTotals, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
+import { resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
 import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
 import {
@@ -685,6 +685,8 @@ export function SyncDialog(props: {
   }
 
   const groups = syncGroups(state.plan)
+  // 远端没有 dsh 时不许同步：apply 的后端也会拒绝（双保险，且这里先给一句人话）。
+  const blocked = syncBlockedReason(state.plan)
   const entries: unknown[] = []
   if (groups.installable.length > 0) {
     entries.push(h('h4', { 'data-remote-cr': 'sync-group-install' }, t('sync.group.install', { count: groups.installable.length })))
@@ -769,7 +771,7 @@ export function SyncDialog(props: {
         {
           type: 'button',
           'data-remote-cr': 'sync-apply',
-          disabled: state.selected.length === 0,
+          disabled: state.selected.length === 0 || blocked !== null,
           onClick: props.onApply,
         },
         t('sync.apply', { count: state.selected.length }),
@@ -778,12 +780,16 @@ export function SyncDialog(props: {
   }
   if (state.phase === 'applying') {
     footer.push(h('div', { 'data-remote-cr': 'sync-applying' }, t('sync.applying')))
+    // 方案 A 的 UI 半边：安装期间句柄必须活着，用户关面板/退应用会把远端安装一起带走。
+    footer.push(h('div', { 'data-remote-cr': 'sync-applying-hint' }, t('sync.applyingHint')))
   }
   if (state.phase === 'done') {
     const totals = resultTotals(state.results)
     footer.push(h('div', { 'data-remote-cr': 'sync-done' }, t('sync.done', { ok: totals.ok, failed: totals.failed })))
     // 失败时必须有可复制的日志（审查 B3）：面板其余错误面都有这个出口，这里不能缺。
     if (totals.failed > 0) {
+      // 「可能半装」是事实而不是安慰：安装中断时不保证原子，重跑才安全（dsh plugin add 幂等）。
+      footer.push(h('div', { 'data-remote-cr': 'sync-retry-hint' }, t('sync.retryHint')))
       footer.push(
         h('button', { type: 'button', 'data-remote-cr': 'sync-copy', onClick: () => void copyText(syncReport(state)) }, t('action.copyLog')),
       )
@@ -792,6 +798,7 @@ export function SyncDialog(props: {
 
   return frame([
     h('div', { 'data-remote-cr': 'sync-subtitle' }, t('sync.subtitle')),
+    blocked === null ? null : h('div', { 'data-remote-cr': 'sync-no-runtime', role: 'status' }, t('sync.noRuntime')),
     ...(entries.length === 0 ? [h('div', { 'data-remote-cr': 'sync-empty' }, t('sync.group.install', { count: 0 }))] : []),
     h('div', { 'data-remote-cr': 'sync-entries' }, ...entries),
     ...(results.length === 0 ? [] : [h('div', { 'data-remote-cr': 'sync-results' }, ...results)]),

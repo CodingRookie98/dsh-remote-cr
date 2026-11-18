@@ -336,6 +336,69 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // 远端没有可用 dsh：面板必须说清「先接入一次」，而不是给一个按下去必然 ENOENT 的按钮。
+    id: 'sync-no-runtime',
+    label: '插件同步：远端没有 dsh（提示先接入，按钮禁用）',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-no-runtime"]', '[data-remote-cr="sync-dialog"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-no-runtime'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-dialog"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="sync-no-runtime"]', timeoutMs: 8000 },
+      { sleep: 200 },
+    ],
+  },
+  {
+    // 方案 A 的可见面：apply 期间必须当面说「别关」。夹具把 POST 压住 8s，状态停在 applying。
+    id: 'sync-applying',
+    label: '插件同步：执行中（请勿关闭）',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="sync-applying-hint"]',
+      '[data-remote-cr="sync-applying"]',
+      '[data-remote-cr="sync-dialog"]',
+    ],
+    hideFlow: true,
+    requireMarkers: ['sync-applying', 'sync-applying-hint'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-dialog"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="sync-apply"]', timeoutMs: 5000 },
+      { click: '[data-remote-cr="sync-apply"]' },
+      { wait: '[data-remote-cr="sync-applying"]', timeoutMs: 8000 },
+      { sleep: 200 },
+    ],
+  },
+  {
+    // 执行结束且**有失败**：必须给「可能半装、重跑安全」这句话，而不是只显示「失败」。
+    id: 'sync-done',
+    label: '插件同步：完成且有失败（半装提示 + 复制日志）',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="sync-retry-hint"]',
+      '[data-remote-cr="sync-done"]',
+      '[data-remote-cr="sync-copy"]',
+    ],
+    hideFlow: true,
+    requireMarkers: ['sync-done', 'sync-retry-hint', 'sync-copy'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-dialog"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="sync-apply"]', timeoutMs: 5000 },
+      { click: '[data-remote-cr="sync-apply"]' },
+      { wait: '[data-remote-cr="sync-retry-hint"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
     // 面板是本次重设计的主战场：状态带 + 两级主从（主机 / 投影+会话）+ 错误块。
     // 面板与向导在同一页面各自挂载，这里只要等两栏出现即可截图。
     id: 'panel',
@@ -605,9 +668,11 @@ export function sceneFixtures(sceneId) {
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 同步对话框夹具（RFC-0003 需求①）：两种可同步 + 一条已最新 + 一条不可同步
     syncPlan: {
-      targetId: 'wsl:' + (id === 'sync-dialog' ? 'ubuntu_dev' : 'preview'),
+      targetId: 'wsl:' + (id === 'sync-dialog' || id === 'sync-no-runtime' ? 'ubuntu_dev' : 'preview'),
       profile: 'web',
       muted: false,
+      // 远端运行时：「没有 dsh」要能被拍出来（B1 的可见面）。
+      runtime: id === 'sync-no-runtime' ? null : { dshCommand: '/home/hui/workspace/tools/deepseek-harness/apps/cli/lib/bin.js' },
       totals: { install: 2, upToDate: 1, skipped: 1 },
       entries: [
         { name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null },
@@ -621,6 +686,8 @@ export function sceneFixtures(sceneId) {
       { name: 'dshmarket', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1' },
     ],
     syncOptout: [],
+    // 「同步中」要拍得到：apply 的 POST 慢一点回（0 = 立刻回，其余场景行为不变）。
+    syncDelayMs: id === 'sync-applying' ? 8000 : 0,
     wake: id === 'wsl-failed' ? WAKE_FAILED : WAKE_OK,
     // 「唤醒中」要拍得到：让 /wsl/wake 慢一点回（0 = 立刻回，既有 8 个场景的行为一个字没变）。
     wakeDelayMs: id === 'waking' ? 6000 : 0,

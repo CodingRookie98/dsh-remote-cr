@@ -21,6 +21,12 @@ export interface SyncExecResult {
 
 export type SyncExec = (script: string, deadlineMs?: number) => Promise<SyncExecResult>
 
+/**
+ * 远端 dsh 检出里的 CLI 入口（相对检出根）。与 `ssh/runtime.ts`、`wsl/launch.ts` 是同一个约定：
+ * 检出里跑 `node apps/cli/lib/bin.js`，而不是假设 `dsh` 在 PATH 上。
+ */
+export const DSH_CLI_RELATIVE = 'apps/cli/lib/bin.js'
+
 export interface ReadBundlesRequest {
   readonly exec: SyncExec
   /** 远端 node 的可执行描述：绝对路径，或 'node'（依赖 PATH）。 */
@@ -29,6 +35,11 @@ export interface ReadBundlesRequest {
   readonly profile?: string
   /** 远端 home（用于定位 `<home>/.dsh/profiles`）；空则由脚本用 os.homedir()。 */
   readonly homeDir?: string
+  /**
+   * 远端 dsh 检出根（WSL 的 `remoteRoot`、SSH 的 `remoteRoot`）。给了才在**同一次**往返里
+   * 顺带探明检出形态的运行时（`dshCommand` + `interpreter`）；没给就只认 staging。
+   */
+  readonly checkoutRoot?: string
   readonly deadlineMs?: number
 }
 
@@ -37,6 +48,7 @@ const READER = [
   "const fs=require('fs'),path=require('path'),os=require('os')",
   "const root=process.argv[2]",
   "const profile=process.argv[3]||'web'",
+  "const hint=process.argv[4]||''",
   "const base=root&&root!==''?root:path.join(os.homedir(),'.dsh','profiles',profile)",
   "let manifest",
   "try{manifest=JSON.parse(fs.readFileSync(path.join(base,'package.json'),'utf8'))}catch(e){console.log(JSON.stringify({ok:false,reason:'manifest-unreadable',detail:String(e.code||e.message)}));process.exit(0)}",
@@ -44,9 +56,16 @@ const READER = [
   "const rows=bundles.map(function(name){var version=null,error=null;try{version=JSON.parse(fs.readFileSync(path.join(base,'node_modules',name,'package.json'),'utf8')).version||null}catch(e){error=String(e.code||e.message)}return{name:name,version:version,error:error}})",
   "const home=os.homedir()",
   "let runtime=null",
-  "try{var stagingRoot=path.join(home,'.dsh-remote-cr','staging');var dirs=fs.readdirSync(stagingRoot).filter(function(id){return fs.existsSync(path.join(stagingRoot,id,'npm','bin','dsh'))});if(dirs.length>0){var dir=path.join(stagingRoot,dirs[0]);var nodeCandidate=path.join(dir,'bin','node');var hasNode=fs.existsSync(nodeCandidate);runtime={homeDir:home,nodeCommand:hasNode?nodeCandidate:'node',nodeBin:hasNode?path.join(dir,'bin'):'$PATH',dshCommand:path.join(dir,'npm','bin','dsh'),stagingDir:dir}}}catch(e){}",
+  "try{var stagingRoot=path.join(home,'.dsh-remote-cr','staging');var dirs=fs.readdirSync(stagingRoot).filter(function(id){return fs.existsSync(path.join(stagingRoot,id,'npm','bin','dsh'))});if(dirs.length>0){var dir=path.join(stagingRoot,dirs[0]);var nodeCandidate=path.join(dir,'bin','node');var hasNode=fs.existsSync(nodeCandidate);runtime={homeDir:home,nodeCommand:hasNode?nodeCandidate:'node',nodeBin:hasNode?path.join(dir,'bin'):'$PATH',dshCommand:path.join(dir,'npm','bin','dsh'),interpreter:null,dshRoot:dir}}}catch(e){}",
+  "if(!runtime&&hint){try{var cli=path.join(hint," + JSON.stringify(DSH_CLI_RELATIVE) + ");if(fs.existsSync(cli)){runtime={homeDir:home,nodeCommand:process.execPath,nodeBin:path.dirname(process.execPath),dshCommand:cli,interpreter:process.execPath,dshRoot:hint}}}catch(e){}}",
   "console.log(JSON.stringify({ok:true,root:base,profile:profile,bundles:rows,runtime:runtime}))",
 ].join(';')
+
+/**
+ * 远端脚本正文。**导出给单测**：它是拼出来的 JS 源码，少一个括号只会在真机上变成
+ * `SyntaxError: Unexpected token`（一次真机 debug 换来的教训），必须在单测里就红。
+ */
+export const READER_SOURCE = READER
 
 /** 把脚本文本 base64 化：躲开两层 shell 的引号与换行。 */
 export function encodeScript(script: string): string {
@@ -63,9 +82,12 @@ export function buildReadScript(request: {
   readonly nodeCommand: string
   readonly profile: string
   readonly homeDir: string
+  readonly checkoutRoot?: string
 }): string {
-  const encoded = encodeScript(READER)
+  const encoded = encodeScript(READER_SOURCE)
   const profileDir = request.homeDir === '' ? '' : request.homeDir + '/.dsh/profiles/' + request.profile
+  // 第 4 个参数是「检出根」提示：脚本用它找 `apps/cli/lib/bin.js`，找不到就退回 staging 的结论。
+  const hintArg = request.checkoutRoot === undefined || request.checkoutRoot === '' ? '' : ' ' + shellQuote(request.checkoutRoot)
   // `auto`：我们还不知道远端 node 在哪（bootstrap 型远端只在 staging 里有）——由脚本自己找。
   // 顺序：PATH 上的 node → staging/<id>/bin/node。找不到就 exit 5，让上层报 read-failed。
   const invoke =
@@ -74,11 +96,11 @@ export function buildReadScript(request: {
           'N=$(command -v node 2>/dev/null || true)',
           '[ -z "$N" ] && N=$(ls -d "$HOME"/.dsh-remote-cr/staging/*/bin/node 2>/dev/null | head -1)',
           '[ -n "$N" ] && [ -x "$N" ] || { echo REMOTE_CR_NO_NODE >&2; exit 5; }',
-          'PATH=$(dirname "$N"):$PATH "$N" "$f" ' + shellQuote(profileDir) + ' ' + shellQuote(request.profile),
+          'PATH=$(dirname "$N"):$PATH "$N" "$f" ' + shellQuote(profileDir) + ' ' + shellQuote(request.profile) + hintArg,
         ]
       : [
           'PATH=' + shellQuote(dirnameOf(request.nodeCommand)) + ':$PATH ' + shellQuote(request.nodeCommand) +
-            ' "$f" ' + shellQuote(profileDir) + ' ' + shellQuote(request.profile),
+            ' "$f" ' + shellQuote(profileDir) + ' ' + shellQuote(request.profile) + hintArg,
         ]
   return [
     'set -e',
@@ -104,7 +126,13 @@ export interface RemoteRuntimePaths {
   readonly nodeCommand: string
   readonly nodeBin: string
   readonly dshCommand: string
-  readonly stagingDir: string
+  /**
+   * 跑 `dshCommand` 的解释器：检出形态是 `node <bin.js>`（不假设 bin.js 有 +x），
+   * staging 形态的 `dsh` 本身可执行 → null。
+   */
+  readonly interpreter: string | null
+  /** dsh 的来源根：SSH 的 staging 目录，或（检出形态，WSL 常见）检出根目录。`dshCommand` 就在它里面。 */
+  readonly dshRoot: string
 }
 
 interface ReaderPayload {
@@ -124,13 +152,18 @@ interface ReaderPayload {
  */
 export interface RemoteProfileRead {
   readonly bundles: readonly RemoteBundle[]
-  /** 远端 staging 里没装 dsh 时为 null（此时同步应当提示「先接入一次」）。 */
+  /** 远端既没有 staging 也没有检出时为 null（此时同步应当提示「先接入一次」）。 */
   readonly runtime: RemoteRuntimePaths | null
 }
 
 export async function readRemoteProfile(request: ReadBundlesRequest): Promise<RemoteProfileRead> {
   const profile = request.profile ?? 'web'
-  const script = buildReadScript({ nodeCommand: request.nodeCommand, profile, homeDir: request.homeDir ?? '' })
+  const script = buildReadScript({
+    nodeCommand: request.nodeCommand,
+    profile,
+    homeDir: request.homeDir ?? '',
+    ...(request.checkoutRoot === undefined ? {} : { checkoutRoot: request.checkoutRoot }),
+  })
   const result = await request.exec(script, request.deadlineMs ?? 20_000)
   if (result.code !== 0) {
     throw new RemoteCrError({
@@ -169,16 +202,20 @@ export async function readRemoteProfile(request: ReadBundlesRequest): Promise<Re
 /** 把脚本回报的 runtime 收窄成可信形状；缺字段就整体当 null（不猜路径）。 */
 function readRuntime(raw: Partial<RemoteRuntimePaths> | null | undefined): RemoteRuntimePaths | null {
   if (raw === null || raw === undefined) return null
-  const { homeDir, nodeCommand, nodeBin, dshCommand, stagingDir } = raw
-  if ([homeDir, nodeCommand, nodeBin, dshCommand, stagingDir].some((value) => typeof value !== 'string' || value === '')) {
+  const { homeDir, nodeCommand, nodeBin, dshCommand, dshRoot, interpreter } = raw
+  if ([homeDir, nodeCommand, nodeBin, dshCommand, dshRoot].some((value) => typeof value !== 'string' || value === '')) {
     return null
   }
+  // `interpreter` 是后加的字段：老脚本不报时按 null（staging 形态）；报了就必须是非空字符串。
+  const runner = interpreter === undefined || interpreter === null ? null : interpreter
+  if (runner !== null && (typeof runner !== 'string' || runner === '')) return null
   return {
     homeDir: String(homeDir),
     nodeCommand: String(nodeCommand),
     nodeBin: String(nodeBin),
     dshCommand: String(dshCommand),
-    stagingDir: String(stagingDir),
+    interpreter: runner === null ? null : String(runner),
+    dshRoot: String(dshRoot),
   }
 }
 

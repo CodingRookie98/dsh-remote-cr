@@ -109,6 +109,20 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 - spikes/m3-reconnect-wsl/probe.cjs：WSL attach → disconnect → reconnectNow 的真机探针（5/5）
 - src/local/plugin-sync/*.test.ts：注入式夹具（假 exec）的写法可照抄
 
+## 6.5 完成记录（2026-11-18，第二节主任务已闭环）
+
+| 项 | 结果 |
+|---|---|
+| 门禁基线 | 741 tests → 改后 **750 tests / 0 fail**；双 tsc 0；check:cjk OK；build:client 27 模块 249 339 B；`e2e:preview` **17/17** 场景 + 键盘 10/0 |
+| 方案 A 前提（句柄稳定性） | `spikes/m3-plugin-sync/wsl-handle-probe.cjs` **13/13**：45 s 长命令全程持有（总 45.3 s）；期间 distro 侧 shell 在跑；第二路 `wsl.exe` 372–1180 ms 可用（首轮 12 s 是会话冷启动，不是争用）；退出码 7/stderr 原样透传；**杀句柄 3 s 内回收 distro 子进程**；npm install 全程 0 |
+| WSL 实现 | `wire.resolve()` WSL 分支（`--exec sh -c`，脚本不二次转义）；读取脚本第 4 参 = 检出根，探明 `dshCommand`/`interpreter`；`apply` 支持 `node <bin.js>` 形态，`nodeBin` 为空时不拼 `PATH=` |
+| 真机读+写 | `remote-probe.cjs --wsl` **7/7**：runtime = `/usr/bin/node` + `<checkout>/apps/cli/lib/bin.js`；差集 install **3**（dsh-better-sidebar / dsh-ops / dsh-purge-community）；真装 `dsh-better-sidebar@0.32.1` 成功（**41 s**），重读差集 3 → **2** |
+| 变异 | 去掉 `sh -c` → 1 条红；去掉 `PATH=` → 3 条红（含新增的检出形态用例） |
+| UI（方案 A 第二半） | applying 态 `sync-applying-hint`、done+失败 `sync-retry-hint`；新增预览场景 `sync-applying` / `sync-done`（L4 断言命中） |
+| 踩坑补记 | 读取脚本曾多拼一个 `}` → 真机 `SyntaxError: Unexpected token '}'`；已加 `new vm.Script(READER_SOURCE)` 单测。MSYS 会把裸的 `/home/...` 参数改成 `C:/...`，跑 WSL 探针请用 `DSH_DISTRO` / `DSH_REMOTE_ROOT` 环境变量 |
+| 定向红队（R1） | **不可签 → 3 条阻断全修**：B1 runtime=null 回落成必然 ENOENT 的命令（改后端拒绝 + 客户端禁用 + `sync-no-runtime` 场景）；B2 wsl.exe 自身失败诊断被丢（改 `runInDistroChecked`）；B3 新增读取分支可整行删除而全绿（补执行级 `READER_SOURCE` 用例 + 地板字面量下界） |
+| 未验证 | 远端无检出（runtime=null）的**真机**表现只有单测；安装中断后的重跑窗口没做故障注入；真机超时（180 s 内跑不完）未制造；`ubuntu_dev` 的 profile 已因探针真装多了一条 `dsh-better-sidebar@0.32.1`（`dsh plugin remove` 可回退） |
+
 ## 7. 建议的新会话开场
 
 ```
