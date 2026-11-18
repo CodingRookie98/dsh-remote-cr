@@ -34,15 +34,33 @@ import {
   readProjection,
   reconnectRemote,
   stopRemote,
+  readSyncPlan,
+  applySyncRequest,
+  setSyncOptout,
   RemoteCrApiError,
+  type SyncTargetLike,
 } from './api.ts'
-import { copyText, messageOf, useWizard } from './components.ts'
+import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
+import {
+  beginApply,
+  CLOSED,
+  closeSync,
+  failSync,
+  finishApply,
+  openSync,
+  receiveResult,
+  receiveSyncPlan,
+  selectAllSync,
+  toggleSyncEntry,
+  type SyncDialogState,
+} from './sync-state.ts'
 import {
   attachPhaseText,
   disconnectPlan,
   envPolicyLine,
   formatUpdatedAt,
   flowLine,
+  failureFromError,
   linkLine,
   localizeFailure,
   phaseLabel,
@@ -153,6 +171,82 @@ export function RemoteCrPanel(): unknown {
   const state = useWizard()
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
   const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
+  const [sync, setSync] = useState<SyncDialogState>(CLOSED)
+
+  /** `failureFromError` 可能给字符串（我们自己写的引导语）；同步对话框只要结构化形状。 */
+  const syncFailureOf = (caught: unknown): { code: string; detail: string; nextActions: readonly string[] } => {
+    const failure = failureFromError(caught)
+    return typeof failure === 'string' ? { code: 'remote/unknown', detail: failure, nextActions: [] } : failure
+  }
+
+  /** 同步只关心目标身份；投影里的 target 正好够用（WSL 用 distro，SSH 用 alias）。 */
+  const syncTarget = (): SyncTargetLike | null => {
+    const target = snapshot?.target
+    if (target === null || target === undefined) return null
+    return target.backend === 'ssh'
+      ? { backend: 'ssh', alias: target.alias, port: target.port, remoteRoot: target.remoteRoot }
+      : { backend: 'wsl', distro: target.distro, port: target.port, remoteRoot: target.remoteRoot }
+  }
+
+  /**
+   * 打開同步對話框並拉一次計畫。
+   * `auto`（首次接入後自動提醒）：沒有可同步項或這台已被靜音時**直接關掉**——
+   * 需求是「有差異才打擾」，不是每次接入都彈一次。
+   */
+  const openSyncDialog = async (auto: boolean): Promise<void> => {
+    const target = syncTarget()
+    setSync(openSync())
+    if (target === null) {
+      setSync(
+        failSync({
+          code: 'remote/plugin-sync-read-failed',
+          detail: t('panel.notConnectedAttach'),
+          nextActions: [t('panel.attachHint')],
+        }),
+      )
+      return
+    }
+    try {
+      const plan = await readSyncPlan(target)
+      if (auto && (plan.muted || plan.totals.install === 0)) {
+        setSync(CLOSED)
+        return
+      }
+      setSync(receiveSyncPlan(plan))
+    } catch (caught) {
+      setSync(failSync(syncFailureOf(caught)))
+    }
+  }
+
+  const runSyncApply = async (): Promise<void> => {
+    const target = syncTarget()
+    const started = beginApply(sync)
+    setSync(started)
+    if (target === null || started.phase !== 'applying') return
+    try {
+      const response = await applySyncRequest(target, started.selected)
+      let current: SyncDialogState = started
+      for (const result of response.results) {
+        current = receiveResult(current, result)
+        setSync(current)
+      }
+      setSync(finishApply(current))
+      await refresh()
+    } catch (caught) {
+      setSync(failSync(syncFailureOf(caught)))
+    }
+  }
+
+  const toggleSyncOptout = async (muted: boolean): Promise<void> => {
+    const target = syncTarget()
+    if (target === null || sync.phase !== 'ready') return
+    try {
+      await setSyncOptout(target, muted)
+      setSync({ ...sync, plan: { ...sync.plan, muted } })
+    } catch (caught) {
+      setSync(failSync(syncFailureOf(caught)))
+    }
+  }
   const [error, setError] = useState<PanelFailure | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [probe, setProbe] = useState<ProbeOutcome | null>(null)
@@ -744,7 +838,17 @@ export function RemoteCrPanel(): unknown {
           'button',
           {
             type: 'button',
-            'data-remote-cr': 'reconnect',
+            'data-remote-cr': 'sync-open',
+            disabled: snapshot?.connected !== true,
+          title: snapshot?.connected === true ? t('sync.open') : t('panel.notConnectedAttach'),
+          onClick: () => void openSyncDialog(false),
+        },
+        t('sync.open'),
+      ),
+      h(
+        'button',
+        {
+          'data-remote-cr': 'reconnect',
             'data-ok': String(reconnect.ok),
             disabled: !reconnect.ok || busy === 'reconnect',
             title: reconnect.ok ? t('panel.reconnectHint') : reconnect.reason,
@@ -829,6 +933,16 @@ export function RemoteCrPanel(): unknown {
         probeBox,
       ),
     ),
+    // 同步对话框：五态渲染全在组件里，这里只把状态与回调接上。
+    SyncDialog({
+      state: sync,
+      onToggle: (name) => setSync(toggleSyncEntry(sync, name)),
+      onSelectAll: (select) => setSync(selectAllSync(sync, select)),
+      onApply: () => void runSyncApply(),
+      onClose: () => setSync(closeSync()),
+      onRetry: () => void openSyncDialog(false),
+      onOptout: (muted) => void toggleSyncOptout(muted),
+    }),
     // ③ 错误块：唯一一处结构化失败面
     error === null
       ? null

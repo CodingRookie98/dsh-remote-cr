@@ -23,6 +23,7 @@ import type { WorkspaceSource } from '../shared/choices.ts'
 import { canCancel, type FlowState } from '../shared/flow.ts'
 import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
+import { resultTotals, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
 import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
 import {
@@ -626,6 +627,154 @@ export function sessionBadge(props?: { readonly sessionId?: unknown }): unknown 
   }, [id])
   if (id === '' || !isRemote) return null
   return h('span', { 'data-remote-cr': 'session-badge', title: t('panel.remoteBadgeHint') }, t('panel.remoteBadge'))
+}
+
+
+/**
+ * 同步对话框（RFC-0003 需求①）。
+ *
+ * 纯展示：状态由 `sync-state.ts` 的模型算好，这里只画与回调。五态都要能画出来——
+ * 尤其 `failed`：读远端失败时必须给码 + 下一步，而不是留一个转圈的对话框。
+ */
+export function SyncDialog(props: {
+  readonly state: import('./sync-state.ts').SyncDialogState
+  readonly onToggle: (name: string) => void
+  readonly onSelectAll: (select: boolean) => void
+  readonly onApply: () => void
+  readonly onClose: () => void
+  readonly onRetry: () => void
+  readonly onOptout: (muted: boolean) => void
+}): unknown {
+  const { state } = props
+  if (state.phase === 'closed') return null
+
+  const frame = (children: readonly unknown[]): unknown =>
+    h(
+      'div',
+      { 'data-remote-cr': 'sync-dialog', role: 'dialog', 'aria-label': t('sync.title') },
+      h(
+        'div',
+        { 'data-remote-cr': 'sync-head' },
+        h('h3', { 'data-remote-cr': 'sync-title' }, t('sync.title')),
+        h('button', { type: 'button', 'data-remote-cr': 'sync-close', onClick: props.onClose }, t('sync.close')),
+      ),
+      ...children,
+    )
+
+  if (state.phase === 'loading') {
+    return frame([h('div', { 'data-remote-cr': 'sync-loading' }, t('sync.loading'))])
+  }
+
+  if (state.phase === 'failed') {
+    const text = localizeFailure(state.failure)
+    return frame([
+      h(
+        'div',
+        { 'data-remote-cr': 'sync-failed', 'data-error-code': state.failure.code, role: 'alert' },
+        h('div', { 'data-remote-cr': 'sync-failed-code' }, state.failure.code),
+        h('div', { 'data-remote-cr': 'sync-failed-detail' }, text.detail),
+        h(
+          'ul',
+          { 'data-remote-cr': 'sync-failed-next' },
+          ...text.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
+        ),
+      ),
+      h('button', { type: 'button', 'data-remote-cr': 'sync-retry', onClick: props.onRetry }, t('sync.retry')),
+    ])
+  }
+
+  const groups = syncGroups(state.plan)
+  const entries: unknown[] = []
+  if (groups.installable.length > 0) {
+    entries.push(h('h4', { 'data-remote-cr': 'sync-group-install' }, t('sync.group.install', { count: groups.installable.length })))
+    for (const entry of groups.installable) {
+      const checked = state.phase === 'ready' ? state.selected.includes(entry.name) : false
+      entries.push(
+        h(
+          'label',
+          { key: entry.name, 'data-remote-cr': 'sync-entry', 'data-name': entry.name, 'data-action': entry.action },
+          h('input', {
+            type: 'checkbox',
+            checked,
+            disabled: state.phase !== 'ready',
+            onChange: () => props.onToggle(entry.name),
+          }),
+          h('span', { 'data-remote-cr': 'sync-entry-name' }, entry.name),
+          h('span', { 'data-remote-cr': 'sync-entry-version' }, entry.localVersion ?? ''),
+        ),
+      )
+    }
+  }
+  if (groups.upToDate.length > 0) {
+    entries.push(h('h4', { 'data-remote-cr': 'sync-group-uptodate' }, t('sync.group.uptodate', { count: groups.upToDate.length })))
+    for (const entry of groups.upToDate) {
+      entries.push(
+        h(
+          'div',
+          { key: entry.name, 'data-remote-cr': 'sync-entry', 'data-name': entry.name, 'data-action': entry.action },
+          h('span', { 'data-remote-cr': 'sync-entry-name' }, entry.name),
+          h('span', { 'data-remote-cr': 'sync-entry-version' }, entry.remoteVersion ?? ''),
+        ),
+      )
+    }
+  }
+  if (groups.skipped.length > 0) {
+    entries.push(h('h4', { 'data-remote-cr': 'sync-group-skipped' }, t('sync.group.skipped', { count: groups.skipped.length })))
+    for (const entry of groups.skipped) {
+      entries.push(
+        h(
+          'div',
+          { key: entry.name, 'data-remote-cr': 'sync-entry', 'data-name': entry.name, 'data-action': entry.action },
+          h('span', { 'data-remote-cr': 'sync-entry-name' }, entry.name),
+          h('span', { 'data-remote-cr': 'sync-entry-reason' }, t(SYNC_REASON_KEYS[entry.reasonId])),
+        ),
+      )
+    }
+  }
+
+  const results =
+    state.phase === 'applying' || state.phase === 'done'
+      ? state.results.map((result) =>
+          h(
+            'div',
+            { key: result.name, 'data-remote-cr': 'sync-result', 'data-ok': String(result.ok) },
+            h('span', { 'data-remote-cr': 'sync-result-name' }, result.name),
+            h('span', { 'data-remote-cr': 'sync-result-state' }, result.ok ? t('sync.result.ok') : t('sync.result.failed')),
+          ),
+        )
+      : []
+
+  const footer: unknown[] = []
+  if (state.phase === 'ready') {
+    footer.push(
+      h('button', { type: 'button', 'data-remote-cr': 'sync-optout', 'data-muted': String(state.plan.muted), onClick: () => props.onOptout(!state.plan.muted) }, t('sync.optout')),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-remote-cr': 'sync-apply',
+          disabled: state.selected.length === 0,
+          onClick: props.onApply,
+        },
+        t('sync.apply', { count: state.selected.length }),
+      ),
+    )
+  }
+  if (state.phase === 'applying') {
+    footer.push(h('div', { 'data-remote-cr': 'sync-applying' }, t('sync.applying')))
+  }
+  if (state.phase === 'done') {
+    const totals = resultTotals(state.results)
+    footer.push(h('div', { 'data-remote-cr': 'sync-done' }, t('sync.done', { ok: totals.ok, failed: totals.failed })))
+  }
+
+  return frame([
+    h('div', { 'data-remote-cr': 'sync-subtitle' }, t('sync.subtitle')),
+    ...(entries.length === 0 ? [h('div', { 'data-remote-cr': 'sync-empty' }, t('sync.group.install', { count: 0 }))] : []),
+    h('div', { 'data-remote-cr': 'sync-entries' }, ...entries),
+    ...(results.length === 0 ? [] : [h('div', { 'data-remote-cr': 'sync-results' }, ...results)]),
+    h('div', { 'data-remote-cr': 'sync-actions' }, ...footer),
+  ])
 }
 
 /** 左栏：位置 + 发行版。不可用的来源**原因内联在行下**，不再塞进按钮文字。 */
