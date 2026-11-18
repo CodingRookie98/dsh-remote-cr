@@ -176,8 +176,12 @@ export function RemoteCrPanel(): unknown {
   const [sync, setSync] = useState<SyncDialogState>(CLOSED)
 
   // 会话菜单动作的失败面是**粘性**的：面板打开时补看一次，之后订阅（审查 B4）
-  /** 会话动作留下的错误详情：成功时只撤这一条，不动面板自己的错误（审查 B4 副词条）。 */
-  const sessionErrorRef = useRef<string | null>(null)
+  /**
+   * 会话动作留下的那条错误的**对象身份**：成功时只撤这一条，不动面板自己的错误。
+   * 用身份而不是字符串比较——错误块里的 detail 是本地化后的文案，与宿主原文永远不相等
+   * （审查 delta-r1-2 实测：`remote/startup-failed` → 「远端 dsh 启动失败」）。
+   */
+  const sessionErrorRef = useRef<PanelFailure | null>(null)
   /** 把会话动作的 (code, detail) 变成面板错误块：文案全部走字典（ADR-0007）。 */
   const sessionPanelFailure = (fact: { code: string; detail: string }): PanelFailure => {
     const localized = localizeFailure({ code: fact.code, detail: fact.detail, nextActions: [] })
@@ -191,17 +195,19 @@ export function RemoteCrPanel(): unknown {
   }
 
   useEffect(() => {
-    const pending = lastSessionActionFailure()
-    sessionErrorRef.current = pending?.detail ?? null
-    if (pending !== null) setError(sessionPanelFailure(pending))
-    const off = subscribeSessionActions(() => {
-      const failure = lastSessionActionFailure()
-      // 成功（failure 变 null）时要把**这条**错误撤掉，但别误清面板自己的错误（审查 B4 副词条）
-      setError((current) => {
-        if (failure !== null) return sessionPanelFailure(failure)
-        return current !== null && current.detail === sessionErrorRef.current ? null : current
-      })
-    })
+    const show = (fact: { code: string; detail: string } | null): void => {
+      if (fact === null) {
+        // 成功：只撤「我们自己刚设进去的那一条」，按对象身份比较
+        setError((current) => (current !== null && current === sessionErrorRef.current ? null : current))
+        sessionErrorRef.current = null
+        return
+      }
+      const failure = sessionPanelFailure(fact)
+      sessionErrorRef.current = failure
+      setError(failure)
+    }
+    show(lastSessionActionFailure())
+    const off = subscribeSessionActions(() => show(lastSessionActionFailure()))
     return off
   }, [])
 

@@ -12,9 +12,27 @@ import test from 'node:test'
  */
 const SOURCE = readFileSync(join(process.cwd(), 'src/client/panel-view.ts'), 'utf8')
 
-test('自动提醒必须接在两处接入成功路径上，且目标取自本次接入入参', () => {
-  const auto = SOURCE.match(/openSyncDialog\(true, syncTargetOf\(/g) ?? []
-  assert.equal(auto.length, 2, 'onAttach 与 onSshAttach 各一处；少了就是「首次提醒」又变回死代码')
+/**
+ * 语义位置断言：调用必须落在**接入成功之后、catch 之前**。
+ * 只数次数是不够的——把它挪进 catch 里次数不变，但行为完全错了（delta-r1-2 的 P1 探针）。
+ */
+function attachBody(name: 'onAttach' | 'onSshAttach'): string {
+  const start = SOURCE.indexOf('const ' + name + ' = async')
+  assert.notEqual(start, -1, name + ' 必须存在')
+  const rest = SOURCE.slice(start)
+  const end = rest.indexOf('catch (caught)')
+  assert.notEqual(end, -1, name + ' 必须有 catch 块')
+  return rest.slice(0, end)
+}
+
+test('自动提醒接在「接入成功之后、catch 之前」，且目标取自本次接入入参', () => {
+  for (const name of ['onAttach', 'onSshAttach'] as const) {
+    assert.match(
+      attachBody(name),
+      /openSyncDialog\(true, syncTargetOf\(plan\.input\.target\)\)/,
+      name + ' 的成功路径里必须有自动提醒（挪进 catch 或删掉都算错）',
+    )
+  }
 })
 
 test('手动入口存在且用 auto=false', () => {

@@ -83,3 +83,11 @@
 | R2-5 本地工作区零变化 | ✅ | 既有 729 条用例全绿，未新增本地路径分支 |
 
 **变异自检（本轮自查）**：去掉 `PATH=` → `apply.test.ts` 1 条红；删掉 `action !== 'install'` 过滤 → 1 条红。两条都真实生效。
+
+### 审查结论（2026-11-18）
+
+- R1 定向红队：**不可签**，6 条阻断（B1–B6）→ 全部修复并做变异反证。
+- Delta-1：**不可签**，未闭环 3（N1/B2/B5）+ 新阻断 1 → 已修；另外自查发现并修掉一条 **check:cjk 违规**（session-actions 直接产中文）。
+- **Delta-2：可签，新阻断 0**。仅剩 1 条非阻断：`sessionErrorRef` 用字符串比较导致「成功只撤这一条」永不触发 → 已改为**对象身份比较**（`sessionErrorRef` 存 PanelFailure 引用），并补「成功只撤自己那条」的语义；
+  审查观察「接线门禁只数次数」→ 门禁改为**语义位置断言**（必须在 `catch (caught)` 之前），变异验证：把调用挪进 catch → 1 条红。
+- 审查报告归档：`docs/project/reviews/2026-11-18-remote-sync-and-workspace-affordance/{R1-focused,delta-r1,delta-r1-2}.md`。
