@@ -22,6 +22,8 @@
 | **T5** | 客户端：面板「远端工作区」区（图标/灰显/重连）+ 会话行徽标与菜单项 + 同步对话框 + 文案 | T4（数据面） | `src/client/{panel-view,components,state,locales}.ts` + 预览场景 |
 | **T6** | 上游提案：`workspace.row.leading` / `workspace.menu.item` 两个 hole 的补丁要点与 issue 文本 | 无（可与 T5 并行） | `docs/proposals/upstream-workspace-row-holes.md` |
 
+> 接线契约见 [docs/design/plugin-sync-contract.md](../../design/plugin-sync-contract.md)（类型 / 四个路由 / 三个错误码 / UI 状态与文案键 / 断言清单）。
+
 ## 测试策略裁定书
 
 | 批次 | 级别 | 判据（Exit 0 才允许提交） |
