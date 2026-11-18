@@ -33,6 +33,8 @@ export interface RemoteCrComponents {
     readonly panel: unknown;
     readonly icon: unknown;
     readonly flow: unknown;
+    /** 会话行「远端」徽标（RFC-0003 R2-3）。 */
+    readonly sessionBadge: unknown;
 }
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
 export declare const PANEL_ID = "remote-cr";

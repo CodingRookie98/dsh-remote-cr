@@ -35,6 +35,16 @@ export declare function copyText(text: string): Promise<boolean>;
 /** 「复制诊断」的内容：码 / 发行版 / wsl 错误码 / 人话 / 下一步 / 原文，缺一段就没法贴给别人看。 */
 export declare function wakeReportOf(state: WizardState): string;
 /**
+ * 会话行上的「远端」徽标（RFC-0003 R2-3）。
+ *
+ * 挂在 DSH 自己的侧栏会话行上（hole: sidebar.session.row.leading，props 只有 sessionId），
+ * 所以它**不能**读面板的局部 state：数据源是模块级 `remoteSessionIndex`（面板与徽标共用）。
+ * 每次挂载触发一次 refresh；索引失败时保留上次结果，徽标不会闪没。
+ */
+export declare function sessionBadge(props?: {
+    readonly sessionId?: unknown;
+}): unknown;
+/**
  * 「添加工作区」向导（RFC-0001 双栏工作台）。
  *
  * 挂在 conversation.hero.workspace.directoryFlow 与 sidebar.workspaces.directoryFlow
