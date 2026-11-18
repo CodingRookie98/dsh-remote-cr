@@ -121,3 +121,11 @@ test('同一次读取里探明远端运行时：五个字段齐才收下，缺�
   const absent = fakeExec({ code: 0, stderr: '', stdout: JSON.stringify({ ok: true, bundles: [] }) })
   assert.equal((await readRemoteProfile({ exec: absent.exec, nodeCommand: 'node' })).runtime, null)
 })
+
+test("nodeCommand='auto'：脚本自己找 node（PATH → staging），找不到就 exit 5", () => {
+  const script = buildReadScript({ nodeCommand: 'auto', profile: 'web', homeDir: '/home/hui' })
+  assert.match(script, /command -v node/)
+  assert.match(script, /\.dsh-remote-cr\/staging\/\*\/bin\/node/)
+  assert.match(script, /REMOTE_CR_NO_NODE >&2; exit 5/)
+  assert.match(script, /PATH=\$\(dirname "\$N"\):\$PATH "\$N" "\$f"/)
+})

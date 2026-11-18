@@ -24,6 +24,7 @@ import {
   type MountedRoute,
   type RemoteCrHostContext,
 } from './local/api/routes.ts'
+import { createSyncRoutesOptions } from './local/plugin-sync/wire.ts'
 import { envConflictHint, lookupEnv, warnLegacyOnce } from './local/migration/legacy-names.ts'
 import { migrateLegacyHome } from './local/migration/home.ts'
 import { LocalCredentials } from './local/proxy/credentials.ts'
@@ -166,6 +167,8 @@ export function apply(ctx: RemoteCrPluginContext): RemoteCrMount {
   const routes = registerRemoteCrRoutes(ctx, {
     projection,
     homeDir,
+    // 插件同步（RFC-0003）：只接 SSH；WSL 会得到明确的 plugin-sync-unsupported 与下一步。
+    sync: createSyncRoutesOptions({ homeDir }),
     // SSH 的 `localPath` 靠锚点目录推导（WSL 靠 UNC，不需要这一步）。
     resolveAnchorPath: defaultAnchorResolver(homeDir),
     ...(fence === undefined
