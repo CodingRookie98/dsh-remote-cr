@@ -11,6 +11,7 @@ import test from 'node:test'
  *   2. 手动入口用 `openSyncDialog(false)`。
  */
 const SOURCE = readFileSync(join(process.cwd(), 'src/client/panel-view.ts'), 'utf8')
+const DIALOG = readFileSync(join(process.cwd(), 'src/client/components.ts'), 'utf8')
 
 /**
  * 语义位置断言：调用必须落在**接入成功之后、catch 之前**。
@@ -37,4 +38,15 @@ test('自动提醒接在「接入成功之后、catch 之前」，且目标取�
 
 test('手动入口存在且用 auto=false', () => {
   assert.match(SOURCE, /openSyncDialog\(false\)/)
+})
+
+/**
+ * 远端没有 dsh 时，对话框必须**同时**给提示与禁用按钮（R1-B1 的可见面）。
+ * 组件在 node 里跑不起来（react 是 peer，测试环境没有），所以这条只能做源码门禁——
+ * 与上面两条同类：纯函数用例抓不到「渲染分支被删掉」。
+ */
+test('runtime 缺失时对话框渲染 sync-no-runtime 并禁用同步按钮', () => {
+  assert.match(DIALOG, /syncBlockedReason\(state\.plan\)/, '必须真的用判定函数（不能只渲染一句静态文案）')
+  assert.match(DIALOG, /'data-remote-cr': 'sync-no-runtime'/, '提示必须带可断言的标记（L4 场景 sync-no-runtime 依赖它）')
+  assert.match(DIALOG, /disabled: state\.selected\.length === 0 \|\| blocked !== null/, '禁用位必须带上 blocked')
 })

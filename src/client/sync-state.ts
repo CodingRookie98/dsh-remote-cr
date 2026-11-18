@@ -36,6 +36,11 @@ export interface SyncPlanLike {
    * 字段缺省（旧宿主）时按「未知」放行，不拿一个不存在的门禁去拦老版本。
    */
   readonly runtime?: SyncRuntimeLike | null
+  /**
+   * 服务端声明「这个后端必须有 runtime 才能执行」。与后端拒绝执行的条件**逐字一致**：
+   * SSH 远端要是把 dsh 装在 PATH 上，runtime 同样是 null，但那条兜底命令是可用的。
+   */
+  readonly requiresRuntime?: boolean
 }
 
 export interface FailureLikeShape {
@@ -135,7 +140,9 @@ export function syncTargetOf(target: {
 
 /** 远端没装 dsh 时不能同步：命令会指向一个不存在的入口（审查 B1）。 */
 export function syncBlockedReason(plan: SyncPlanLike): 'no-runtime' | null {
-  return plan.runtime === null ? 'no-runtime' : null
+  // 条件必须与 `applySyncPlan` 的后端门禁同形（runtime 为空 **且** 该后端必须有 runtime），
+  // 否则 SSH（dsh 在 PATH 上时 runtime 也是 null）会被 UI 误拦。字段缺省 = 老宿主 = 不拦。
+  return plan.runtime === null && plan.requiresRuntime === true ? 'no-runtime' : null
 }
 
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */

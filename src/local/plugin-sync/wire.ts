@@ -79,15 +79,21 @@ export interface WslDiagnosisLike {
   readonly logTail?: string
 }
 
-/** 默认执行面：`runInDistroChecked` 的结果摊平（诊断单独带上来）。 */
-async function defaultWslRun(
+/**
+ * 默认执行面：`runInDistroChecked` 的结果摊平（诊断单独带上来）。
+ *
+ * 导出并留 `checked` 注入缝，是为了让「诊断真的被挂上」这件事**有执行级用例**——
+ * 否则把这里换回 `runInDistro`（修复前那一行）全量测试照样全绿（Delta 复审 BLK-1）。
+ */
+export async function defaultWslRun(
   executable: string,
   distro: string,
   command: readonly string[],
   options?: { readonly timeoutMs?: number },
+  checked: typeof runInDistroChecked = runInDistroChecked,
 ): Promise<Awaited<ReturnType<WslSyncRun>>> {
-  const checked = await runInDistroChecked(executable, distro, command, options)
-  return { ...checked.result, diagnosis: checked.diagnosis }
+  const result = await checked(executable, distro, command, options)
+  return { ...result.result, diagnosis: result.diagnosis }
 }
 
 /** 拼远端 POSIX 路径：win32 的 `join` 会产出反斜杠，远端当转义吃掉。 */

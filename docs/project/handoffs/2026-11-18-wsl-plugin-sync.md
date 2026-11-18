@@ -121,6 +121,7 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 | UI（方案 A 第二半） | applying 态 `sync-applying-hint`、done+失败 `sync-retry-hint`；新增预览场景 `sync-applying` / `sync-done`（L4 断言命中） |
 | 踩坑补记 | 读取脚本曾多拼一个 `}` → 真机 `SyntaxError: Unexpected token '}'`；已加 `new vm.Script(READER_SOURCE)` 单测。MSYS 会把裸的 `/home/...` 参数改成 `C:/...`，跑 WSL 探针请用 `DSH_DISTRO` / `DSH_REMOTE_ROOT` 环境变量 |
 | 定向红队（R1） | **不可签 → 3 条阻断全修**：B1 runtime=null 回落成必然 ENOENT 的命令（改后端拒绝 + 客户端禁用 + `sync-no-runtime` 场景）；B2 wsl.exe 自身失败诊断被丢（改 `runInDistroChecked`）；B3 新增读取分支可整行删除而全绿（补执行级 `READER_SOURCE` 用例 + 地板字面量下界） |
+| Delta 复审（第二轮） | **不可签（1 条阻断 BLK-1）→ 已修**：`defaultWslRun` 换回 `runInDistro` 时全量仍绿（诊断链路没有执行级用例）。补 `exec.test.ts`（真机 UTF-16LE 字节）+ `defaultWslRun` 透传用例；顺带统一两端门禁判据（`requiresRuntime` 随 plan 下发）、补组件禁用位门禁 |
 | 未验证 | 远端无检出（runtime=null）的**真机**表现只有单测；安装中断后的重跑窗口没做故障注入；真机超时（180 s 内跑不完）未制造；`ubuntu_dev` 的 profile 已因探针真装多了一条 `dsh-better-sidebar@0.32.1`（`dsh plugin remove` 可回退） |
 
 ## 7. 建议的新会话开场

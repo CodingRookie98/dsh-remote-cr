@@ -673,6 +673,8 @@ export function sceneFixtures(sceneId) {
       muted: false,
       // 远端运行时：「没有 dsh」要能被拍出来（B1 的可见面）。
       runtime: id === 'sync-no-runtime' ? null : { dshCommand: '/home/hui/workspace/tools/deepseek-harness/apps/cli/lib/bin.js' },
+      // WSL：必须有 runtime 才能执行（UI 与后端同一个判据）。
+      requiresRuntime: true,
       totals: { install: 2, upToDate: 1, skipped: 1 },
       entries: [
         { name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null },

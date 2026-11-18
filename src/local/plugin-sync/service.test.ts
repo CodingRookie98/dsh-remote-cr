@@ -57,6 +57,10 @@ test('buildSyncPlan：远端空 → 第三方全部 install，官方不出现，
   assert.deepEqual(plan.totals, { install: 1, upToDate: 0, skipped: 0 })
   assert.equal(plan.muted, false)
   assert.equal(plan.profile, 'web')
+  // 判据要下发给客户端，否则 UI 只能用「runtime 为空」拦人（SSH 的 PATH 形态会被误拦）。
+  assert.equal(plan.requiresRuntime, false, '没声明的后端按 false')
+  const wsl = await buildSyncPlan({ backend: { ...stub, requiresRuntime: true }, targetId: 'wsl:ubuntu_dev', muted: false, local: [] })
+  assert.equal(wsl.requiresRuntime, true)
 })
 
 test('buildSyncPlan：远端已装同版本 → up-to-date（不产生 install）', async () => {

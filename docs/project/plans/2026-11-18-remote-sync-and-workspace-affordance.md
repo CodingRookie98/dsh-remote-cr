@@ -110,3 +110,8 @@
   - B3「新增读取分支可整行删除而全绿」→ 新增**执行级**用例：用假 fs 把 `READER_SOURCE` 真跑一遍；地板断言改字面量下界（`>= 45_000`）。
 - 顺带修的非阻断：超时一律记 124（原来 `exitCode ?? 124`，Windows 上被杀常回 0/1）；`targetId` 对 distro 名 `toLowerCase()`（否则 `wsl:Ubuntu` 绕过静音与并发锁）；`stagingDir` 改名 `dshRoot`（检出形态下它不是 staging）。
 - 流程教训：审查期间 reviewer 的变异实验一度改动工作区（含 `WSL_MIN_EXEC_MS`），已用哈希自证还原；后续派发审查须在 brief 里写明「变异只在副本上做」。
+- **Delta 复审（第二轮）**：仍**不可签**，1 条阻断 —— BLK-1「B2 只修了拼装一半：`defaultWslRun` 换回 `runInDistro` 时 756/756 全绿」。
+  已修：给 `runInDistroChecked` / `defaultWslRun` 各留注入缝并补用例（`exec.test.ts` 用真机 UTF-16LE 字节验诊断接线；`wire.test.ts` 验透传）；
+  顺带关掉复审的两条观察：客户端禁用位补源码门禁（`sync-wiring.test.ts`）；两端门禁判据统一为 `runtime === null && requiresRuntime === true`
+  （`requiresRuntime` 随 plan 下发，避免把「dsh 装在 PATH 上」的 SSH 远端误拦）；`runInDistroChecked` 的失败判据改为 `exitCode !== 0 || timedOut`。
+  变异反证（本轮自查，临时副本上做）：诊断透传改 null → 1 红；exec 诊断分支关掉 → 2 红；组件禁用位去掉 blocked → 1 红。

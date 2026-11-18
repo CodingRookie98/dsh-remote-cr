@@ -135,15 +135,25 @@ export interface WslCheckedResult {
  * `describeWslFailure`（它在 UTF-16LE / UTF-8 之间择优），而不是让调用方拿
  * `stderrText`（几乎恒为空）去猜。spawn 逻辑仍然只有 `runWsl` 一份。
  */
+/** 可注入的执行面：默认就是 `runInDistro`。单测用它验证「诊断是不是真的被挂上」。 */
+export type DistroRunner = (
+  executable: string,
+  distro: string,
+  command: readonly string[],
+  options?: WslRunOptions,
+) => Promise<WslRunResult & { stdoutText: string; stderrText: string }>
+
 export async function runInDistroChecked(
   executable: string,
   distro: string,
   command: readonly string[],
   options: WslRunOptions = {},
+  run: DistroRunner = runInDistro,
 ): Promise<WslCheckedResult> {
-  const result = await runInDistro(executable, distro, command, options)
+  const result = await run(executable, distro, command, options)
+  // 超时也算失败：Windows 上被杀常回 exitCode 0/1，只看 0 会把「被杀」当成成功而漏掉诊断。
   const diagnosis =
-    result.exitCode === 0
+    result.exitCode === 0 && !result.timedOut
       ? null
       : describeWslFailure({
           distro,

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { WSL_MIN_EXEC_MS, WSL_TIMEOUT_MARK, createSyncRoutesOptions } from './wire.ts'
+import type { runInDistroChecked } from '../backend/wsl/exec.ts'
+import { WSL_MIN_EXEC_MS, WSL_TIMEOUT_MARK, createSyncRoutesOptions, defaultWslRun } from './wire.ts'
 
 const TARGET = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/workspace' } as const
 const WSL_TARGET = {
@@ -114,6 +115,41 @@ test('WSL 目标：wsl.exe 可执行文件可注入（多套装 WSL 时用得上
   const backend = await options.resolve(WSL_TARGET as never)
   await backend.exec('true', 1000)
   assert.equal((wslCalls[0] as { executable: string }).executable, 'C:/Windows/System32/wsl.exe')
+})
+
+test('默认执行面真的把诊断挂上（BLK-1：换回 runInDistro 时这条必须红）', async () => {
+  const calls: unknown[] = []
+  const checked = (async (
+    executable: string,
+    distro: string,
+    command: readonly string[],
+    options?: { timeoutMs?: number },
+  ) => {
+    calls.push({ executable, distro, command, options })
+    return {
+      result: {
+        exitCode: 1,
+        signal: null,
+        stdout: new Uint8Array(),
+        stderr: new Uint8Array(),
+        timedOut: false,
+        stdoutText: '',
+        stderrText: '',
+      },
+      diagnosis: {
+        code: 'wsl/start-failed',
+        detail: '发行版起不来：0x8007019e',
+        nextActions: [],
+        wslCode: '0x8007019e',
+        logTail: 'WslRegisterDistribution failed',
+      },
+    }
+  }) as unknown as typeof runInDistroChecked
+  const out = await defaultWslRun('wsl.exe', 'ubuntu_dev', ['sh', '-c', 'true'], { timeoutMs: 1000 }, checked)
+  assert.equal(calls.length, 1, '默认执行面必须真的去跑（不是凭空编结果）')
+  assert.equal((calls[0] as { distro: string }).distro, 'ubuntu_dev')
+  assert.equal(out.diagnosis?.detail, '发行版起不来：0x8007019e', '诊断必须原样透传给上层拼 stderr')
+  assert.equal(out.exitCode, 1)
 })
 
 test('WSL 目标：wsl.exe 自己的失败诊断进 stderr 尾巴（B2：stdout 是 UTF-16LE，stderr 是空的）', async () => {
