@@ -54,8 +54,9 @@
 
 | 方案 | 做法 | 取舍 |
 |---|---|---|
-| 复用 `env-policy/probe.ts` | 远端跑 node 读 profile | 依赖远端检出，bootstrap 型远端不可用 |
-| **纯 shell + cat（选定）** | 读 `~/.dsh/profiles/<p>/package.json` 的 `dsh.profile.bundles`，逐个读 `node_modules/<name>/package.json` 的 `version` | 不依赖远端 node、零安装、可解释 |
+| 复用 `env-policy/probe.ts` | 远端跑 node 读 profile | 依赖远端**检出**（要 `packages/boot/app-boot/lib/index.js`），bootstrap 型远端不可用 |
+| **自包含脚本 + 远端 node（选定）** | `cat script \| ssh host 'cat > /tmp/x.cjs; PATH=<staging>/bin:$PATH node /tmp/x.cjs <profileDir>'`，脚本读 `package.json` 与 `node_modules/<name>/package.json`，输出 JSON | 不依赖检出、不依赖包管理器布局、JSON 由 node 解析（不用 sed）；**node 由 bootstrap 保证存在** |
+| 纯 shell + cat | 用 `sed/tr` 解析 JSON | 多行数组 + 转义易碎；仅在极端情况下作为回退，实现上不做 |
 | 解析 pnpm store | 读 `node_modules/.pnpm` 布局 | 与包管理器布局耦合，跨版本易碎 |
 
 ### 4.3 首次提醒策略（D5）
@@ -79,7 +80,7 @@ PATH=<staging>/bin:$PATH <staging>/npm/bin/dsh plugin --profile web add <name>@<
 | D1 | 需求② 走 A（面板 + 会话行）+ B（上游 hole 并行提案） | 现有 hole 不支持工作区行装饰；A 可立即交付，B 不 fork 宿主 | A 无法改变官方工作区行的图标；B 需上游合并后才生效 |
 | D2 | 远端标记的视觉：图标 + 文案（「远端」）+ 主机名；本地无标记 | 只加不删，降低误读 | 侧栏空间有限，窄屏只用图标 + tooltip |
 | D3 | 离线判定复用 `availability === 'offline'`（断连/探测失败）；重连走 `reconnectNow()`，失败给结构化错误 | 已有状态与能力，不新增状态机 | `reconnectNow` 目前只在 SSH 有完整路径，WSL 需验证 |
-| D4 | 同步差集用 shell+cat 读取，不依赖远端 node | bootstrap 型远端无检出 | 需要处理「profile 不存在」「包名解析到目录」等边界 |
+| D4 | 同步差集用**自包含脚本 + 远端 node**（stdin 投到 `/tmp` 跑一次），不依赖远端检出 | bootstrap 型远端无检出；node 由 bootstrap 保证存在；实测样本见 `spikes/m3-plugin-sync/` | 需要处理「profile 不存在」「官方包在 profile 里 ENOENT」等边界（官方项一律跳过） |
 | D5 | 只在有差异时提醒 + 可免打扰 + 面板常驻入口 | 尊重用户环境、避免打扰 | 免打扰记录需在本地落盘并随 target 失效 |
 | D6 | 勾选 + 二次确认后才写远端；官方 bundle 与路径插件不参与 | 安全边界；ADR-0004 三分法 | 用户可能期望「一键全同步」 |
 | D7 | 同步范围首版 = registry + git 的第三方项；tarball 支持但默认不勾；本地路径项仅展示 | 上传打包成本高，单独排期 | 开发态插件仍需手工处理 |
