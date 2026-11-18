@@ -1,5 +1,5 @@
 import { type RemoteRuntimePaths, type SyncExec } from './read.ts';
-import { type LocalBundle, type SyncEntry, type SyncResult } from '../../shared/plugin-sync.ts';
+import { type HostPlan, type LocalBundle, type SyncEntry, type SyncResult } from '../../shared/plugin-sync.ts';
 /**
  * 同步的路由级编排（RFC-0003 / T4 的内核）。
  *
@@ -20,6 +20,10 @@ export interface SyncBackend {
     readonly checkoutRoot?: string;
     /** 兜底解释器（检出形态）；真实值由读取脚本回报的 runtime 优先。 */
     readonly interpreter?: string | null;
+    /** 本地宿主版本（决定「远端该升到哪个版本」）；读不出为 null。 */
+    readonly hostVersion?: string | null;
+    /** 引擎区间判定（注入 `dshSupported`），免得这一层依赖 SSH 引导器。 */
+    readonly supported?: (version: string) => boolean;
     /**
      * 没有 runtime 就**不能**执行（WSL：dsh 只可能来自 staging 或检出，PATH 上没有）。
      * 为 true 时 `runtime === null` 直接给结构化错误，而不是拼一条必然 ENOENT 的命令。
@@ -48,6 +52,8 @@ export interface SyncPlanView {
      * runtime 也是 null，但兜底的 `PATH='.':$PATH dsh` 其实是可用的，不该被 UI 误拦。
      */
     readonly requiresRuntime: boolean;
+    /** 宿主版本对齐判定（H 系列）：只在 staging 形态下才可能是 `align`。 */
+    readonly host: HostPlan;
 }
 export interface PlanRequest {
     readonly backend: SyncBackend;

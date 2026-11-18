@@ -1,1 +1,1 @@
-{"version":3,"file":"phases.d.ts","sourceRoot":"","sources":["../../src/shared/phases.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,eAAO,MAAM,aAAa,oFAQhB,CAAA;AAEV,MAAM,MAAM,WAAW,GAAG,CAAC,OAAO,aAAa,CAAC,CAAC,MAAM,CAAC,CAAA"}
+{"version":3,"file":"phases.d.ts","sourceRoot":"","sources":["../../../workspace/projects/dsh-remote-cr/src/shared/phases.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,eAAO,MAAM,aAAa,oFAQhB,CAAA;AAEV,MAAM,MAAM,WAAW,GAAG,CAAC,OAAO,aAAa,CAAC,CAAC,MAAM,CAAC,CAAA"}

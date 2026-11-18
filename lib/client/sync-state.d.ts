@@ -1,10 +1,12 @@
-import type { SyncEntry, SyncResult, SyncReasonId } from '../shared/plugin-sync.ts';
+import type { HostPlan, HostReasonId, SyncEntry, SyncResult, SyncReasonId } from '../shared/plugin-sync.ts';
 import type { RemoteCrKey } from './locales.ts';
 /**
  * 原因 id → 字典键的**类型化映射**（ADR-0007）。
  * 用 `as never` 拼键会让 tsc 失去保护，漏一个键只会在屏上印出 key。
  */
 export declare const SYNC_REASON_KEYS: Readonly<Record<SyncReasonId, RemoteCrKey>>;
+/** 宿主版本拒绝原因 → 字典键（同一手法：类型化，漏键 tsc 就报）。 */
+export declare const HOST_REASON_KEYS: Readonly<Record<HostReasonId, RemoteCrKey>>;
 /**
  * 同步对话框的**纯状态模型**（RFC-0003 需求① UI）。
  *
@@ -35,6 +37,8 @@ export interface SyncPlanLike {
      * SSH 远端要是把 dsh 装在 PATH 上，runtime 同样是 null，但那条兜底命令是可用的。
      */
     readonly requiresRuntime?: boolean;
+    /** 宿主版本对齐判定；字段缺省（旧宿主）时对话框不显示这一段。 */
+    readonly host?: HostPlan;
 }
 export interface FailureLikeShape {
     readonly code: string;
@@ -102,6 +106,8 @@ export declare function syncTargetOf(target: {
 } | null;
 /** 远端没装 dsh 时不能同步：命令会指向一个不存在的入口（审查 B1）。 */
 export declare function syncBlockedReason(plan: SyncPlanLike): 'no-runtime' | null;
+/** 宿主版本这一行怎么画：null = 旧宿主没这个字段，不渲染（不拿不存在的门禁去拦老版本）。 */
+export declare function hostPanelOf(plan: SyncPlanLike): HostPlan | null;
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */
 export declare function syncGroups(plan: SyncPlanLike): {
     readonly installable: readonly SyncEntry[];

@@ -23,6 +23,8 @@ export interface SyncWiringOptions {
     readonly sshExecutable?: string;
     /** `wsl.exe` 的可执行文件名或绝对路径；测试可换。 */
     readonly wslExecutable?: string;
+    /** 本地宿主版本（由 `index.ts` 传 `localHostVersion()`）；读不出为 null。 */
+    readonly hostVersion?: string | null;
     /** 测试注入：默认用真 runSsh。 */
     readonly runSsh?: (options: SshRunOptions) => Promise<SshRunResult>;
     /** 测试注入：默认用真 runInDistroChecked（spawn `wsl.exe -d <distro> --exec …` + 失败诊断）。 */

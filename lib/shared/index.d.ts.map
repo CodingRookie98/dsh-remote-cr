@@ -1,1 +1,1 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../src/shared/index.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAEH;;;;;;GAMG;AACH,eAAO,MAAM,uBAAuB,IAAI,CAAA;AAExC,+BAA+B;AAC/B,wBAAgB,cAAc,IAAI,MAAM,CAEvC"}
+{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../../workspace/projects/dsh-remote-cr/src/shared/index.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAEH;;;;;;GAMG;AACH,eAAO,MAAM,uBAAuB,IAAI,CAAA;AAExC,+BAA+B;AAC/B,wBAAgB,cAAc,IAAI,MAAM,CAEvC"}

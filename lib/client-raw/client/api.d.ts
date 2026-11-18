@@ -149,6 +149,11 @@ export interface SyncTargetLike {
 }
 /** 读一次同步计划（GET 只打一次远端往返，不写远端）。 */
 export declare function readSyncPlan(target: SyncTargetLike, fetchImpl?: typeof fetch): Promise<import('./sync-state.ts').SyncPlanLike>;
+/** 把远端宿主升到本地版本（服务端会重算判定，只接受 align）。 */
+export declare function applyHostUpgrade(target: SyncTargetLike, fetchImpl?: typeof fetch): Promise<{
+    readonly version: string;
+    readonly restartRequired: boolean;
+}>;
 /** 执行勾选项（服务端会按自己的 plan 重算动作与版本）。 */
 export declare function applySyncRequest(target: SyncTargetLike, names: readonly string[], fetchImpl?: typeof fetch): Promise<{
     readonly results: readonly import('../shared/plugin-sync.ts').SyncResult[];

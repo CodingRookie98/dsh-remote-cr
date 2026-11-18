@@ -1,1 +1,1 @@
-{"version":3,"file":"phases.js","sourceRoot":"","sources":["../../src/shared/phases.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,MAAM,CAAC,MAAM,aAAa,GAAG;IAC3B,OAAO;IACP,WAAW;IACX,QAAQ;IACR,QAAQ;IACR,QAAQ;IACR,SAAS;IACT,QAAQ;CACA,CAAA"}
+{"version":3,"file":"phases.js","sourceRoot":"","sources":["../../../workspace/projects/dsh-remote-cr/src/shared/phases.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,MAAM,CAAC,MAAM,aAAa,GAAG;IAC3B,OAAO;IACP,WAAW;IACX,QAAQ;IACR,QAAQ;IACR,QAAQ;IACR,SAAS;IACT,QAAQ;CACA,CAAA"}

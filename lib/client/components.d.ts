@@ -58,6 +58,19 @@ export declare function SyncDialog(props: {
     readonly onClose: () => void;
     readonly onRetry: () => void;
     readonly onOptout: (muted: boolean) => void;
+    /** 宿主版本对齐（H 系列）。两段式确认的状态由面板持有——对话框本身有早退分支，不能放 hook。 */
+    readonly onAlignHost?: () => void;
+    readonly hostConfirming?: boolean;
+    readonly hostUpgrade?: {
+        readonly phase: 'idle' | 'running' | 'done' | 'failed';
+        readonly version?: string;
+        /** 失败要带码 + 下一步（铁律 4）：只显示 detail 等于把可照抄的出路吞掉。 */
+        readonly failure?: {
+            readonly code: string;
+            readonly detail: string;
+            readonly nextActions: readonly string[];
+        };
+    };
 }): unknown;
 /**
  * 会话行 `⋯` 菜单里的「重新连接」（RFC-0003 R2-4）。

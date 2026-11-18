@@ -68,6 +68,8 @@ export interface RemoteRuntimePaths {
     readonly interpreter: string | null;
     /** dsh 的来源根：SSH 的 staging 目录，或（检出形态，WSL 常见）检出根目录。`dshCommand` 就在它里面。 */
     readonly dshRoot: string;
+    /** 来源形态：`staging` 可由 registry 升级；`checkout` 只能换检出（拒绝自动升级）。 */
+    readonly source: 'staging' | 'checkout';
 }
 /**
  * 读一次远端 bundle 清单。
@@ -79,6 +81,8 @@ export interface RemoteProfileRead {
     readonly bundles: readonly RemoteBundle[];
     /** 远端既没有 staging 也没有检出时为 null（此时同步应当提示「先接入一次」）。 */
     readonly runtime: RemoteRuntimePaths | null;
+    /** 远端 dsh 自报的版本（同一次 exec 里问的）；读不到为 null。 */
+    readonly dshVersion: string | null;
 }
 export declare function readRemoteProfile(request: ReadBundlesRequest): Promise<RemoteProfileRead>;
 /** 兼容入口：只要清单。 */

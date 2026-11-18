@@ -1,1 +1,1 @@
-{"version":3,"file":"env-policy.d.ts","sourceRoot":"","sources":["../../src/shared/env-policy.ts"],"names":[],"mappings":"AAAA;;;;;;;;GAQG;AAEH,eAAO,MAAM,gBAAgB,wCAAyC,CAAA;AAEtE,MAAM,MAAM,SAAS,GAAG,CAAC,OAAO,gBAAgB,CAAC,CAAC,MAAM,CAAC,CAAA"}
+{"version":3,"file":"env-policy.d.ts","sourceRoot":"","sources":["../../../workspace/projects/dsh-remote-cr/src/shared/env-policy.ts"],"names":[],"mappings":"AAAA;;;;;;;;GAQG;AAEH,eAAO,MAAM,gBAAgB,wCAAyC,CAAA;AAEtE,MAAM,MAAM,SAAS,GAAG,CAAC,OAAO,gBAAgB,CAAC,CAAC,MAAM,CAAC,CAAA"}
