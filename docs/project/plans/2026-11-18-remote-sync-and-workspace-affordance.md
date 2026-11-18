@@ -67,3 +67,19 @@
 - 下一步：R2-4（会话行菜单项「重新连接」）；随后把两项需求的验收项逐条勾选并跑一次 P4 定向红队审查。
 - 下一步：确认执行后端后从 **P2-1** 开始 TDD
 - 里程碑门禁：T4 完成前不动 T5
+## 验收状态（2026-11-18，Round 18）
+
+| 项 | 状态 | 证据 |
+|---|---|---|
+| R1-1 首次连接按差异弹窗 | **未验证** | 代码路径在 `panel-view.onAttach`（`openSyncDialog(true)`），但预览 harness 不执行真实接入 |
+| R1-2 三组列表可见 | ✅ | L4 `sync-dialog` 场景断言 `sync-group-install/uptodate/skipped` |
+| R1-3 勾选 + 确认后逐条结果 | ✅（组件/模型）| `sync-state` 5 条用例 + 组件渲染；L4 只到 ready 态 |
+| R1-4 命令带 PATH、版本确切 | ✅ | `apply.test.ts` 断言；**变异验证**：去掉 `PATH=` → 1 条红 |
+| R1-5 不再提醒 | ✅（路由）| `/plugin-sync/optout` 往返用例；UI 勾选未在 L4 覆盖 |
+| R2-1 面板行 `data-kind=remote` + 徽标 | ✅ | L4 `panel` 场景 `requireMarkers: projected-badge` |
+| R2-2 离线灰显 + 重连按钮 | ✅ | L4 `row-reconnect` 标记 + CSS `[data-availability=offline]` |
+| R2-3 会话行徽标 | ✅ 代码 / ❌ 外观 | 索引 3 条用例 + 注册门禁；DSH 侧栏不在预览内 |
+| R2-4 会话菜单「重新连接」 | ✅ 代码 / ❌ 外观 | 同上；未注入 `useMenuOpenState`（已记取舍） |
+| R2-5 本地工作区零变化 | ✅ | 既有 729 条用例全绿，未新增本地路径分支 |
+
+**变异自检（本轮自查）**：去掉 `PATH=` → `apply.test.ts` 1 条红；删掉 `action !== 'install'` 过滤 → 1 条红。两条都真实生效。
