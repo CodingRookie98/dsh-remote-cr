@@ -21,10 +21,16 @@ export declare class RemoteCrApiError extends Error {
     readonly code: string;
     readonly detail: string;
     readonly nextActions: readonly string[];
+    /** 服务端给的可照抄命令（没有就是 null）。 */
+    readonly command: string | null;
+    /** 服务端留的远端原文（npm/WSL 输出），没有就是 null。 */
+    readonly logTail: string | null;
     constructor(init: {
         code: string;
         detail: string;
         nextActions?: readonly string[];
+        command?: string;
+        logTail?: string;
     });
 }
 /**

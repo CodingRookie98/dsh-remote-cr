@@ -64,11 +64,13 @@ export declare function SyncDialog(props: {
     readonly hostUpgrade?: {
         readonly phase: 'idle' | 'running' | 'done' | 'failed';
         readonly version?: string;
-        /** 失败要带码 + 下一步（铁律 4）：只显示 detail 等于把可照抄的出路吞掉。 */
+        /** 失败要带码 + 下一步 + 可照抄命令与远端原文（铁律 4）。 */
         readonly failure?: {
             readonly code: string;
             readonly detail: string;
             readonly nextActions: readonly string[];
+            readonly command?: string;
+            readonly logTail?: string;
         };
     };
 }): unknown;

@@ -139,6 +139,10 @@ export interface FailureLike {
     readonly code: string;
     readonly detail: string;
     readonly nextActions: readonly string[];
+    /** 服务端给的可照抄命令（如远端安装命令）；本地化不会覆盖它。 */
+    readonly command?: string;
+    /** 服务端留的远端原文；用于「复制日志」。 */
+    readonly logTail?: string;
 }
 /** 本地化后的失败面：可见文案；宿主原文只进「复制日志」。 */
 export interface LocalizedFailure {

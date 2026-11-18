@@ -106,6 +106,20 @@ export declare function syncTargetOf(target: {
 } | null;
 /** 远端没装 dsh 时不能同步：命令会指向一个不存在的入口（审查 B1）。 */
 export declare function syncBlockedReason(plan: SyncPlanLike): 'no-runtime' | null;
+/**
+ * 失败面的「可照抄」两件东西：命令与远端原文。
+ *
+ * 为什么单独抽出来：`localizeFailure` 会把 nextActions 换成本地化字典文案（`errNext.*`），
+ * 精确命令（含 staging 路径）与 npm 原文只能靠这两个字段原样呈现（2026-11-18 R1 BLK-4）。
+ * 空串一律折成 null：渲染层据此决定要不要画那块，而不是画一个空白框。
+ */
+export declare function hostFailureExtras(failure: {
+    readonly command?: string | null;
+    readonly logTail?: string | null;
+}): {
+    readonly command: string | null;
+    readonly logTail: string | null;
+};
 /** 宿主版本这一行怎么画：null = 旧宿主没这个字段，不渲染（不拿不存在的门禁去拦老版本）。 */
 export declare function hostPanelOf(plan: SyncPlanLike): HostPlan | null;
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */

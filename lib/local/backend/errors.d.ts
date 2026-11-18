@@ -19,6 +19,8 @@ export interface RemoteCrErrorInit {
     nextActions: readonly string[];
     /** 已捕获的日志尾（最多几十行），供「复制日志」按钮使用。 */
     logTail?: string;
+    /** 可照抄的命令（安装/修复用）；与 nextActions 分开，避免被本地化字典覆盖掉。 */
+    command?: string;
     cause?: unknown;
 }
 export declare class RemoteCrError extends Error {
@@ -27,6 +29,7 @@ export declare class RemoteCrError extends Error {
     readonly detail: string;
     readonly nextActions: readonly string[];
     readonly logTail: string;
+    readonly command: string | null;
     constructor(init: RemoteCrErrorInit);
     /** 供「复制日志」按钮一次性拷走的文本。 */
     toReport(): string;

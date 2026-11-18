@@ -20,6 +20,12 @@ export interface ErrEnvelope {
     readonly code: string;
     readonly detail: string;
     readonly nextActions: readonly string[];
+    /**
+     * 可照抄的命令与远端原文。**不能只放 nextActions**：客户端会把 nextActions 换成本地化字典文案，
+     * 精确命令（含 staging 路径）与 npm 原文只有这两个字段能原样带到浏览器（R1 BLK-4）。
+     */
+    readonly command?: string;
+    readonly logTail?: string;
 }
 export type Envelope<T> = OkEnvelope<T> | ErrEnvelope;
 export declare function okEnvelope<T>(value: T): OkEnvelope<T>;
