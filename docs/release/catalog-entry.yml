@@ -1,0 +1,10 @@
+# 提交到 https://github.com/awesome-dsh-plugin/awesome-dsh-plugin
+# 路径：data/plugins/CodingRookie98__dsh-remote-cr.yml
+url: https://github.com/CodingRookie98/dsh-remote-cr
+name: CodingRookie98/dsh-remote-cr
+category: remote
+description:
+  en: 'Moves the whole DeepSeek Harness host into WSL2 or a remote Linux box over SSH: the agent loop, plugins, sessions and tools run on the remote side, while the local GUI only projects workspaces and sessions and keeps real API keys on your machine.'
+  zh: '把 DeepSeek Harness 的宿主整体搬进 WSL2 或远端 Linux（SSH）：agent loop、插件、会话与工具都在目标环境里执行，本地只做工作区/会话投影与凭据代理，真钥匙不出本机。'
+# 可选：GitHub 托管的位图；暂缺 180px 图标，先让它回退到作者头像
+# icon: https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/main/assets/icon-180.png
