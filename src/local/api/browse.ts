@@ -18,7 +18,7 @@ import { readdir } from 'node:fs/promises'
 import { win32 } from 'node:path'
 
 import type { DirEntry, DirListing } from '../../shared/api.ts'
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { describeWslFailure } from '../backend/wsl/diagnosis.ts'
 import { runInDistro, type WslRunOptions, type WslRunResult } from '../backend/wsl/exec.ts'
 
@@ -104,7 +104,7 @@ export async function listLocalDirectory(path: string): Promise<DirListing> {
   try {
     dirents = await readdir(path, { withFileTypes: true })
   } catch (error) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/path-unreadable',
       detail: `读不到本机目录 ${path}：${error instanceof Error ? error.message : String(error)}`,
       nextActions: ['换一个目录', '检查该目录是否存在且当前用户可读'],
@@ -161,14 +161,14 @@ export async function listDistroDirectory(
     })
     // 今天这条分支只解 stderr，于是退化成「ls 退出码 -1」——真机上 stderr 恒为空。
     if (result.stderrText.trimStart().startsWith('ls:')) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/path-unreadable',
         detail: `读不到 ${distro} 内的 ${path}：${result.stderrText.trim()}`,
         nextActions: ['换一个目录', '确认该路径在发行版内存在'],
         logTail: diagnosis.logTail,
       })
     }
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: diagnosis.code,
       detail: diagnosis.detail,
       nextActions: diagnosis.nextActions,

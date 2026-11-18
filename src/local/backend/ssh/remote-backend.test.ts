@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { RemoteDshHandle } from '../handle.ts'
 import type { SshTarget } from './config.ts'
 import { SshRemoteBackend, type ProbeLike, type SshLaunchLike } from './remote-backend.ts'
@@ -92,8 +92,8 @@ test('probe 把连接参数原样交给探测函数，并直接返回它的 prob
   assert.equal(request['deadlineMs'], 1234)
 })
 
-test('探测抛 TeleportError 时原样上抛（相别由 errors.ts 分，不在这里改写）', async () => {
-  const original = new TeleportError({
+test('探测抛 RemoteCrError 时原样上抛（相别由 errors.ts 分，不在这里改写）', async () => {
+  const original = new RemoteCrError({
     code: 'remote/host-key-mismatch',
     detail: '指纹变了',
     nextActions: ['核对指纹'],
@@ -126,7 +126,7 @@ test('探测抛裸 Error 时包成 remote/probe-incomplete，保留原文', asyn
   })
 
   await assert.rejects(backend.probe(), (error: unknown) => {
-    assert.ok(error instanceof TeleportError)
+    assert.ok(error instanceof RemoteCrError)
     assert.equal(error.code, 'remote/probe-incomplete')
     assert.match(error.detail, /spawn ssh ENOENT/)
     assert.match(error.detail, /gcp/)

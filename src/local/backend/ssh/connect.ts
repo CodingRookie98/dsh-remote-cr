@@ -12,7 +12,7 @@
 
 import { readFile } from 'node:fs/promises'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { inspectPrivateKey, type PrivateKeyInspection } from './keyfile.ts'
 import { scanHostKeys } from './keyscan.ts'
@@ -162,7 +162,7 @@ async function inspectIdentity(request: SshConnectRequest): Promise<PrivateKeyIn
   const inspection = inspectPrivateKey(text)
   if ('key' in inspection) {
     if (inspection.key.encrypted && (request.auth.passphrase === undefined || request.auth.passphrase === '')) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/key-passphrase',
         detail: file + ' 是用 ' + String(inspection.key.cipher) + ' 加密的私钥，但这次没有拿到口令，连握手都不必发。',
         nextActions: ['输入私钥口令后重试', '改用 ssh-agent 里已解锁的钥匙', '换一把未加密的私钥'],
@@ -170,7 +170,7 @@ async function inspectIdentity(request: SshConnectRequest): Promise<PrivateKeyIn
     }
     return inspection.key
   }
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/key-unusable',
     detail: file + ' 不能当私钥用：' + inspection.problem.message,
     nextActions: ['改成不带 .pub 的私钥路径', '确认文件是 OpenSSH/PEM 格式（PuTTY 的 .ppk 需要先转换）', '重新生成一对钥匙'],

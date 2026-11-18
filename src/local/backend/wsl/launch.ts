@@ -16,7 +16,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import { OwnedChildren } from './children.ts'
 import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
 import { classifyStartFailure, parseDshEndpoint } from '../dsh-output.ts'
@@ -83,8 +83,8 @@ export function buildLaunchArgs(options: LaunchOptions): string[] {
 const STDIN_EOF_GRACE_MS = 300
 
 /** 看门狗脚本里那两个标记，回收实证靠它们从日志里确认走的是哪条路。 */
-export const WATCHDOG_PID_MARK = 'TELEPORT_WATCHDOG_PID='
-export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
+export const WATCHDOG_PID_MARK = 'REMOTE_CR_WATCHDOG_PID='
+export const WATCHDOG_KILLED_MARK = 'REMOTE_CR_WATCHDOG_KILLED'
 
 /**
  * 把 `dsh web` 包进一个「stdin 一关就自杀」的 bash 看门狗。
@@ -92,7 +92,7 @@ export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
  * 为什么需要它：宿主崩溃/被强杀时走不到 `dispose()`，而 Windows 不会替我们
  * 杀掉 `wsl.exe` 的 distro 侧子进程 —— 远端 dsh 就成了孤儿，下次启动撞端口。
  * 实测（D:/Temp/watchdog-test.cjs）：宿主侧 `child.stdin.destroy()` 之后
- * `portBusy=false count=0`，日志末尾出现 `TELEPORT_WATCHDOG_KILLED`。
+ * `portBusy=false count=0`，日志末尾出现 `REMOTE_CR_WATCHDOG_KILLED`。
  *
  * 这条把「远端生命周期」绑到了「宿主是否还握着管道」上，比事后轮询扫孤儿可靠：
  * 宿主怎么死的都无所谓，管道一断，`cat` 读到 EOF，脚本就把子进程 kill 掉。
@@ -151,7 +151,7 @@ export function buildWatchdogArgs(options: LaunchOptions): string[] {
 /**
  * 启动远端 dsh，等到它打印带 token 的 URL 才 resolve。
  *
- * 绝不静默降级：超时、端口占用、缺 node 都会抛出 `TeleportError`，且带可复制的日志尾。
+ * 绝不静默降级：超时、端口占用、缺 node 都会抛出 `RemoteCrError`，且带可复制的日志尾。
  */
 export async function launchRemoteDsh(options: LaunchOptions): Promise<RemoteDshHandle> {
   const executable = options.executable ?? 'wsl.exe'
@@ -194,7 +194,7 @@ export async function launchRemoteDsh(options: LaunchOptions): Promise<RemoteDsh
       }
       finish(() =>
         reject(
-          new TeleportError({
+          new RemoteCrError({
             code: 'remote/cancelled',
             detail: '用户取消了远端启动',
             nextActions: ['重试'],
@@ -219,7 +219,7 @@ export async function launchRemoteDsh(options: LaunchOptions): Promise<RemoteDsh
     child.on('error', (error) => {
       finish(() =>
         reject(
-          new TeleportError({
+          new RemoteCrError({
             code: 'remote/startup-failed',
             detail: `无法启动 ${executable}：${error.message}`,
             nextActions: ['确认 WSL 已安装且发行版存在', '重试'],

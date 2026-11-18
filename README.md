@@ -1,14 +1,16 @@
 # dsh-remote-cr
 
+**中文** | [English](./README.en.md)
+
 [![CI](https://github.com/CodingRookie98/dsh-remote-cr/actions/workflows/ci.yml/badge.svg)](https://github.com/CodingRookie98/dsh-remote-cr/actions/workflows/ci.yml)
 
 > DeepSeek Harness（DSH）的远程开发插件：**把整个宿主搬到远端（WSL2 / SSH），本地只留一个原生 GUI 和钥匙。**
 >
 > 形态对标 VS Code Remote-SSH / Zed Remote —— 但搬过去的不是「命令」，是 agent 运行时本身。
 
-| 瞬移面板：连接状态、投影工作区、会话 | 添加工作区：双栏工作台 |
+| 「远端工作台」面板：连接状态、投影工作区、会话 | 添加工作区：双栏工作台 |
 |---|---|
-| ![瞬移面板](./docs/assets/panel-ssh.png) | ![添加工作区](./docs/assets/host-wizard-wsl.png) |
+| ![「远端工作台」面板](./docs/assets/panel-ssh.png) | ![添加工作区](./docs/assets/host-wizard-wsl.png) |
 
 截图来自真机 CDP 探针（1440×900），非示意图。
 
@@ -57,17 +59,17 @@ DSH 插件市场里的远程插件多为 **A 型（远端执行）**：agent、�
 
 ```bash
 # 固定版本（推荐）
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.3.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.4.0'
 
 # 或链接本地检出（开发）
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
 ```
 
-装完重启 `dsh web`（或 DSH Desktop），侧栏出现「瞬移」即可使用。本包 `private: true`，通过 GitHub tag / 本地 link 分发，不走 npm publish。
+装完重启 `dsh web`（或 DSH Desktop），侧栏出现「远端工作台」即可使用。本包 `private: true`，通过 GitHub tag / 本地 link 分发，不走 npm publish。
 
 ## 使用
 
-1. **接入远端**：打开「瞬移」面板 → 填 SSH 目标（或选 WSL 发行版）→ 接入。首次会分阶段显示引导进度，可取消。
+1. **接入远端**：打开「远端工作台」面板 → 填 SSH 目标（或选 WSL 发行版）→ 接入。首次会分阶段显示引导进度，可取消。
 2. **添加工作区**：点官方「Add workspace」，或面板里的添加入口 → 左栏选来源 → 右栏选目录 → 「添加此目录」。
 3. **跑长任务**：会话运行在远端，关掉本地窗口任务继续；回来时重连复用同一实例，会话 id 不变。
 
@@ -80,15 +82,16 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 ```
 
 - 四个入口，同一仓库：`./local`（本地宿主半）、`./client`（浏览器半）、`./companion`（远端伴生）、`./installer`（引导器）
-- 宿主半提供 `/teleport/api/*` 路由（来源探测、目录浏览、唤醒、投影、接入与断连），全部只答本机回环
-- **命名分层**：包名与插件 id 是 `dsh-remote-cr`；运行时标识保留 `teleport`（`~/.dsh-teleport`、`DSH_TELEPORT_*`、`/teleport` API 前缀、`data-teleport` DOM），改名不作废既有锚点与配置
+- 宿主半提供 `/remote-cr/api/*` 路由（来源探测、目录浏览、唤醒、投影、接入与断连），全部只答本机回环
+- **命名**：包名、插件 id 与运行时标识统一为 `remote-cr` —— `~/.dsh-remote-cr`、`DSH_REMOTE_CR_*`、`/remote-cr/api`、`data-remote-cr` DOM、`cordis.patch.yml` 行 id 是同一个名字（[ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)）。旧版曾用名 `dsh-teleport` 的兼容读取集中在 `src/local/migration/`，0.5.0 移除
+- **界面语言**：中文与英文（跟随 设置 → 通用 → 语言，即时切换；其余语言回落英文）
 
 ## 开发
 
 ```bash
 pnpm install
 pnpm typecheck                     # 宿主半 + 浏览器半双 tsconfig
-pnpm test                          # node --test（624 条）
+pnpm test                          # node --test（645 条）
 pnpm build && pnpm build:client    # lib/ 是入库产物，改源码后必须重建
 ```
 

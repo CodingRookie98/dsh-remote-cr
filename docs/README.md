@@ -2,6 +2,9 @@
 
 > 本目录记录 `dsh-remote-cr` 的调研、设计与决策。写文档的规则：**结论先行、证据可复现、未验证的明确标注**。
 
+> **命名沿革**：本项目曾用名 `dsh-teleport`，面板曾叫「瞬移」，运行时标识前缀曾为 `teleport`。2026-11-15 按 [ADR-0006](./decisions/ADR-0006-rename-runtime-identifiers.md) 统一为 `remote-cr` / 「远端工作台」（Remote Workbench）。
+> **历史快照不改名**：`research/`、`project/reviews/`、`project/plans/2026-11-15 之前` 是带日期的取证记录，里面的旧名是当时的原话，改写等于伪造记录；现行文档（`design/`、`decisions/`、`proposals/`、README）已全部改名。
+
 ## research/ — 调研与实测
 
 | 文件 | 何时读 |
@@ -23,7 +26,7 @@
 |---|---|
 | [requirements.md](./design/requirements.md) | 需求、用户故事、验收标准、非目标 |
 | [architecture.md](./design/architecture.md) | 总体架构、嵌入路线、后端抽象、凭据代理、安装器、后端矩阵（§14） |
-| [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、瞬移面板、添加工作区（§4 四选一已被 §10 双栏工作台取代）、状态视觉映射、同步面板 |
+| [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、「远端工作台」面板、添加工作区（§4 四选一已被 §10 双栏工作台取代）、状态视觉映射、同步面板 |
 | [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M5） |
 | [keep-alive.md](./design/keep-alive.md) | **驻留模式**：`keepAlive` 控制行、实例登记、TTL、与 A7「不留孤儿」的冲突 |
 
@@ -42,7 +45,7 @@
 | [ADR-0002-backends-wsl-ssh.md](./decisions/ADR-0002-backends-wsl-ssh.md) | WSL + SSH 双后端（Docker 已改为 M5，见 ADR-0005） |
 | [ADR-0003-embedding-strategy.md](./decisions/ADR-0003-embedding-strategy.md) | 嵌入路线：**采用 C 型**（复用官方 Remote 内核 + 自建 transport adapter） |
 | [ADR-0004-plugin-sync.md](./decisions/ADR-0004-plugin-sync.md) | 插件同步：远端原生安装优先、三分类、不覆盖、凭据不同步 |
-| [ADR-0005-workspace-entry-ui.md](./decisions/ADR-0005-workspace-entry-ui.md) | 工作区入口与身份：另起瞬移面板、顶掉 directoryFlow、WSL=UNC / SSH=锚点 |
+| [ADR-0005-workspace-entry-ui.md](./decisions/ADR-0005-workspace-entry-ui.md) | 工作区入口与身份：另起「远端工作台」面板、顶掉 directoryFlow、WSL=UNC / SSH=锚点 |
 
 ## proposals/ — 方案 RFC（评审中的契约变更）
 

@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
 import { ProjectionService, defaultWarmupMs, type ConnectTarget } from './service.ts'
 import { TERMINAL_WARMUP_MS } from './probe.ts'
@@ -115,8 +115,8 @@ test('导入：连接没有 anchorFor 时抛 remote/not-attached（WSL 后端不
   )
 })
 
-function transportLoss(): TeleportError {
-  return new TeleportError({
+function transportLoss(): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/tunnel-unavailable',
     detail: 'RPC workspace/create 在 30s 内没有完成：socket hang up',
     nextActions: ['等隧道恢复后重试'],
@@ -341,7 +341,7 @@ test('业务拒绝不触发重连：相位仍是 connected，不排重试', asyn
   const { service, rpc, timers } = rig()
   await service.attach(TARGET, ATTACH)
   rpc.failNext(
-    new TeleportError({ code: 'remote/unknown', detail: '远端拒绝：workspace 路径不可写', nextActions: ['换个目录'] }),
+    new RemoteCrError({ code: 'remote/unknown', detail: '远端拒绝：workspace 路径不可写', nextActions: ['换个目录'] }),
   )
   await assert.rejects(() => service.attach(TARGET, ATTACH), /remote\/unknown/)
   assert.equal(service.link, 'connected', '业务拒绝不是断线，别把用户拽进重试')
@@ -365,7 +365,7 @@ test('从没连过就点重连：抛 remote/disconnected，不静默成功', asy
   const { service } = rig()
   assert.equal(service.link, 'idle')
   await assert.rejects(() => service.reconnectNow(), (error: unknown) => {
-    assert.ok(error instanceof TeleportError)
+    assert.ok(error instanceof RemoteCrError)
     assert.equal(error.code, 'remote/disconnected')
     assert.ok(error.nextActions.length > 0, '失败必须给出可复制的下一步')
     return true
@@ -442,15 +442,15 @@ test('取消接入：signal 递给连接层，失败后进度归 null 且连接�
     async connect(_target, control) {
       seen.push(control?.signal)
       controller.abort()
-      throw new TeleportError({ code: 'remote/cancelled', detail: '已取消这次接入', nextActions: ['重新点一次「接入」'] })
+      throw new RemoteCrError({ code: 'remote/cancelled', detail: '已取消这次接入', nextActions: ['重新点一次「接入」'] })
     },
   })
   const caught = await service.attach(TARGET, ATTACH, { signal: controller.signal }).then(
     () => undefined,
     (error: unknown) => error,
   )
-  assert.ok(caught instanceof TeleportError, '取消要如实抛错，不能静默成功')
-  assert.equal((caught as TeleportError).code, 'remote/cancelled')
+  assert.ok(caught instanceof RemoteCrError, '取消要如实抛错，不能静默成功')
+  assert.equal((caught as RemoteCrError).code, 'remote/cancelled')
   assert.deepEqual(seen, [controller.signal], 'signal 必须真的递到连接层，否则取消只是把按钮变灰')
   assert.equal(service.attachProgress, null)
   assert.equal(service.connected, false)
@@ -495,7 +495,7 @@ test('取消发生在 workspace/create 返回之后：抛 remote/cancelled，且
   release()
   await assert.rejects(
     running,
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/cancelled',
   )
   // 复现 3 的真问题：取消回执说「已取消」，投影表却留下一条 online 工作区。
   assert.equal(store.workspaces().length, 0, '取消之后不许留下在线条目')
@@ -531,7 +531,7 @@ test('并发第二次 attach 被 remote/attach-busy 拒绝，且不覆盖第一�
   await new Promise((resolve) => setImmediate(resolve))
   await assert.rejects(
     service.attach({ ...TARGET, distro: 'other' }, { remotePath: TARGET.remoteRoot, localPath: 'C:/anchor/y' }),
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/attach-busy',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/attach-busy',
   )
   assert.notEqual(service.attachProgress, null, '第一次的进度不该被清空')
   assert.deepEqual(service.attachProgress?.target, TARGET, '进度仍指向第一次的目标')
@@ -577,7 +577,7 @@ test('取消发生在 session/list 期间：抛 remote/cancelled，且投影表�
   releaseSessions()
   await assert.rejects(
     running,
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/cancelled',
   )
   // R1 #2 C3：`session/list` 段取消时若 workspace 已写进去，面板会看到在线条目而请求报已取消。
   assert.equal(store.workspaces().length, 0, 'session/list 段取消也不许写投影')
@@ -627,7 +627,7 @@ test('取消发生在 attach 段：本次新建的连接要被 dispose，而不�
   release()
   await assert.rejects(
     running,
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/cancelled',
   )
   // R1 #2 C5：取消后若连接还在、远端还在监听，就是「取消了什么也没发生」的假象。
   assert.equal(disposed, 1, '取消要回收本次新建的连接')

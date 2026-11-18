@@ -9,6 +9,8 @@
  * 纪律：本文件只做「把组件挂到洞上」，不碰业务状态。
  */
 
+import { t } from './i18n.ts'
+
 /** 一个可注册的 slot 洞。 */
 export interface SlotRegistration {
   readonly name: string
@@ -33,14 +35,14 @@ export interface RegistrationContext {
 }
 
 /** 三个要被挂上去的组件。 */
-export interface TeleportComponents {
+export interface RemoteCrComponents {
   readonly panel: unknown
   readonly icon: unknown
   readonly flow: unknown
 }
 
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
-export const PANEL_ID = 'teleport'
+export const PANEL_ID = 'remote-cr'
 
 /** 侧栏顺序：排在官方面板之后，但比其他插件靠前。 */
 export const PANEL_ORDER = 20
@@ -60,7 +62,7 @@ export const DIRECTORY_FLOW_SLOTS = [
  * 三处注册都包在 `ctx.effect` 里：插件卸载时 slot 必须跟着摘掉，否则重新加载会撞
  * `duplicate`，或者留下一个点不动的按钮。
  */
-export function registerSlots(ctx: RegistrationContext, components: TeleportComponents): string[] {
+export function registerSlots(ctx: RegistrationContext, components: RemoteCrComponents): string[] {
   const mounted: string[] = []
 
   const track = (name: string, dispose: () => void): (() => void) => {
@@ -97,7 +99,7 @@ export function registerSlots(ctx: RegistrationContext, components: TeleportComp
         own(() =>
           ctx.slots.inject('sidebar.panellist', () =>
             ctx.slots.register(
-              { name: 'sidebar.panellist', id: PANEL_ID, order: PANEL_ORDER, label: () => '瞬移' },
+              { name: 'sidebar.panellist', id: PANEL_ID, order: PANEL_ORDER, label: () => t('panel.title') },
               components.icon,
             ),
           ),

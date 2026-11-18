@@ -4,7 +4,7 @@
  * 背景：驻留模式让远端 dsh 在本地离开后继续跑，但新进程没有内存里的 `#detached`，
  * 直接再启动会撞端口（实测重连卡住）。登记文件是跨进程的唯一真相源：
  *
- *   ~/.dsh-teleport/instances/<anchorId>.json
+ *   ~/.dsh-remote-cr/instances/<anchorId>.json
  *   { version, pid, port, token, startedAt, argvPrefix }
  *
  * 三条硬规则：
@@ -17,7 +17,7 @@ import { posix } from 'node:path'
 import { shellQuote } from '../posix-probe.ts'
 
 export const INSTANCE_VERSION = 1
-export const INSTANCE_DIR = '.dsh-teleport/instances'
+export const INSTANCE_DIR = '.dsh-remote-cr/instances'
 export const DEFAULT_INSTANCE_TTL_MS = 30 * 60_000
 
 export interface RemoteInstance {

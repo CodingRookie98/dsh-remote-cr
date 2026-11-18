@@ -28,7 +28,7 @@ const REMOTE_ROOT = RAW_ROOT.startsWith('/') ? RAW_ROOT : '/' + RAW_ROOT
 const HOME_DIR = process.env['USERPROFILE'] ?? process.env['HOME'] ?? ''
 const REMOTE_PORT = Number(process.env['REMOTE_PORT'] ?? '8967')
 /** 隔离档的远端目录（相对远端 home）；`hostKey` 与 `live.ts` 里的 `'ssh:' + alias` 一致。 */
-const ISOLATED_TAIL = '.dsh-teleport/ssh:' + ALIAS
+const ISOLATED_TAIL = '.dsh-remote-cr/ssh:' + ALIAS
 /** 负控：把隔离那一档拨回 `reuse`。期望变红的正是「隔离真的生效」那四条。 */
 const NEGATIVE = process.env['NEGATIVE_CONTROL'] === '1'
 
@@ -118,7 +118,7 @@ const remoteHome = (await sshRun('printf %s "$HOME"')).stdout.trim()
 const isolatedDir = remoteHome + '/' + ISOLATED_TAIL
 
 // 先把隔离目录清掉：不清的话「隔离目录在远端落地」可能是上一次跑留下的，断言就空了。
-if (isolatedDir.includes('.dsh-teleport/')) await sshRun('rm -rf ' + JSON.stringify(isolatedDir))
+if (isolatedDir.includes('.dsh-remote-cr/')) await sshRun('rm -rf ' + JSON.stringify(isolatedDir))
 
 const target: ConnectTarget = { backend: 'ssh', alias: ALIAS, port: REMOTE_PORT, remoteRoot: REMOTE_ROOT }
 

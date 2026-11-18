@@ -29,7 +29,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { createCookieSocket, type CookieSocket } from './ws.ts'
 
 /** 远端 `dsh web` 的地址。 */
@@ -141,13 +141,13 @@ export async function handshakeRemote(
   } catch (error) {
     // 用户取消 ≠ 隧道断：混在一起会让「点取消」被当成传输层失败（R1-B-1 的同族问题）。
     if (options.signal !== undefined && options.signal.aborted) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/cancelled',
         detail: '已取消这次接入（握手阶段）',
         nextActions: ['重新点一次「接入」', '换个目标再试'],
       })
     }
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/tunnel-unavailable',
       detail: '连不上远端 dsh 的 /connect：' + (error instanceof Error ? error.message : String(error)),
       nextActions: ['确认远端 dsh 仍在运行', '重新读取启动日志里的 token', '重试'],
@@ -155,7 +155,7 @@ export async function handshakeRemote(
   }
 
   if (response.status !== 302 && response.status !== 303) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/auth-failed',
       detail: '远端 /connect 返回 ' + String(response.status) + '，token 或交互模式被拒',
       nextActions: ['从远端启动日志里重新取 token', '确认没有第二个实例在跑'],
@@ -166,7 +166,7 @@ export async function handshakeRemote(
   const raw = setCookie[0] ?? response.headers.get('set-cookie') ?? ''
   const cookie = raw.split(';', 1)[0] ?? ''
   if (cookie === '' || !cookie.includes('=v2.')) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/auth-failed',
       detail: '远端 /connect 没有下发 v2 签名 Cookie（收到 ' + JSON.stringify(raw) + '）',
       nextActions: ['确认远端 dsh 版本与本地一致', '重试'],
@@ -239,13 +239,13 @@ export class RemoteRpc {
       // 用户取消 ≠ 传输层断：`AbortSignal.any` 让两种原因都落到这里。混在一起的话，
       // 「点取消」会被 `isTransportLoss()` 判成隧道断，进而触发自动重连（R1-B-1/m-2）。
       if (signal !== undefined && signal.aborted) {
-        throw new TeleportError({
+        throw new RemoteCrError({
           code: 'remote/cancelled',
           detail: '已取消这次接入（RPC ' + endpoint + '）',
           nextActions: ['重新点一次「接入」'],
         })
       }
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/tunnel-unavailable',
         detail: 'RPC ' + endpoint + ' 在 ' + String(Math.round(timeoutMs / 1000)) + 's 内没有完成：'
           + (error instanceof Error ? error.message : String(error)),
@@ -258,7 +258,7 @@ export class RemoteRpc {
     }
 
     if (!response.ok) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: 'RPC ' + endpoint + ' 返回 HTTP ' + String(response.status),
         nextActions: ['重连', '查看远端日志'],
@@ -269,7 +269,7 @@ export class RemoteRpc {
     try {
       envelope = await response.json()
     } catch (error) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: 'RPC ' + endpoint + ' 的响应不是 JSON：' + (error instanceof Error ? error.message : String(error)),
         nextActions: ['重连'],
@@ -282,7 +282,7 @@ export class RemoteRpc {
       // 「未知错误」，而真正的答案（`workspace/invalid-path`）只埋在 detail 一句话里；
       // 面板按 code 做判定的地方也就无从下手。这里把远端码规整成本地码：
       // `workspace/invalid-path` → `remote/workspace-invalid-path`（非 `[a-z0-9-]` 一律折成 `-`）。
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: rejectionCode(result.error.code),
         detail: 'RPC ' + endpoint + ' 被远端拒绝：' + result.error.code + ' ' + result.error.message,
         nextActions: ['查看远端日志', '重试'],
@@ -303,7 +303,7 @@ export class RemoteRpc {
    * `cancel()` 直接往收件箱塞一个 `end` 把等待者唤醒，再把 socket 关掉。
    */
   openStream(endpoint: string, payload: unknown, uplink?: AsyncIterable<unknown>): StreamHandle {
-    const streamId = 'teleport-' + randomUUID()
+    const streamId = 'remote-cr-' + randomUUID()
     const inbox: StreamEvent[] = []
     let wake: (() => void) | undefined
     let ended = false
@@ -407,7 +407,7 @@ export class RemoteRpc {
         return
       }
       live.addEventListener('open', (() => resolve()) as never, { once: true })
-      const timer = setTimeout(() => reject(new TeleportError({
+      const timer = setTimeout(() => reject(new RemoteCrError({
         code: 'remote/tunnel-unavailable',
         detail: '逻辑流 ' + endpoint + ' 的 WS 在 10s 内没建立',
         nextActions: ['重连', '查看远端日志'],
@@ -473,7 +473,7 @@ export function slugOf(code: string): string {
 
 export function readResult(envelope: unknown, endpoint: string, rpcId: string): RemoteResult<unknown> {
   if (typeof envelope !== 'object' || envelope === null) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/unknown',
       detail: 'RPC ' + endpoint + ' 的响应不是对象',
       nextActions: ['重连'],
@@ -481,7 +481,7 @@ export function readResult(envelope: unknown, endpoint: string, rpcId: string): 
   }
   const record = envelope as Record<string, unknown>
   if (record['rpcId'] !== rpcId) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/unknown',
       detail: 'RPC ' + endpoint + ' 的 rpcId 不匹配（发出 ' + rpcId + '，收到 ' + JSON.stringify(record['rpcId']) + '）',
       nextActions: ['重连'],
@@ -489,7 +489,7 @@ export function readResult(envelope: unknown, endpoint: string, rpcId: string): 
   }
   const result = record['result']
   if (typeof result !== 'object' || result === null) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/unknown',
       detail: 'RPC ' + endpoint + ' 的响应缺少 result',
       nextActions: ['重连'],

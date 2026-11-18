@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import {
   ANCHOR_MAP_FILENAME,
   anchorDirFor,
@@ -26,7 +26,7 @@ const TARGET: SshTarget = {
 }
 
 async function home(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'teleport-anchor-'))
+  return mkdtemp(join(tmpdir(), 'remote-cr-anchor-'))
 }
 
 test('首次落实：建出锚点目录与 map.json，localPath 落在锚点里', async () => {
@@ -82,7 +82,7 @@ test('非绝对路径与越界上跳一律拒绝（不是夹到根）', async ()
     await assert.rejects(
       () => resolveAnchorPath({ homeDir, target: TARGET, remotePath }),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/path-unreadable')
         assert.ok(error.detail.includes(remotePath), error.detail)
         return true
@@ -110,7 +110,7 @@ test('锚点目录记着另一台机器时结构化报错，且不改动那份�
   await assert.rejects(
     () => resolveAnchorPath({ homeDir, target: TARGET, remotePath: '/w' }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/workspace-unwritable')
       assert.ok(error.detail.includes('锚点目录不可用'), error.detail)
       return true
@@ -129,7 +129,7 @@ test('describeAnchors：一条好锚点给出 describeAnchor 原文，坏锚点�
   const homeDir = await home()
   const resolved = await resolveAnchorPath({ homeDir, target: TARGET, remotePath: '/home/hui/proj' })
   // 再造一份坏掉的锚点：map.json 里 target 缺 host，parseAnchorMap 会拒
-  const brokenDir = join(homeDir, '.dsh-teleport', 'anchors', 'ffffffffffffffff')
+  const brokenDir = join(homeDir, '.dsh-remote-cr', 'anchors', 'ffffffffffffffff')
   await mkdir(brokenDir, { recursive: true })
   await writeFile(join(brokenDir, ANCHOR_MAP_FILENAME), JSON.stringify({ version: 1 }), 'utf8')
 

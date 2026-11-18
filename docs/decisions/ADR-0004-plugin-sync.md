@@ -63,7 +63,7 @@
 
 ## 复用官方机制，不自建安装协议
 
-DSH 已经把安装能力暴露成 Remote 服务，teleport 不需要自己实现一遍：
+DSH 已经把安装能力暴露成 Remote 服务，dsh-remote-cr 不需要自己实现一遍：
 
 - `packages/boot/plugin-manager/src/index.ts:207` —— `export class PluginManager extends TypertRemoteService`，13 个 `@Remote` 方法。
 - `listBundles()`（`index.ts:315-386`）返回 `BundleInfo[]`，字段含 `name/official/availability('profile'|'installation'|'missing')/version/enabled/installed/source/installTarget`。**这就是「远端已装什么、缺什么」的权威来源**——不读远端 `package.json` 猜。
@@ -76,7 +76,7 @@ DSH 已经把安装能力暴露成 Remote 服务，teleport 不需要自己实�
 
 > `plugin_manager <args>. Profile changes persist across sessions; installed Host code runs outside the workspace sandbox.`
 
-远端自动安装会撞上这个审批 → teleport 必须把它**桥到本地 GUI** 让人点，不能在远端静默批准。同时 pnpm 11 的 build script 要显式 `allowBuilds` 表态，未表态的会在 `pendingBuilds` 里返回。
+远端自动安装会撞上这个审批 → dsh-remote-cr 必须把它**桥到本地 GUI** 让人点，不能在远端静默批准。同时 pnpm 11 的 build script 要显式 `allowBuilds` 表态，未表态的会在 `pendingBuilds` 里返回。
 
 ## 兼容性判定的正确写法（修正一条既有认知）
 
@@ -98,11 +98,11 @@ function unmetRequirements(fields, runtimeVersion) {
 
 即：**有 `engines.dsh` 则单独决定、忽略 `peerDependencies`**；否则校验 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` 的 peer range（`includePrerelease: true`；`workspace:^|~|*` 视为当前 runtime 版本）。不满足时 `installBundle` 抛 `ManagementFailure('incompatible-version')`，`loadProfileDirectory` 记入 `skippedBundles`（不中断其它 bundle）。
 
-→ **teleport 的兼容声明必须写成 `engines.dsh` 或 `@deepseek-ai/dsh-*` peerDependencies**，不是 `dsh.compatibility.dshReleases`。
+→ **dsh-remote-cr 的兼容声明必须写成 `engines.dsh` 或 `@deepseek-ai/dsh-*` peerDependencies**，不是 `dsh.compatibility.dshReleases`。
 
 ## `reuse` 环境探测契约（R1-10 / R1-22）
 
-`milestones.md` M0 出口只写「探测远端 dsh 版本、profile 指纹、已装插件集合」，但没说**每个字段从哪来、缺失时算什么**。R1-22 指出这会让 M1 实现者自行假设。本节把探测面固化成三组，并区分「官方已有读取方」与「teleport 自建派生量」——后者不得伪装成官方能力。
+`milestones.md` M0 出口只写「探测远端 dsh 版本、profile 指纹、已装插件集合」，但没说**每个字段从哪来、缺失时算什么**。R1-22 指出这会让 M1 实现者自行假设。本节把探测面固化成三组，并区分「官方已有读取方」与「dsh-remote-cr 自建派生量」——后者不得伪装成官方能力。
 
 ### 1. 探测字段清单
 
@@ -111,12 +111,12 @@ function unmetRequirements(fields, runtimeVersion) {
 | P1 | `runtime.version` | `getDshRuntimeVersion()`（`packages/boot/app-boot/src/plugin-compatibility.ts:44`），取 app-boot 包自身版本 | 官方 | 探测失败 → 整体判 `unknown`，**不回落**到本地版本 |
 | P2 | `runtime.node` | 远端 `process.versions.node`（经 companion 上报） | 运行时实测 | 记 `null`，仅影响提示文案，不参与兼容判定 |
 | P3 | `bundles[]` | `listBundles()` → `BundleInfo[]`（`packages/boot/plugin-manager/src/types.ts:56`）：`name` / `official` / `version` / `enabled` / `installed` / `source` / `availability` / `installTarget{spec,version}` | 官方 | 探测失败 → `bundles: null`，判 `unknown` |
-| P4 | `bundles[].compat` | 对每个 bundle 的 manifest 跑 `plugin-compatibility.ts:55-74` 的同一判定（有 `engines.dsh` 则只看它，否则看 `@deepseek-ai/dsh*` peer range，`includePrerelease: true`） | 官方判定逻辑，teleport 侧复算 | 单项记 `unknown`，不整体否决 |
+| P4 | `bundles[].compat` | 对每个 bundle 的 manifest 跑 `plugin-compatibility.ts:55-74` 的同一判定（有 `engines.dsh` 则只看它，否则看 `@deepseek-ai/dsh*` peer range，`includePrerelease: true`） | 官方判定逻辑，dsh-remote-cr 侧复算 | 单项记 `unknown`，不整体否决 |
 | P5 | `exemptions[]` | profile 的 `compatibility.json`（`PROFILE_COMPATIBILITY_FILENAME`，`profile-compatibility.ts`）：`exemptions` 映射 + `warnings` + `rewritable` | 官方 | 文件缺失 = 无授权（官方语义），**不是**探测失败 |
-| P6 | `profile.fingerprint` | **teleport 自建**：对 profile 目录下 `bundles` 排序后的 `(name, version, source, installTarget.spec)` 做 canonical JSON 的 SHA-256；**不含** mtime、绝对路径、`enabled` | 派生量 | 任一 bundle 字段缺失 → 指纹为 `null`，降级为「按 P3 逐项比对」 |
+| P6 | `profile.fingerprint` | **dsh-remote-cr 自建**：对 profile 目录下 `bundles` 排序后的 `(name, version, source, installTarget.spec)` 做 canonical JSON 的 SHA-256；**不含** mtime、绝对路径、`enabled` | 派生量 | 任一 bundle 字段缺失 → 指纹为 `null`，降级为「按 P3 逐项比对」 |
 | P7 | `profile.dir` | 远端 profile 绝对路径（local / remote 两侧各记一份） | 实测 | 缺失即探测失败（无法定位 profile） |
 
-**P6 的边界必须写清**：DSH 检出中**没有**官方 profile 指纹 API（`grep -rn fingerprint packages/boot` 无相关读取方）。指纹是 teleport 为了「快速判等」自建的派生量，只能用于**加速**，不能用于**授权**：判定结论永远回到 P3+P4+P5 的逐项比对。若指纹相同但逐项比对不一致，以逐项比对为准并记一条 `fingerprint-drift` 诊断。
+**P6 的边界必须写清**：DSH 检出中**没有**官方 profile 指纹 API（`grep -rn fingerprint packages/boot` 无相关读取方）。指纹是 dsh-remote-cr 为了「快速判等」自建的派生量，只能用于**加速**，不能用于**授权**：判定结论永远回到 P3+P4+P5 的逐项比对。若指纹相同但逐项比对不一致，以逐项比对为准并记一条 `fingerprint-drift` 诊断。
 
 ### 2. 判定与差异提示
 

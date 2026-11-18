@@ -21,13 +21,27 @@ export type WorkspaceSource = (typeof WORKSPACE_SOURCES)[number]
  */
 export type SourceAvailability = 'available' | 'planned' | 'unavailable'
 
+/**
+ * 不可用原因（**id，不是文案**）。
+ *
+ * 双语要求（ADR-0007 §1）：共享层只产出 id，文案由客户端字典渲染。
+ * 这里曾直接返回中文句子，导致英文界面下四个来源的标题与原因一直是中文（Delta-4 U1）。
+ */
+export type SourceReasonId =
+  | 'none'
+  | 'wsl-missing'
+  | 'wsl-no-distro'
+  | 'wsl-probe-error'
+  | 'ssh-no-host'
+  | 'docker-planned'
+
 export interface SourceOption {
   readonly id: WorkspaceSource
-  /** 面板上的短标签。 */
-  readonly label: string
   readonly availability: SourceAvailability
-  /** 灰显/禁用时的原因，同时作为 tooltip 与无障碍描述；可用时为空串。 */
-  readonly reason: string
+  /** 灰显/禁用原因的 id；可用时为 `none`。 */
+  readonly reasonId: SourceReasonId
+  /** 宿主探测到的**原文**（仅 `wsl-probe-error`）：只作为原因的补充说明，不参与翻译。 */
+  readonly reasonDetail?: string
 }
 
 /**
@@ -39,11 +53,11 @@ export interface SourceOption {
 export function wslUnavailableReason(input: {
   readonly wslProbeError?: string | null
   readonly wslDistroCount?: number
-}): string {
+}): { readonly reasonId: SourceReasonId; readonly reasonDetail?: string } {
   const probe = input.wslProbeError
-  if (typeof probe === 'string' && probe !== '') return probe
-  if (input.wslDistroCount === 0) return '没有已安装的发行版（在 PowerShell 里跑 wsl --install）'
-  return '未检测到可用的 wsl.exe，或 wsl.exe 无法列出发行版'
+  if (typeof probe === 'string' && probe !== '') return { reasonId: 'wsl-probe-error', reasonDetail: probe }
+  if (input.wslDistroCount === 0) return { reasonId: 'wsl-no-distro' }
+  return { reasonId: 'wsl-missing' }
 }
 
 /**
@@ -66,26 +80,21 @@ export function sourceOptions(input: {
   /** 已探测到的发行版数量；用来区分上面两种情况。 */
   readonly wslDistroCount?: number
 }): SourceOption[] {
-  const wslReason = wslUnavailableReason(input)
+  const wsl = wslUnavailableReason(input)
   return [
-    { id: 'local', label: '本机目录', availability: 'available', reason: '' },
+    { id: 'local', availability: 'available', reasonId: 'none' },
     input.wslAvailable
-      ? { id: 'wsl', label: 'WSL 发行版', availability: 'available', reason: '' }
+      ? { id: 'wsl', availability: 'available', reasonId: 'none' }
       : {
           id: 'wsl',
-          label: 'WSL 发行版',
           availability: 'unavailable',
-          reason: wslReason,
+          reasonId: wsl.reasonId,
+          ...(wsl.reasonDetail === undefined ? {} : { reasonDetail: wsl.reasonDetail }),
         },
     input.sshAvailable === true
-      ? { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' }
-      : {
-          id: 'ssh',
-          label: 'SSH 远端',
-          availability: 'unavailable',
-          reason: '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）',
-        },
-    { id: 'docker', label: 'Docker 容器', availability: 'planned', reason: '计划在 M5' },
+      ? { id: 'ssh', availability: 'available', reasonId: 'none' }
+      : { id: 'ssh', availability: 'unavailable', reasonId: 'ssh-no-host' },
+    { id: 'docker', availability: 'planned', reasonId: 'docker-planned' },
   ]
 }
 
@@ -96,6 +105,6 @@ export function selectableSources(options: readonly SourceOption[]): WorkspaceSo
 
 /** 供日志与断言的一行稳定描述。 */
 export function describeSource(option: SourceOption): string {
-  const suffix = option.availability === 'available' ? '' : ` (${option.availability}: ${option.reason})`
-  return `${option.id}=${option.label}${suffix}`
+  const suffix = option.reasonId === 'none' ? '' : ` (${option.availability}: ${option.reasonId})`
+  return `${option.id}${suffix}`
 }

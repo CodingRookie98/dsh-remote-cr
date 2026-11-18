@@ -66,7 +66,7 @@
 | 后端 | 注册身份 | 理由 |
 |---|---|---|
 | **WSL** | UNC 直挂：`\\wsl.localhost\<distro>\home\...` | 实测 `fs.realpath` + `stat().isDirectory()` 都通过 → **UNC 就是「本机真实目录」**，官方工作区机制（含 `attachSession` 的 cwd 校验）全可用 |
-| **SSH** | 本地锚点目录 `~/.dsh-teleport/anchors/<hash>/` | 远端路径不在本机，只能靠锚点满足 `realpath` 契约；真实远端路径存插件存储 |
+| **SSH** | 本地锚点目录 `~/.dsh-remote-cr/anchors/<hash>/` | 远端路径不在本机，只能靠锚点满足 `realpath` 契约；真实远端路径存插件存储 |
 | **Docker** | 同 SSH（锚点） | 接口位已留，实现留到最后一个里程碑 |
 
 **硬约束证据**：
@@ -94,7 +94,7 @@
 
 ## 后果
 
-- requirements A1 的判据要改写：不是「远端工作区出现在本地侧栏」，而是「远端工作区出现在 `teleport` 面板，且与本地工作区在同一视图里可比较、可切换」。
+- requirements A1 的判据要改写：不是「远端工作区出现在本地侧栏」，而是「远端工作区出现在 `dsh-remote-cr` 面板，且与本地工作区在同一视图里可比较、可切换」。
 - 需要一个新文档 `docs/design/ui-design.md` 描述线框、四选一流程、状态与失败态。
 - `local` 分支自写目录浏览器，走**插件自己的 webServer 路由**读目录；**不能**复用 `ctx.uiWorkspace.listDirectory`——本机 loopback 宿主上 `directoryPicker` 的 capability 是 `native`（只有 `pick`），调 `list` 直接抛 `directory-picker/unavailable`（spike V8）。因此 `@deepseek-ai/dsh-client-ui-workspace` 仍进 `dsh.client.inject`（用它的 `pickDirectory` 做本机系统选择器回退），但 **不依赖** `ui-directory-picker-browse`。
 - M0 的槽位原型任务（`milestones.md` M0 第 2 行）范围：`sidebar.panellist` + `main` + 顶掉两个 directoryFlow hole + 自写 `local` 浏览器。**已完成**（`ui-design.md` §9.1 V1/V2/V6）。
@@ -104,7 +104,7 @@
 已验证：
 
 - `priority: -1` 真能顶掉官方 `directoryFlow`：两个 hole 的 entry 表同时存在 -1 与 0，注册不抛错；点「Add workspace」后官方 picker 未出现，渲染我们的组件。
-- `sidebar.panellist` + `main` 配对可用：panellist 出现 `teleport`，`mainKeys` 含 `teleport`，点击后我们的面板挂载。
+- `sidebar.panellist` + `main` 配对可用：panellist 出现 `dsh-remote-cr`，`mainKeys` 含 `dsh-remote-cr`，点击后我们的面板挂载。
 - 深引官方 picker 不可行，自写 `local` 浏览器路径成立（证据见「决策 2」）。
 - UNC 路径可作工作区：`realpath` 恒等、`createWorkspace` 成功、`attachSession` 通过、`session header.cwd` 原样落盘；`system-prompt/assemble` prepend 监听可把模型看到的 cwd 投影成 `/home/...`。
 
@@ -131,7 +131,7 @@
 
 **决策 2 的形态变更，不是决策反转**：`priority: -1` 顶掉两个 `directoryFlow` hole 的机制不变（V1 仍然成立），变的是洞里的东西——「四选一卡片 + 翻页」改为**左栏常驻 + 右栏目录浏览器 + 底部固定动作**；`local` 分支仍走插件自有路由列举目录（决策 2 的技术前提未变）。
 
-**新增决策 6 · WSL 分支必须先唤醒再浏览**：`/sources` 只能证明「列得出来」，不能证明「起得来」。所以在选中发行版时调 `POST /teleport/api/wsl/wake`（`wsl.exe -d <distro> --exec true`，60s 超时——冷启动实测 >20s，20s 会把冷启动判成失败；另设 `wsl/timeout` 码把「我们自己杀掉的冷启动」与「发行版起不来」分开；只缓存成功结果 60s）；失败**不进浏览屏**，就地给 `WslDiagnosis`（码 / 人话 / `Error code:` 原文 / 下一步 / 原文尾巴）。
+**新增决策 6 · WSL 分支必须先唤醒再浏览**：`/sources` 只能证明「列得出来」，不能证明「起得来」。所以在选中发行版时调 `POST /remote-cr/api/wsl/wake`（`wsl.exe -d <distro> --exec true`，60s 超时——冷启动实测 >20s，20s 会把冷启动判成失败；另设 `wsl/timeout` 码把「我们自己杀掉的冷启动」与「发行版起不来」分开；只缓存成功结果 60s）；失败**不进浏览屏**，就地给 `WslDiagnosis`（码 / 人话 / `Error code:` 原文 / 下一步 / 原文尾巴）。
 
 依据（真机 2026-11-14）：发行版已停止且 vhdx 失效时 `wsl.exe -d ubuntu_dev --exec ls -1aF -- /` 给 `exitCode=-1`、**stderr 为空**、stdout 是 **UTF-16LE** 的挂载失败 + `Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG`。旧实现只看 stderr，于是用户看到的是「ls 退出码 -1」。
 

@@ -57,7 +57,7 @@ function check(id, ok, detail) {
 
   // 负控：把 distro 名改坏，任何一条 UNC 都不该成立
   const distro = NEG ? DISTRO + '-no-such-distro' : DISTRO
-  const candidates = uncCandidates(distro, home + '/.dsh-teleport-unc-probe')
+  const candidates = uncCandidates(distro, home + '/.dsh-remote-cr-unc-probe')
 
   console.log('==> UNC-1/2 realpath 与 stat')
   let real = undefined

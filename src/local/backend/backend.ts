@@ -7,7 +7,7 @@
  * 内部的private，泄漏到接口里就等于把 M2 挡在门外。
  */
 
-import type { TeleportError } from './errors.ts'
+import type { RemoteCrError } from './errors.ts'
 import type { RemoteDshHandle } from './handle.ts'
 
 export type BackendKind = 'wsl' | 'ssh' | 'docker'
@@ -48,7 +48,7 @@ export interface RemoteBackend {
 }
 
 /** 探测/启动可能失败的统一形态——上层只认这个，不用挨个 catch 杂七杂八。 */
-export function isTeleportFailure(value: unknown): value is TeleportError {
+export function isRemoteCrFailure(value: unknown): value is RemoteCrError {
   return (
     typeof value === 'object' &&
     value !== null &&

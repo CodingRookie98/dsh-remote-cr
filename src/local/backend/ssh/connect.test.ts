@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { connectRemote, describeStoredHostKeys } from './connect.ts'
 import { fingerprintOfKeyBlob, hostKeysPath, knownHostsPath } from './known-hosts.ts'
@@ -43,7 +43,7 @@ class FakeChild {
 }
 
 function sandbox(): { readonly home: string; readonly cleanup: () => void } {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-connect-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-connect-'))
   return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) }
 }
 
@@ -174,7 +174,7 @@ test('指纹变了：连上了也不算数，抛 host-key-changed 且账本字�
     const changedStderr = VERBOSE_STDERR.replace('SHA256:8gvH0mq2', 'SHA256:EVILKEY1')
     await assert.rejects(
       connectRemote({ ...request, spawn: okSpawn({ stderr: changedStderr }) }),
-      (error: unknown) => error instanceof TeleportError && error.code === 'remote/host-key-changed',
+      (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/host-key-changed',
     )
     assert.equal(readFileSync(hostKeysPath(home), 'utf8'), before)
   } finally {
@@ -214,7 +214,7 @@ test('加密私钥但没口令：连 ssh 都不启动（省掉一次必然失败
     await assert.rejects(
       connectRemote({ homeDir: home, target: targetWithKey(keyFile), auth: { kind: 'key' }, spawn }),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/key-passphrase')
         assert.match(error.detail, /aes256-ctr/)
         return true
@@ -255,7 +255,7 @@ test('把 .pub 内容当私钥：报 key-unusable，文案指到具体文件', a
     await assert.rejects(
       connectRemote({ homeDir: home, target: targetWithKey(keyFile), auth: { kind: 'key' }, spawn: okSpawn({}) }),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/key-unusable')
         assert.match(error.detail, /id_ed25519\.pub/)
         return true
@@ -272,7 +272,7 @@ test('accept-new 写下的私有 known_hosts 就是指纹来源：不再多起�
     const keyFile = join(home, 'id_ed25519')
     writeFileSync(keyFile, PLAIN_KEY, 'utf8')
     const blob = Buffer.from('known-hosts-sample-key', 'utf8').toString('base64')
-    mkdirSync(join(home, '.dsh-teleport'), { recursive: true })
+    mkdirSync(join(home, '.dsh-remote-cr'), { recursive: true })
     writeFileSync(knownHostsPath(home), '198.51.100.8 ssh-ed25519 ' + blob + '\n', 'utf8')
     const seen: string[] = []
     const result = await connectRemote({
@@ -299,7 +299,7 @@ test('ssh 不给指纹时回退 ssh-keyscan：指纹是自己按 OpenSSH 算法�
   try {
     const keyFile = join(home, 'id_ed25519')
     writeFileSync(keyFile, PLAIN_KEY, 'utf8')
-    const blob = Buffer.from('teleport-keyscan-sample-key', 'utf8').toString('base64')
+    const blob = Buffer.from('remote-cr-keyscan-sample-key', 'utf8').toString('base64')
     const seen: string[] = []
     const result = await connectRemote({
       homeDir: home,
@@ -360,7 +360,7 @@ test('握手失败（拒绝认证）：传输层错误透出，账本不写', as
         auth: { kind: 'key' },
         spawn: failSpawn('hui@198.51.100.8: Permission denied (publickey).\r\n'),
       }),
-      (error: unknown) => error instanceof TeleportError && error.code === 'remote/auth-failed',
+      (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/auth-failed',
     )
     assert.equal(existsSync(hostKeysPath(home)), false)
   } finally {

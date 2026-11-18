@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { MAX_BODY_BYTES, errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
 
 function fakeResponse() {
@@ -42,8 +42,8 @@ test('成功信封只有一个 value 字段', () => {
   assert.deepEqual(okEnvelope({ a: 1 }), { ok: true, value: { a: 1 } })
 })
 
-test('TeleportError 四字段原样透出，不被折叠成 unknown', () => {
-  const envelope = errorEnvelope(new TeleportError({
+test('RemoteCrError 四字段原样透出，不被折叠成 unknown', () => {
+  const envelope = errorEnvelope(new RemoteCrError({
     code: 'remote/path-unreadable',
     detail: 'D:\\nope 不可读',
     nextActions: ['换一个目录'],

@@ -14,11 +14,11 @@
  *
  * 为什么必须能证明「跑完了」：远端 `.bashrc` 会打横幅、MOTD 可能带任意文本，
  * 光看「没读到字段」分不清「远端没有 node」和「流被截断」。脚本最后必打一行
- * `__DSH_TELEPORT_PROBE__end=1`；没这一行就判**不完整**，如实报错，不猜。
+ * `__DSH_REMOTE_CR_PROBE__end=1`；没这一行就判**不完整**，如实报错，不猜。
  */
 
 /** 每个字段行的前缀。只用下划线字母数字：要能安全穿过 `sh -c` 的二次解析。 */
-export const PROBE_MARKER = '__DSH_TELEPORT_PROBE__'
+export const PROBE_MARKER = '__DSH_REMOTE_CR_PROBE__'
 
 /** 字段名与含义；`dshhome` 是布尔，其余是字符串。 */
 export const PROBE_FIELDS = ['platform', 'arch', 'kernel', 'home', 'node', 'dsh', 'dshhome'] as const

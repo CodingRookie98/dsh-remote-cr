@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { RemoteDshHandle } from '../handle.ts'
 import { WslRemoteBackend, type RunInDistroLike } from './remote-backend.ts'
 
-const M = '__DSH_TELEPORT_PROBE__'
+const M = '__DSH_REMOTE_CR_PROBE__'
 
 function probeOut(lines: readonly string[]): string {
   return lines.map((line) => M + line + '\n').join('')
@@ -90,7 +90,7 @@ test('缺结束标记 ⇒ remote/probe-incomplete，不猜半个结果', async (
   const partial = probeOut(['platform=Linux', 'home=/home/hui'])
   const backend = new WslRemoteBackend({ distro: 'd', runInDistro: fakeRun(partial, []) })
   await assert.rejects(backend.probe(), (error: unknown) => {
-    assert.ok(error instanceof TeleportError)
+    assert.ok(error instanceof RemoteCrError)
     assert.equal(error.code, 'remote/probe-incomplete')
     assert.match(error.detail, /结束标记/)
     return true
@@ -106,7 +106,7 @@ test('同一字段两个值 ⇒ 也判不完整（说明输出被重放或机器
   ])
   const backend = new WslRemoteBackend({ distro: 'd', runInDistro: fakeRun(conflicted, []) })
   await assert.rejects(backend.probe(), (error: unknown) => {
-    assert.ok(error instanceof TeleportError)
+    assert.ok(error instanceof RemoteCrError)
     assert.match(error.detail, /kernel/)
     return true
   })

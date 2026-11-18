@@ -48,7 +48,7 @@ export interface SubstitutionRecord {
 /** 一条入站请求的完整记录。 */
 export interface ProxyRecord {
   readonly at: string
-  /** 发起该请求的远端环境标识（远端 patch 注入的 `x-teleport-host`，缺省回落 socket 地址）。 */
+  /** 发起该请求的远端环境标识（远端 patch 注入的 `x-remote-cr-host`，缺省回落 socket 地址）。 */
   readonly remote: string
   readonly method: string
   readonly provider: string
@@ -170,7 +170,7 @@ export class CredentialProxy {
 
   async #handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const at = new Date().toISOString()
-    const remoteHeader = req.headers['x-teleport-host']
+    const remoteHeader = req.headers['x-remote-cr-host']
     const remote = typeof remoteHeader === 'string' && remoteHeader !== '' ? remoteHeader : (req.socket.remoteAddress ?? 'unknown')
     const pathname = new URL(req.url ?? '/', 'http://proxy.invalid').pathname
 
@@ -210,7 +210,7 @@ export class CredentialProxy {
     for (const [name, raw] of Object.entries(req.headers)) {
       if (raw === undefined) continue
       const lower = name.toLowerCase()
-      if (HOP_BY_HOP.has(lower) || lower === 'content-length' || lower === 'x-teleport-host') continue
+      if (HOP_BY_HOP.has(lower) || lower === 'content-length' || lower === 'x-remote-cr-host') continue
       const values = Array.isArray(raw) ? raw : [raw]
       for (const value of values) {
         if (!CREDENTIAL_HEADERS.includes(lower as (typeof CREDENTIAL_HEADERS)[number])) {

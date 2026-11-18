@@ -96,7 +96,7 @@ export interface PromptProjectionHost {
 }
 
 /** 生命周期标签：卸载插件时 cordis 会按它回收监听。 */
-export const PROMPT_PROJECTION_LABEL = 'dsh-teleport: prompt cwd projection'
+export const PROMPT_PROJECTION_LABEL = 'dsh-remote-cr: prompt cwd projection'
 
 /**
  * 装投影监听并返回记录表。

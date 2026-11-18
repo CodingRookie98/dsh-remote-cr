@@ -4,9 +4,9 @@
 
 ## 1. 项目是什么
 
-`dsh-remote-cr`（曾用名 `dsh-teleport`）是 DeepSeek Harness（DSH）的**远程开发插件**：把 DSH 宿主（agent runtime、插件、会话存储）跑在远端（WSL2 / SSH），本地 GUI 只做呈现、工作区/会话投影与凭据代理。
+`dsh-remote-cr`（曾用名 `dsh-teleport`；面板曾叫「瞬移」，现名「远端工作台」/ Remote Workbench）是 DeepSeek Harness（DSH）的**远程开发插件**：把 DSH 宿主（agent runtime、插件、会话存储）跑在远端（WSL2 / SSH），本地 GUI 只做呈现、工作区/会话投影与凭据代理。
 
-**命名分层铁律**：包名与插件 id 用 `dsh-remote-cr`；运行时标识一律保留 `teleport`（`~/.dsh-teleport`、`DSH_TELEPORT_*`、`/teleport` API 前缀、`data-teleport` DOM）。改运行时标识 = 作废用户的锚点、staging 与既有配置，必须当作破坏性变更走 ADR。
+**命名铁律（ADR-0006 起）**：包名、插件 id 与**运行时标识**统一为 `remote-cr` —— `~/.dsh-remote-cr`、`DSH_REMOTE_CR_*`、`/remote-cr/api` 前缀、`data-remote-cr` DOM、`cordis.patch.yml` 的行 id 都是同一个名字（旧版曾刻意保留 `teleport` 分层，该条款已废止）。再次改名属破坏性变更（作废 anchors / staging / 既有配置），必须走新 ADR 并附迁移方案；**旧名的兼容读取只允许集中在 `src/local/migration/`**，其余位置出现旧名即为回归。
 
 对标 VS Code Remote-SSH / Zed Remote / ZCode Remote，但要求「单一原生 GUI、远端环境原生、断线可恢复」。
 
@@ -45,7 +45,7 @@
 ## 4.5 环境约束（不可违背）
 
 - **`gcp` 目标机禁止重启/关机**（它同时是自托管服务的宿主机，属共享机器）。
-  需要验证「整机重启后的重连」时，用**等价现场**代替：远端残留 `~/.dsh-teleport/instances/<id>.json` + 进程已死 + 端口不监听。
+  需要验证「整机重启后的重连」时，用**等价现场**代替：远端残留 `~/.dsh-remote-cr/instances/<id>.json` + 进程已死 + 端口不监听。
   该等价验证已于 2026-11-13 做过（接入 21.2 s、`stopRemote` 3.9 s 释放），见 `docs/design/keep-alive.md` §5。
 - 其他真机操作（装/杀 dsh、占用端口 8941–8961、跑探针）不受此限，但要先确认没有用户的 dsh 在跑。
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CONNECTION_PHASES, ERROR_PHASE, TeleportError, portInUseError } from './errors.ts'
+import { CONNECTION_PHASES, ERROR_PHASE, RemoteCrError, portInUseError } from './errors.ts'
 
 test('阶段顺序就是 UI 进度条顺序，且至少覆盖探测到挂载', () => {
   assert.deepEqual(
@@ -32,15 +32,15 @@ test('端口占用是三选项 + 阶段 launch，符合 B3「不静默接管、�
 })
 
 test('未知码不抛、兜底到 probe 阶段，但 nextActions 绝不为空（铁律 4 的可重试路径）', () => {
-  const error = new TeleportError({ code: 'remote/some-new-code', detail: 'something broke', nextActions: [] })
+  const error = new RemoteCrError({ code: 'remote/some-new-code', detail: 'something broke', nextActions: [] })
   assert.equal(error.phase, 'probe')
   assert.deepEqual([...error.nextActions], ['重试'])
 })
 
 test('cause 只在传了的时候挂上，不塞 undefined 污染 stack', () => {
-  const withCause = new TeleportError({ code: 'remote/unknown', detail: 'x', nextActions: ['重试'], cause: new Error('inner') })
+  const withCause = new RemoteCrError({ code: 'remote/unknown', detail: 'x', nextActions: ['重试'], cause: new Error('inner') })
   assert.equal((withCause.cause as Error).message, 'inner')
-  const without = new TeleportError({ code: 'remote/unknown', detail: 'x', nextActions: ['重试'] })
+  const without = new RemoteCrError({ code: 'remote/unknown', detail: 'x', nextActions: ['重试'] })
   assert.equal(without.cause, undefined)
 })
 

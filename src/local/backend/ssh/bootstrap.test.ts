@@ -133,7 +133,7 @@ test('断点账本：坏记录不当空账本，版本不认识要单独说', ()
 })
 
 test('断点账本：读不到与坏 JSON 分别记账，round-trip 保真', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'teleport-state-'))
+  const dir = await mkdtemp(join(tmpdir(), 'remote-cr-state-'))
   try {
     const file = join(dir, 'state.json')
     const missing = await readBootstrapState(file)
@@ -158,25 +158,25 @@ test('staging 目录跟着目标身份走，且绝不落在 /tmp', () => {
   const first = stagingDirFor('C:/Users/hui', TARGET)
   const second = stagingDirFor('C:/Users/hui', { ...TARGET, alias: 'ipy' })
   assert.equal(first, second, '别名不该改变目录')
-  assert.match(first.replace(/\\/g, '/'), /\/\.dsh-teleport\/staging\/[0-9a-f]{16}$/)
+  assert.match(first.replace(/\\/g, '/'), /\/\.dsh-remote-cr\/staging\/[0-9a-f]{16}$/)
   const other = stagingDirFor('C:/Users/hui', { ...TARGET, hostName: '198.51.100.9' })
   assert.notEqual(first, other)
   assert.equal(first.includes('/tmp'), false)
 })
 
 test('staging 脚本：建目录 + 收紧到 0700 + 回一个标记', () => {
-  const script = buildStagingScript('/home/hui/.dsh-teleport/staging/abc')
-  assert.match(script, /mkdir -p '\/home\/hui\/\.dsh-teleport\/staging\/abc'/)
+  const script = buildStagingScript('/home/hui/.dsh-remote-cr/staging/abc')
+  assert.match(script, /mkdir -p '\/home\/hui\/\.dsh-remote-cr\/staging\/abc'/)
   assert.match(script, /chmod 700 /)
-  assert.match(script, /TELEPORT_STAGING_OK/)
+  assert.match(script, /REMOTE_CR_STAGING_OK/)
 })
 
 test('tar 预检：缺 tar 当场退出 3 并打标记，让人一眼看出是环境问题', () => {
   const script = buildTarPrecheckScript()
   assert.match(script, /command -v tar/)
-  assert.match(script, /TELEPORT_MISSING_TAR/)
+  assert.match(script, /REMOTE_CR_MISSING_TAR/)
   assert.match(script, /exit 3/)
-  assert.match(script, /TELEPORT_TAR_OK/)
+  assert.match(script, /REMOTE_CR_TAR_OK/)
 })
 
 test('node 分发文件名按官方命名规则拼', () => {
@@ -186,7 +186,7 @@ test('node 分发文件名按官方命名规则拼', () => {
 
 test('node 安装脚本：有 curl 用 curl、没有就 wget、都没有退出 4，且只在缺 node 时下载', () => {
   const script = buildNodeRuntimeScript({
-    stagingDir: '/home/hui/.dsh-teleport/staging/abc',
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abc',
     version: DEFAULT_NODE_INSTALL_VERSION,
     platform: 'linux',
     arch: 'x64',
@@ -194,12 +194,12 @@ test('node 安装脚本：有 curl 用 curl、没有就 wget、都没有退出 4
   assert.match(script, /https:\/\/nodejs\.org\/dist\/v24\.22\.1\/node-v24\.22\.1-linux-x64\.tar\.xz/)
   assert.match(script, /command -v curl/)
   assert.match(script, /command -v wget/)
-  assert.match(script, /TELEPORT_NO_DOWNLOADER/)
+  assert.match(script, /REMOTE_CR_NO_DOWNLOADER/)
   assert.match(script, /exit 4/)
   // `=1` 后面不能跟逗号：曾经是 `=1,`，GNU tar 会把它读成元素个数 `1,` 直接失败。
   assert.match(script, /tar -xJf .* --strip-components=1(?!,)/)
-  assert.match(script, /if \[ ! -x '\/home\/hui\/\.dsh-teleport\/staging\/abc'\/bin\/node \]; then/)
-  assert.match(script, /TELEPORT_NODE_OK/)
+  assert.match(script, /if \[ ! -x '\/home\/hui\/\.dsh-remote-cr\/staging\/abc'\/bin\/node \]; then/)
+  assert.match(script, /REMOTE_CR_NODE_OK/)
 })
 
 test('dsh 安装脚本：源写进 NPM_CONFIG_REGISTRY，缺 npm 退出 5', () => {
@@ -208,7 +208,7 @@ test('dsh 安装脚本：源写进 NPM_CONFIG_REGISTRY，缺 npm 退出 5', () =
   // 包名必须带 scope：无 scope 的 dsh 是别人写的 JS shell（真机首跑装错的那个）。
   assert.match(script, /npm install --global --no-audit --no-fund '@deepseek-ai\/dsh@0\.2\.1-rc\.5'/)
   assert.equal(script.includes(" 'dsh@"), false, '不能装成无 scope 的 dsh')
-  assert.match(script, /TELEPORT_MISSING_NPM/)
+  assert.match(script, /REMOTE_CR_MISSING_NPM/)
   assert.match(script, /exit 5/)
   const bare = buildDshPackageScript({ registry: 'https://registry.npmjs.org/', dshHome: '/home/hui/.dsh' })
   assert.match(bare, /npm install --global --no-audit --no-fund '@deepseek-ai\/dsh@latest'/)
@@ -219,11 +219,11 @@ test('dsh 装进 staging 前缀：非 root 也能装，且 PATH 指过去', () =
     registry: 'https://registry.npmjs.org/',
     dshHome: '/home/hui/.dsh',
     version: '0.2.1-rc.5',
-    prefix: '/home/hui/.dsh-teleport/staging/abc/npm',
+    prefix: '/home/hui/.dsh-remote-cr/staging/abc/npm',
   })
-  assert.match(script, /mkdir -p '\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
-  assert.match(script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
-  assert.match(script, /export PATH='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm\/bin':\$PATH/)
+  assert.match(script, /mkdir -p '\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm'/)
+  assert.match(script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm'/)
+  assert.match(script, /export PATH='\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm\/bin':\$PATH/)
   assert.ok(
     script.indexOf('mkdir -p') < script.indexOf('install --global'),
     '前缀目录必须先建出来，否则 npm 会因为父目录不存在而自己猜路径',
@@ -241,7 +241,7 @@ test('计划：staging 与 tar 永远排在最前，node 满足就不排', () =>
   const plan = planBootstrap({
     facts: { node: 'v24.22.1', dsh: '0.2.1-rc.5' },
     state: STATE,
-    stagingDir: '/home/hui/.dsh-teleport/staging/abc',
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abc',
   })
   assert.deepEqual(plan.steps.map((step) => step.id), ['staging', 'tar'])
   assert.deepEqual(plan.skipped.map((entry) => entry.id), ['node', 'dsh'])
@@ -252,7 +252,7 @@ test('计划：缺 dsh 就排安装，且账本记过也要重装（这次仍然
   const plan = planBootstrap({
     facts: { node: 'v24.22.1', dsh: undefined },
     state,
-    stagingDir: '/home/hui/.dsh-teleport/staging/abc',
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abc',
     mirror: 'https://registry.npmmirror.com/',
   })
   const dsh = plan.steps.find((step) => step.id === 'dsh')
@@ -260,7 +260,7 @@ test('计划：缺 dsh 就排安装，且账本记过也要重装（这次仍然
   assert.match(dsh.reuseReason ?? '', /dsh 0\.2\.1-rc\.2 曾装过/)
   assert.match(dsh.script, /registry\.npmmirror\.com/)
   // 计划层必须把前缀钉到 staging 里，否则远端非 root 装不动
-  assert.match(dsh.script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm'/)
+  assert.match(dsh.script, /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm'/)
 })
 
 test('执行：任一步失败就停，后续步骤不跑，失败尾巴带出来', async () => {
@@ -268,18 +268,18 @@ test('执行：任一步失败就停，后续步骤不跑，失败尾巴带出�
   const plan = planBootstrap({
     facts: { node: undefined, dsh: undefined },
     state: STATE,
-    stagingDir: '/home/hui/.dsh-teleport/staging/abc',
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abc',
     dshHome: '/home/hui/.dsh',
   })
   const outcome = await runBootstrap(plan, async (script) => {
     ran.push(script.split(NL)[0] ?? '')
-    if (ran.length === 2) return { code: 3, stdout: '', stderr: 'TELEPORT_MISSING_TAR' + NL }
+    if (ran.length === 2) return { code: 3, stdout: '', stderr: 'REMOTE_CR_MISSING_TAR' + NL }
     return { code: 0, stdout: 'ok', stderr: '' }
   })
   assert.equal(outcome.ok, false)
   assert.equal(outcome.failed?.id, 'tar')
   assert.equal(outcome.failed?.code, 3)
-  assert.match(outcome.failed?.tail ?? '', /TELEPORT_MISSING_TAR/)
+  assert.match(outcome.failed?.tail ?? '', /REMOTE_CR_MISSING_TAR/)
   assert.deepEqual(outcome.executed, ['staging'])
   assert.equal(ran.length, 2, '失败之后不许继续跑')
 })
@@ -288,10 +288,45 @@ test('执行：全绿时按 staging → tar → node → dsh 顺序记账', asyn
   const plan = planBootstrap({
     facts: { node: undefined, dsh: undefined },
     state: STATE,
-    stagingDir: '/home/hui/.dsh-teleport/staging/abc',
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abc',
     dshHome: '/home/hui/.dsh',
   })
   const outcome = await runBootstrap(plan, async () => ({ code: 0, stdout: '', stderr: '' }))
   assert.equal(outcome.ok, true)
   assert.deepEqual(outcome.executed, ['staging', 'tar', 'node', 'dsh'])
+})
+
+test('复用系统 node 时 dsh 安装走 PATH 上的 npm，不去调 staging/bin/npm（真机 127 回归）', async () => {
+  const { planBootstrap } = await import('./bootstrap.ts')
+  const plan = planBootstrap({
+    facts: { node: 'v22.22.1', dsh: '' },
+    state: emptyBootstrapState('0123456789abcdef'),
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abcdef',
+    dshHome: '/home/hui/.dsh',
+  })
+  const dshStep = plan.steps.find((step) => step.id === 'dsh')
+  assert.ok(dshStep, 'node 已满足时仍然要排 dsh 安装步骤')
+  assert.ok(!dshStep.script.includes('/bin/npm'), 'node 步骤没跑过，staging/bin/npm 根本不存在')
+  assert.match(dshStep.script, /npm install --global/)
+  assert.ok(plan.skipped.some((step) => step.id === 'node'))
+})
+
+test('需要自装 node 时，dsh 安装走 staging/bin 里那份 npm', async () => {
+  const { planBootstrap } = await import('./bootstrap.ts')
+  const plan = planBootstrap({
+    facts: { node: '', dsh: '' },
+    state: emptyBootstrapState('0123456789abcdef'),
+    stagingDir: '/home/hui/.dsh-remote-cr/staging/abcdef',
+    dshHome: '/home/hui/.dsh',
+  })
+  const dshStep = plan.steps.find((step) => step.id === 'dsh')
+  assert.ok(dshStep)
+  assert.match(dshStep.script, /\/staging\/abcdef\/bin\/npm/)
+})
+
+test('buildDshPackageScript：没有 nodeBin 时不做 prefix/bin/npm 的无用探测', () => {
+  const script = buildDshPackageScript({ registry: 'https://registry.npmjs.org/', dshHome: '/home/hui/.dsh', prefix: '/s/npm' })
+  assert.ok(!script.includes('/s/npm/bin/npm'), script)
+  assert.match(script, /command -v npm/)
+  assert.match(script, /npm install --global/)
 })

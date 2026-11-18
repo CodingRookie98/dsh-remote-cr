@@ -16,7 +16,7 @@ import type { LinkPhase } from './reconnect.ts'
 import type { AttachPhase } from './phases.ts'
 
 /** 宿主半挂载的路由前缀（`docs/design/architecture.md` 组件图）。 */
-export const API_PREFIX = '/teleport/api'
+export const API_PREFIX = '/remote-cr/api'
 
 /** 一条目录项。`kind` 只有两种——文件不参与选择，但列表里要显示。 */
 export interface DirEntry {
@@ -117,7 +117,7 @@ export interface FlowSnapshot {
 /**
  * 一次「接入」所需的目标参数默认值。
  *
- * 宿主半从环境变量取（`DSH_TELEPORT_PORT` / `DSH_TELEPORT_REMOTE_ROOT`），
+ * 宿主半从环境变量取（`DSH_REMOTE_CR_PORT` / `DSH_REMOTE_CR_REMOTE_ROOT`），
  * 因为「远端 dsh 检出在哪」只有部署者知道，插件不该猜一个看着像的路径。
  * 拿不到就留空串，由 UI 显示成必填而不是静默用错路径。
  */

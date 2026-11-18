@@ -64,7 +64,7 @@ T1–T4：
 | **T3** 生产消费者 | ✅ | `apps/web/src/main.ts:25-26`（桌面形态，`ownsHost: true`）、`packages/experimental/webworker-runtime/src/client/index.ts:163`（worker 形态） |
 | **T4** bootstrap 前注入 | ✅ | `:336-347` 的 `apply()` 读 `globalThis.__DSH_TRANSPORT__`；宿主侧 `packages/host/webserver/src/index.ts:36` 的 `webserver/index-inject` 让插件注入 head 脚本 |
 | **T5** 跨机字节 | ✅ **2026-10-31 通过** | `spikes/m1/cross-machine-t5/probe.cjs`（12/12 断言，exit 0；负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T5-4,T5-5,T5-5b]`，exit 1）。WSL2 distro 内起 `dsh web`，本地 Node 用官方 `installConnection` + 自定义 `fetch`/`createWebSocket` 打到它：`session/list` 返回 649 条远端会话（`cwd=/home/hui/workspace/tools/deepseek-harness`）、`workspaceFiles/read /proc/version` 返回 `Linux version 6.18.54.1-microsoft-standard-WSL2`、`workspaceFiles/stat` 走 lookup 作用域成功、`directoryPicker/list` 返回 `path=/home/hui`、`/api/remote.mux` 升起到 OPEN 且收到 `{"type":"item","streamId":"t5-job-list",...}` 逻辑流帧。证据与环境见 `spikes/m1/cross-machine-t5/README.md` |
-| **T6** 跨机失败可见 | ✅ **2026-10-31 通过** | `spikes/m1/cross-machine-t6/probe.cjs`（9/9 断言，exit 0；负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T6-2,T6-3,T6-4b,T6-4d]`，exit 1）。三条失败路径各一条实跑证据：① **版本不匹配**——远端 `0.2.1-rc.5` 对 `engines.dsh: >=0.3.0` 判 `incompatible`，对 `>=0.2.1-rc.0 <0.3.0` 放行，判定与文案均来自官方 `evaluatePluginCompatibility` / `pluginCompatibilityWarning`（含 `allow-version` 迁移路径）；② **远端无 Node**——启动判定 `exit=1` 且日志带 `nohup: failed to run command 'node-missing-teleport': No such file or directory`；③ **断线**——杀远端后 generation 撤回为 `undefined` + 重试 `#1/#2` + 手动 `reconnect()` 把 attempt 计数器打回 `#1`。证据与环境见 `spikes/m1/cross-machine-t6/README.md` |
+| **T6** 跨机失败可见 | ✅ **2026-10-31 通过** | `spikes/m1/cross-machine-t6/probe.cjs`（9/9 断言，exit 0；负控 `NEGATIVE_CONTROL=1` 失败集恰为 `[T6-2,T6-3,T6-4b,T6-4d]`，exit 1）。三条失败路径各一条实跑证据：① **版本不匹配**——远端 `0.2.1-rc.5` 对 `engines.dsh: >=0.3.0` 判 `incompatible`，对 `>=0.2.1-rc.0 <0.3.0` 放行，判定与文案均来自官方 `evaluatePluginCompatibility` / `pluginCompatibilityWarning`（含 `allow-version` 迁移路径）；② **远端无 Node**——启动判定 `exit=1` 且日志带 `nohup: failed to run command 'node-missing-dsh-remote-cr': No such file or directory`；③ **断线**——杀远端后 generation 撤回为 `undefined` + 重试 `#1/#2` + 手动 `reconnect()` 把 attempt 计数器打回 `#1`。证据与环境见 `spikes/m1/cross-machine-t6/README.md` |
 
 > **T5 通过记录（2026-10-31）**：跨机字节已实测成立——官方内核在 Windows 侧 Node 24 下 `import` 成功（只外部依赖 `@deepseek-ai/schemastery`），`installConnection(ctx,{transport})` 只需一个 `{provide}` 桩 ctx 即可驱动，四个接缝 `rpc`/`fetch`/`openStream`/`createWebSocket`+`streamBaseUrl` 均可用；唯一必须自建的是「握手能带 Cookie 的 WS 客户端」（Node 内置 `WebSocket` 不能注入 `Cookie`，而 `/api/remote.mux` 的 admission 只认 `/connect` 下发的 v2 签名 Cookie）。**因此 T5 的回退分支（「内核 + 自有 RPC 封装」约 1200–1600 行）不触发。**
 >
@@ -174,12 +174,12 @@ T1–T4：
 | 失败路径 | 构造方式 | 观测证据 |
 |---|---|---|
 | 版本不匹配 | 拿远端真实版本（`workspaceFiles/read` 读远端 `package.json`）喂给官方 `evaluatePluginCompatibility`，两个方向各判一次 | `engines.dsh: >=0.3.0` → `incompatible={...runtimeVersion:"0.2.1-rc.5"...}`；`>=0.2.1-rc.0 <0.3.0` → `compatible=undefined`（放行）。文案含 `is incompatible with dsh` 与 `allow-version` 迁移路径 |
-| 远端无 Node | `nodeCommand` 换成一个不存在的可执行名（负控换回真 `node`） | `exit=1`，日志尾部 `nohup: failed to run command 'node-missing-teleport': No such file or directory` |
+| 远端无 Node | `nodeCommand` 换成一个不存在的可执行名（负控换回真 `node`） | `exit=1`，日志尾部 `nohup: failed to run command 'node-missing-dsh-remote-cr': No such file or directory` |
 | 断线 | 连上后 kill 远端 dsh 进程 | generation `getSnapshot()` 撤回为 `undefined`；`console.warn` 出现 `connection lost, retry #1/#2`；`reconnectRequested` 递增；手动 `reconnect()` 后 attempt 计数器打回 `#1`（`attempts=[1,2,3,1]`） |
 
 **对实现面的三条硬结论**（M1 直接消费）：
 
-1. **官方三态不够产品用**：`ConnectionState` 只有 `connected`/`disconnected`/`connecting`，而 `disconnected` 仅由浏览器 `online`/`offline` 事件驱动（`watchBrowserNetwork` 在无 `window` 时返回 noop）——Node 侧永不出现。`requirements.md` 要求的「首连 / 重连中 / 已重连 / **offline** / 需重连」必须由 teleport 层自建，再映射到官方三态上报（与本 ADR 遗留风险表第 3 行一致）。
+1. **官方三态不够产品用**：`ConnectionState` 只有 `connected`/`disconnected`/`connecting`，而 `disconnected` 仅由浏览器 `online`/`offline` 事件驱动（`watchBrowserNetwork` 在无 `window` 时返回 noop）——Node 侧永不出现。`requirements.md` 要求的「首连 / 重连中 / 已重连 / **offline** / 需重连」必须由 dsh-remote-cr 层自建，再映射到官方三态上报（与本 ADR 遗留风险表第 3 行一致）。
 2. **退避参数不能靠官方**：官方是 `backoffBaseMs 500 × factor 2`、封顶 `10000ms`、50–100% 抖动，**实测首次重试间隔 563–1021ms**（`gapsMs=[563,1021]`；另一跑 `[635]`）；而 `requirements.md` 要求 `2s/4s/8s × 3` 再进 offline 每 2min。⇒ M1「断线与重连」必须自建三段退避 + offline 计时器，官方的 `backoffBaseMs` 只作为底层兜底。
 3. **`ConnectionHandle` 不导出 `resolveConnectionConfig`**：`packages/client/connection/lib/client.node.js` 的导出面只有 `RpcId / apply / inject / installConnection / transportError`，config 默认值只能实测、不能读。⇒ 产品侧要断言退避行为，必须像本探针一样**观测相邻重试的时间戳差值**，不能断言 config 字段。
 

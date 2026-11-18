@@ -26,8 +26,8 @@ import {
   type FlowError,
   type FlowState,
 } from '../../shared/flow.ts'
-import { isTeleportFailure } from '../backend/backend.ts'
-import { TeleportError } from '../backend/errors.ts'
+import { isRemoteCrFailure } from '../backend/backend.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { normalizeLocalPath } from './browse.ts'
 
 /** 流程依赖；注入是为了让单测不碰真机（不 spawn、不 stat 真实路径）。 */
@@ -44,7 +44,7 @@ const MAX_SNAPSHOTS = 8
 
 /** 任意抛出物 → 跨进程可传的 `FlowError`。未知异常也要有码、有下一步（铁律 4）。 */
 export function toFlowError(error: unknown): FlowError {
-  if (isTeleportFailure(error)) {
+  if (isRemoteCrFailure(error)) {
     return {
       code: error.code,
       phase: error.phase,
@@ -62,8 +62,8 @@ export function toFlowError(error: unknown): FlowError {
   }
 }
 
-function cancelledError(): TeleportError {
-  return new TeleportError({
+function cancelledError(): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/cancelled',
     detail: '用户取消了添加工作区',
     nextActions: ['重新添加'],
@@ -74,7 +74,7 @@ function cancelledError(): TeleportError {
 export function assertAbsolute(source: string, path: string): void {
   const absolute = source === 'wsl' ? path.startsWith('/') : win32.isAbsolute(path)
   if (!absolute) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/path-unreadable',
       detail: `${source} 的路径必须是绝对路径，收到 ${JSON.stringify(path)}`,
       nextActions: ['从目录浏览器里选择', '补全绝对路径后重试'],
@@ -175,7 +175,7 @@ export class WorkspaceFlows {
     if (input.source === 'local') {
       const path = input.path
       if (path === undefined || path === '') {
-        throw new TeleportError({
+        throw new RemoteCrError({
           code: 'remote/path-unreadable',
           detail: '本机目录没有给出路径',
           nextActions: ['从目录浏览器里选择一个目录'],
@@ -185,7 +185,7 @@ export class WorkspaceFlows {
       enter('attach')
       const normalized = normalizeLocalPath(path)
       if (!(await this.#deps.isDirectory(normalized))) {
-        throw new TeleportError({
+        throw new RemoteCrError({
           code: 'remote/path-unreadable',
           detail: `${normalized} 不是一个可读目录`,
           nextActions: ['换一个目录', '确认该目录存在且当前用户可读'],
@@ -196,7 +196,7 @@ export class WorkspaceFlows {
     }
 
     if (input.source !== 'wsl') {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/platform-unsupported',
         detail: `${input.source} 后端计划在 M2/M5，M1 只实现本机与 WSL`,
         nextActions: ['改用本机目录或 WSL 发行版'],
@@ -205,7 +205,7 @@ export class WorkspaceFlows {
 
     const distro = input.distro
     if (distro === undefined || distro === '') {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/platform-unsupported',
         detail: 'WSL 分支必须指定发行版',
         nextActions: ['从发行版列表里选一个'],
@@ -214,7 +214,7 @@ export class WorkspaceFlows {
     const distros = await this.#deps.listDistros()
     check()
     if (!distros.some((entry) => entry.name === distro)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/platform-unsupported',
         detail: `本机没有名为 ${JSON.stringify(distro)} 的 WSL 发行版`,
         nextActions: ['刷新发行版列表', '在 Windows 上先安装该发行版'],
@@ -237,7 +237,7 @@ export class WorkspaceFlows {
     }
     check()
     if (chosen === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/workspace-unwritable',
         detail: `${distro} 内的 ${posixPath} 无法以 UNC 形态读到（\\wsl.localhost 与 \\wsl$ 都试过）`,
         nextActions: ['确认该目录存在', '在 WSL 里执行 ls 检查权限', '重启 WSL 后重试'],

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ERROR_PHASE, TeleportError } from '../errors.ts'
+import { ERROR_PHASE, RemoteCrError } from '../errors.ts'
 import { SSH_FAILURE_TABLE, classifySshFailure, type SshFailureContext } from './errors.ts'
 
 const KEY: SshFailureContext = { auth: 'key', target: 'hui@198.51.100.8' }
@@ -10,7 +10,7 @@ const AGENT: SshFailureContext = { auth: 'agent', target: 'hui@203.0.113.145' }
 
 function codeOf(stderr: string, context: SshFailureContext): string {
   const error = classifySshFailure(stderr, context)
-  assert.ok(error instanceof TeleportError, '必须返回 TeleportError')
+  assert.ok(error instanceof RemoteCrError, '必须返回 RemoteCrError')
   return error.code
 }
 
@@ -101,7 +101,7 @@ test('显式传入的 logTail 直接透传（调用方已经截过一遍）', ()
 })
 
 test('判定的每个码都必须有明确的阶段：没有码能掉进默认分支', () => {
-  // TeleportError 在 ERROR_PHASE 里查不到时会静默回落到 'probe'，
+  // RemoteCrError 在 ERROR_PHASE 里查不到时会静默回落到 'probe'，
   // 这正是之前吃过亏的地方——新增错误码忘了登记，UI 进度条会停在错误阶段。
   const codes = new Set<string>(SSH_FAILURE_TABLE.map((rule) => rule.code))
   for (const code of ['remote/ssh-missing', 'remote/auth-failed', 'remote/cancelled', 'remote/unknown']) codes.add(code)
@@ -120,4 +120,20 @@ test('规则表本身自洽：码不重复、正则可复现、文案非空', ()
     assert.ok(rule.nextActions(KEY).length > 0, rule.code + ' 没有可操作项')
     assert.equal(rule.match.flags.includes('g'), false, rule.code + ' 的 failFast 正则不能带 g（测试会互相污染）')
   }
+})
+
+test('认证成功但随后启动失败：不许误判成 auth-failed（真机回归）', () => {
+  const stderr = [
+    'Authenticated to 34.92.25.11 ([34.92.25.11]:22) using "publickey".',
+    'REMOTE_CR_WATCHDOG_PID=203435',
+    'sh: 2: /home/hui/.dsh-remote-cr/staging/x/bin/node: not found',
+    'TIMEOUT after 180000ms',
+  ].join('\n')
+  const error = classifySshFailure(stderr, { target: 'hui@34.92.25.11', auth: 'key' })
+  assert.notEqual(error.code, 'remote/auth-failed', '成功行里的 publickey 不是失败证据')
+})
+
+test('真正的公钥拒绝仍然判 auth-failed', () => {
+  const error = classifySshFailure('hui@host: Permission denied (publickey).', { target: 'hui@host', auth: 'key' })
+  assert.equal(error.code, 'remote/auth-failed')
 })

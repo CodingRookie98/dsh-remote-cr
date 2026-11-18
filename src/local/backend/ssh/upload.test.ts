@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { buildSftpInvocation, type SshAuth } from './transport.ts'
 import type { UploadChild, UploadSpawn, UploadSource } from './upload.ts'
@@ -121,8 +121,8 @@ const BASE = {
   homeDir: 'C:/Users/hui',
   target: TARGET,
   auth: KEY,
-  localPath: 'C:/Temp/dsh-teleport.tar.gz',
-  remotePath: '/home/hui/.dsh-teleport/staging/dsh-teleport.tar.gz',
+  localPath: 'C:/Temp/dsh-remote-cr.tar.gz',
+  remotePath: '/home/hui/.dsh-remote-cr/staging/dsh-remote-cr.tar.gz',
   timeoutMs: 2_000,
 }
 
@@ -154,8 +154,8 @@ test('sftp argv：走 -b -、没有 -T 也没有 --，连接选项与 ssh 一致
     {
       target: TARGET,
       auth: { kind: 'password', password: 's3cret-pass' },
-      knownHostsFile: 'C:/Users/hui/.dsh-teleport/known_hosts',
-      askpassPath: 'C:/Users/hui/.dsh-teleport/askpass.cjs',
+      knownHostsFile: 'C:/Users/hui/.dsh-remote-cr/known_hosts',
+      askpassPath: 'C:/Users/hui/.dsh-remote-cr/askpass.cjs',
       sshExecutable: 'C:/Windows/System32/OpenSSH/ssh.exe',
     },
     'put "a" "b"' + NL,
@@ -166,10 +166,10 @@ test('sftp argv：走 -b -、没有 -T 也没有 --，连接选项与 ssh 一致
   assert.equal(built.args.includes('-T'), false)
   assert.equal(built.args.includes('--'), false)
   assert.equal(built.args.at(-1), TARGET.hostName)
-  assert.ok(built.args.includes('UserKnownHostsFile=C:/Users/hui/.dsh-teleport/known_hosts'))
+  assert.ok(built.args.includes('UserKnownHostsFile=C:/Users/hui/.dsh-remote-cr/known_hosts'))
   assert.ok(built.args.includes('PubkeyAuthentication=no'))
   assert.equal(built.args.join(' ').includes('s3cret-pass'), false)
-  assert.equal(built.env['TELEPORT_SSH_SECRET'], 's3cret-pass')
+  assert.equal(built.env['REMOTE_CR_SSH_SECRET'], 's3cret-pass')
   assert.equal(built.needsAskpass, true)
 })
 
@@ -217,7 +217,7 @@ test('管道退出码非 0 要报错，并把远端 stderr 尾巴带出来', asy
   await assert.rejects(
     uploadFile({ ...BASE, spawn, skipSftp: true, sourceOf: () => sourceOf([new Uint8Array([1])]) }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/upload-failed')
       assert.match(error.detail, /退出码 1/)
       assert.match(error.detail, /Permission denied/)
@@ -234,7 +234,7 @@ test('写入时抛错要立刻销毁数据源与 stdin：不再读盘，也不�
   await assert.rejects(
     uploadFile({ ...BASE, spawn, skipSftp: true, sourceOf: () => source }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/upload-failed')
       assert.match(error.detail, /上传中断/)
       return true
@@ -254,7 +254,7 @@ test('远端先关掉 stdin：停止读取并报「管道被远端提前关闭�
   await assert.rejects(
     uploadFile({ ...BASE, spawn, skipSftp: true, sourceOf: () => source }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.match(error.detail, /管道被远端提前关闭/)
       return true
     },
@@ -269,7 +269,7 @@ test('超时要 kill 掉子进程并如实说超时', async () => {
   await assert.rejects(
     uploadFile({ ...BASE, spawn, skipSftp: true, timeoutMs: 120, sourceOf: () => sourceOf([new Uint8Array([1])]) }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.match(error.detail, /上传超时/)
       return true
     },
@@ -284,7 +284,7 @@ test('已经取消的上传一个子进程都不许起', async () => {
   await assert.rejects(
     uploadFile({ ...BASE, spawn, skipSftp: true, signal: controller.signal, sourceOf: () => sourceOf([new Uint8Array([1])]) }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.match(error.detail, /取消/)
       return true
     },
@@ -295,9 +295,9 @@ test('已经取消的上传一个子进程都不许起', async () => {
 test('本地文件不存在：报读不到上传源，也一个子进程都不起', async () => {
   const { spawn, calls } = fakeSpawn()
   await assert.rejects(
-    uploadFile({ ...BASE, spawn, localPath: 'C:/Temp/does-not-exist-dsh-teleport.tar.gz' }),
+    uploadFile({ ...BASE, spawn, localPath: 'C:/Temp/does-not-exist-dsh-remote-cr.tar.gz' }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/upload-failed')
       assert.match(error.detail, /读不到本地上传源/)
       return true
@@ -315,7 +315,7 @@ test('权限串要同时进 SFTP 批处理与管道命令', async () => {
   })
   await uploadFile({ ...BASE, spawn, mode: '0755', sourceOf: () => sourceOf([new Uint8Array([1])]) })
   const batch = new TextDecoder().decode(calls[0]?.child.writes[0])
-  assert.match(batch, /chmod 0755 "\/home\/hui\/\.dsh-teleport\/staging\/dsh-teleport\.tar\.gz"/)
+  assert.match(batch, /chmod 0755 "\/home\/hui\/\.dsh-remote-cr\/staging\/dsh-remote-cr\.tar\.gz"/)
   const pipeCommand = (calls[1]?.args ?? []).join(' ')
   assert.match(pipeCommand, /chmod 0755/)
 })

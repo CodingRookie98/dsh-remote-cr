@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import {
   SECRET_ENV,
@@ -25,7 +25,7 @@ const TARGET: SshTarget = {
   source: { file: 'C:/Users/hui/.ssh/config', line: 20 },
 }
 
-const ASKPASS = 'C:/Users/hui/.dsh-teleport/askpass.cjs'
+const ASKPASS = 'C:/Users/hui/.dsh-remote-cr/askpass.cjs'
 
 function argsOf(target: SshTarget = TARGET, extra: Partial<Parameters<typeof buildSshInvocation>[0]> = {}): string[] {
   return [...buildSshInvocation({ target, auth: { kind: 'key' }, ...extra }).args]
@@ -100,7 +100,7 @@ test('加密私钥的口令：走 askpass，同样不进 argv', () => {
 test('口令认证缺 askpassPath：当场报错，不静默降级成「没有口令」', () => {
   assert.throws(
     () => buildSshInvocation({ target: TARGET, auth: { kind: 'password', password: 'x' } }),
-    (error: unknown) => error instanceof TeleportError && /askpass/.test(error.detail),
+    (error: unknown) => error instanceof RemoteCrError && /askpass/.test(error.detail),
   )
 })
 
@@ -137,8 +137,8 @@ test('远端命令必须落在 -- 之后：否则会被 ssh 当成自己的选�
 
 test('known_hosts 用私有库；不传则交给上层（绝不默认写用户的 ~/.ssh/known_hosts）', () => {
   assert.equal(argsOf().some((value) => value.startsWith('UserKnownHostsFile=')), false)
-  const withFile = argsOf(TARGET, { knownHostsFile: 'C:/Users/hui/.dsh-teleport/known_hosts' })
-  assert.ok(withFile.includes('UserKnownHostsFile=C:/Users/hui/.dsh-teleport/known_hosts'))
+  const withFile = argsOf(TARGET, { knownHostsFile: 'C:/Users/hui/.dsh-remote-cr/known_hosts' })
+  assert.ok(withFile.includes('UserKnownHostsFile=C:/Users/hui/.dsh-remote-cr/known_hosts'))
   assert.ok(withFile.includes('StrictHostKeyChecking=accept-new'))
   assert.ok(withFile.includes('LogLevel=VERBOSE'), 'TOFU 要靠 VERBOSE 抓 Server host key 行')
 })
@@ -214,7 +214,7 @@ test('runSsh 非零退出：变成结构化错误，日志尾可复制', async (
   await assert.rejects(
     runSsh({ ...baseOptions, spawn }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/auth-failed')
       assert.match(error.logTail, /Permission denied/)
       assert.ok(error.nextActions.length > 0)
@@ -231,7 +231,7 @@ test('找不到 ssh.exe：报 ssh-missing，而不是「连接失败」', async 
   }
   await assert.rejects(
     runSsh({ ...baseOptions, spawn }),
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/ssh-missing',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/ssh-missing',
   )
 })
 
@@ -252,7 +252,7 @@ test('超时立刻 kill 并报超时；之后迟到的 exit 不能把根因盖�
     () => assert.fail('不该成功'),
     (reason: unknown) => reason,
   )
-  assert.ok(error instanceof TeleportError)
+  assert.ok(error instanceof RemoteCrError)
   assert.equal(error.code, 'remote/auth-timeout')
   assert.deepEqual(child.kills, ['SIGTERM'])
 
@@ -271,7 +271,7 @@ test('取消：kill 并报 cancelled，exit 之后不再结算', async () => {
   setTimeout(() => controller.abort(), 10)
   await assert.rejects(
     promise,
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/cancelled',
   )
   assert.deepEqual(child.kills, ['SIGTERM'])
   child.fire('exit', 0, null)

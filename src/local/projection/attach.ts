@@ -16,7 +16,7 @@
  *    绝不把 `undefined` 当空数组塞进投影表（那会显示成「远端什么都没有」）。
  */
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import type { ProjectionRpc } from './remote.ts'
 import { asNumber, asRecord, asString, asStringArray, badShape } from './shape.ts'
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts'
@@ -124,7 +124,7 @@ export function readSessionList(value: unknown): RemoteSessionSummary[] {
  */
 export function throwIfCancelled(signal?: AbortSignal): void {
   if (signal === undefined || !signal.aborted) return
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/cancelled',
     detail: '已取消这次接入',
     nextActions: ['重新点一次「接入」', '换个目标再试'],
@@ -214,7 +214,7 @@ export interface CreatedSession {
    * 单独一个字段而不是抛异常：会话已经建成了，把它丢掉等于让用户白等一次
    * `session/create`；但也不能不说 —— 那会让「取证很慢」变成一个查不出来的谜。
    */
-  readonly preheatError?: TeleportError
+  readonly preheatError?: RemoteCrError
 }
 
 /**

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import {
   assertExtraEnv,
@@ -98,7 +98,7 @@ function spawnOf(script: Script, seen?: { args: string[][] }): SshLaunchSpawn {
 }
 
 const baseOptions = {
-  homeDir: 'D:/Temp/teleport-home',
+  homeDir: 'D:/Temp/remote-cr-home',
   target: TARGET,
   auth: { kind: 'agent' as const },
   remoteRoot: '/home/hui/workspace/tools/deepseek-harness',
@@ -110,8 +110,8 @@ const baseOptions = {
 
 test('远端脚本：不给 -R 时不 read 也不 export 代理地址', () => {
   const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: false })
-  assert.equal(script.includes('_teleport_proxy_port'), false)
-  assert.equal(script.includes('TELEPORT_PROXY_URL'), false)
+  assert.equal(script.includes('_remote_cr_proxy_port'), false)
+  assert.equal(script.includes('REMOTE_CR_PROXY_URL'), false)
   assert.match(script, /cd '\/srv\/dsh' \|\| exit 1/)
 })
 
@@ -119,7 +119,7 @@ test('远端脚本：给 -R 时先 read 端口再 export，并把 dsh 的 stdin 
   const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: true })
   const lines = script.split('\n')
   const readAt = lines.findIndex((line) => line.includes('IFS= read -r'))
-  const exportAt = lines.findIndex((line) => line.includes('TELEPORT_PROXY_URL'))
+  const exportAt = lines.findIndex((line) => line.includes('REMOTE_CR_PROXY_URL'))
   const spawnAt = lines.findIndex((line) => line.includes('apps/cli/lib/bin.js'))
   assert.ok(readAt >= 0 && exportAt > readAt && spawnAt > exportAt, 'read → export → 启动 dsh 的顺序不能变')
   assert.match(lines[spawnAt]!, /< \/dev\/null &$/, 'dsh 必须与看门狗分家，否则 cat 读不到 EOF')
@@ -128,9 +128,9 @@ test('远端脚本：给 -R 时先 read 端口再 export，并把 dsh 的 stdin 
 test('远端脚本：顺序是先 PID、再等回收行、再 kill、最后 KILLED', () => {
   const script = buildRemoteLaunchScript({ remoteRoot: '/srv/dsh', remotePort: 8899, waitForProxyPort: false })
   const pidAt = script.indexOf(WATCHDOG_PID_MARK)
-  const waitAt = script.indexOf('while IFS= read -r _teleport_line')
+  const waitAt = script.indexOf('while IFS= read -r _remote_cr_line')
   const exitLineAt = script.indexOf(WATCHDOG_EXIT_LINE)
-  const killAt = script.indexOf('kill "$_teleport_child"')
+  const killAt = script.indexOf('kill "$_remote_cr_child"')
   const killedAt = script.indexOf(WATCHDOG_KILLED_MARK)
   assert.ok(pidAt > 0 && waitAt > pidAt && exitLineAt > waitAt && killAt > exitLineAt && killedAt > killAt)
   // 只靠 stdin EOF 不保证能被远端读到（真机带 -R 时就不保证），所以循环里必须认这一行。
@@ -147,11 +147,11 @@ test('远端脚本：npm 装出来的 dsh 用绝对路径启动，且不切目�
     remoteRoot: '/home/hui/workspace/dsh',
     remotePort: 8899,
     waitForProxyPort: false,
-    argvPrefix: ['/home/hui/.dsh-teleport/staging/abc/npm/bin/dsh'],
+    argvPrefix: ['/home/hui/.dsh-remote-cr/staging/abc/npm/bin/dsh'],
     cwd: null,
   })
   assert.ok(!script.includes('cd '), '包安装的 dsh 与 cwd 无关，切目录只会多一个失败点')
-  assert.match(script, /'\/home\/hui\/\.dsh-teleport\/staging\/abc\/npm\/bin\/dsh' 'web' '--no-open'/)
+  assert.match(script, /'\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm\/bin\/dsh' 'web' '--no-open'/)
   assert.ok(!script.includes('apps/cli/lib/bin.js'))
 })
 
@@ -174,7 +174,7 @@ test('parseAllocatedPort 只认服务端那句 Allocated port，读不到就是 
 
 test('classifyTunnelFailure：AllowTcpForwarding 关闭时给可操作错误', () => {
   const error = classifyTunnelFailure('Warning: remote port forwarding failed for listen port 0')
-  assert.ok(error instanceof TeleportError)
+  assert.ok(error instanceof RemoteCrError)
   assert.equal(error.code, 'remote/forward-unavailable')
   assert.match(error.detail, /AllowTcpForwarding/)
   assert.ok(error.nextActions.length >= 2)
@@ -253,7 +253,7 @@ test('dispose 关 stdin 让远端看门狗回收；两个标记都在才算干�
 })
 
 test('完成标记被管道切成两块到达，仍算收到（真机回归）', async () => {
-  // 2026-11-12 真机：TELEPORT_WATCHDOG_KILLED 被切成两段到达，逐块匹配看不见，
+  // 2026-11-12 真机：REMOTE_CR_WATCHDOG_KILLED 被切成两段到达，逐块匹配看不见，
   // 日志里却明明有——于是把干净回收误报成「远端可能还活着」。
   const handle = await launchSshDsh({
     ...baseOptions,
@@ -327,7 +327,7 @@ test('等不到 URL 就超时：报 startup-failed 并带日志尾', async () =>
       spawn: spawnOf({ stderr: [''], stdout: ['dsh web: prompting for the initial launch token\n'] }),
     }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/startup-failed')
       assert.ok(error.logTail !== undefined)
       return true
@@ -342,7 +342,7 @@ test('ssh 因转发被拒提前退出：报 forward-unavailable，而不是笼�
       proxyPort: 9100,
       spawn: spawnOf({ stderr: ['Warning: remote port forwarding failed for listen port 0\n'], stdout: [], exitCode: 255 }),
     }),
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/forward-unavailable',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/forward-unavailable',
   )
 })
 
@@ -356,7 +356,7 @@ test('取消信号：立刻拒绝并 kill，报 remote/cancelled', async () => {
   }
   await assert.rejects(
     launchSshDsh({ ...baseOptions, signal: controller.signal, spawn }),
-    (error: unknown) => error instanceof TeleportError && error.code === 'remote/cancelled',
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/cancelled',
   )
 })
 
@@ -372,35 +372,35 @@ test('不传 localPort 时由内核挑一个空闲端口，且与远端端口不
   await handle.dispose()
 })
 
-test('远端脚本：extraEnv 在拿到 -R 端口之后 export，且 $TELEPORT_PROXY_URL 保持为引用', () => {
+test('远端脚本：extraEnv 在拿到 -R 端口之后 export，且 $REMOTE_CR_PROXY_URL 保持为引用', () => {
   const script = buildRemoteLaunchScript({
     remoteRoot: '/srv/dsh',
     remotePort: 8899,
     waitForProxyPort: true,
-    extraEnv: { DEEPSEEK_BASE_URL: '$TELEPORT_PROXY_URL/r/deepseek', DEEPSEEK_API_KEY: 'dsh-teleport-abc' },
+    extraEnv: { DEEPSEEK_BASE_URL: '$REMOTE_CR_PROXY_URL/r/deepseek', DEEPSEEK_API_KEY: 'dsh-remote-cr-abc' },
   })
   const lines = script.split('\n')
-  const readAt = lines.findIndex((line) => line.includes('IFS= read -r _teleport_proxy_port'))
+  const readAt = lines.findIndex((line) => line.includes('IFS= read -r _remote_cr_proxy_port'))
   const baseUrlAt = lines.findIndex((line) => line.startsWith('export DEEPSEEK_BASE_URL='))
   const spawnAt = lines.findIndex((line) => line.includes('apps/cli/lib/bin.js'))
   assert.ok(readAt >= 0 && baseUrlAt > readAt && spawnAt > baseUrlAt, '必须先拿到端口、再 export、再起 dsh')
-  // 引用不能被单引号吃掉：否则远端拿到的是字面量 $TELEPORT_PROXY_URL，推理时才连不上。
-  assert.equal(lines[baseUrlAt], "export DEEPSEEK_BASE_URL=''\"$TELEPORT_PROXY_URL\"'/r/deepseek'")
-  assert.equal(lines.find((line) => line.startsWith('export DEEPSEEK_API_KEY=')), "export DEEPSEEK_API_KEY='dsh-teleport-abc'")
+  // 引用不能被单引号吃掉：否则远端拿到的是字面量 $REMOTE_CR_PROXY_URL，推理时才连不上。
+  assert.equal(lines[baseUrlAt], "export DEEPSEEK_BASE_URL=''\"$REMOTE_CR_PROXY_URL\"'/r/deepseek'")
+  assert.equal(lines.find((line) => line.startsWith('export DEEPSEEK_API_KEY=')), "export DEEPSEEK_API_KEY='dsh-remote-cr-abc'")
 })
 
 test('extraEnv：名字不合法 / 值含换行 / 引用代理但没挂 -R，都在启动前拒绝', () => {
   const reject = (extraEnv: Record<string, string>, hasProxyPort: boolean) => {
     assert.throws(
       () => { assertExtraEnv(extraEnv, hasProxyPort) },
-      (error: unknown) => error instanceof TeleportError && error.code === 'remote/startup-failed',
+      (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/startup-failed',
     )
   }
   reject({ '1BAD': 'x' }, true)
   reject({ GOOD: 'a\nb' }, true)
-  reject({ GOOD: '$TELEPORT_PROXY_URL/r/deepseek' }, false)
+  reject({ GOOD: '$REMOTE_CR_PROXY_URL/r/deepseek' }, false)
   // 正例：合法名字 + 无换行 + 有代理端口，不该抛。
-  assertExtraEnv({ GOOD: '$TELEPORT_PROXY_URL/r/deepseek' }, true)
+  assertExtraEnv({ GOOD: '$REMOTE_CR_PROXY_URL/r/deepseek' }, true)
   assertExtraEnv({ GOOD: 'plain' }, false)
 })
 

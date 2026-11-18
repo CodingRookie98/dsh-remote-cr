@@ -15,7 +15,7 @@
  * 用户要做的动作完全不同。文案表在 `SSH_FAILURE_TABLE`，测试逐条锁住。
  */
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshAuthKind } from './transport.ts'
 
 export interface SshFailureContext {
@@ -92,7 +92,9 @@ export const SSH_FAILURE_TABLE: readonly SshFailureRule[] = [
   },
   {
     code: 'remote/auth-failed',
-    match: /Permission denied \(|Permission denied\.|publickey|Authentication failed|No more authentication methods/,
+    // 不能匹配裸 `publickey`：ssh -v 的成功行是 `Authenticated to … using "publickey"`，
+    // 那会把「认证成功但随后启动失败」误判成 auth-failed（真机回归打出来的）。
+    match: /Permission denied \(|Permission denied\.|Authentication failed|No more authentication methods|Too many authentication failures/,
     whenAuth: ['key', 'agent'],
     detail: (c) =>
       c.target + ' 拒绝了这把私钥/agent 的认证：服务端 `authorized_keys` 里没有对应的公钥，或该钥匙被禁用。',
@@ -118,7 +120,7 @@ export const SSH_FAILURE_TABLE: readonly SshFailureRule[] = [
  * 判定一条 stderr，返回结构化错误。**永远返回错误**——没有「未知就放过」的分支，
  * 因为铁律 4 要求失败要响；认不出来时给 `remote/unknown` 并保留原文日志尾。
  */
-export function classifySshFailure(stderr: string, context: SshFailureContext): TeleportError {
+export function classifySshFailure(stderr: string, context: SshFailureContext): RemoteCrError {
   const logTail = context.logTail ?? stderr.trim().split(/\r?\n/).slice(-40).join('\n')
   for (const rule of SSH_FAILURE_TABLE) {
     if (rule.whenAuth !== undefined) {
@@ -126,14 +128,14 @@ export function classifySshFailure(stderr: string, context: SshFailureContext): 
       if (!allowed.includes(context.auth)) continue
     }
     if (!rule.match.test(stderr)) continue
-    return new TeleportError({
+    return new RemoteCrError({
       code: rule.code,
       detail: rule.detail(context),
       nextActions: rule.nextActions(context),
       logTail,
     })
   }
-  return new TeleportError({
+  return new RemoteCrError({
     code: 'remote/unknown',
     detail: '连接 ' + context.target + ' 失败，但错误信息不在已知分类里；请按日志尾判断。',
     nextActions: ['复制日志后重试', '在终端里手动执行同一台 ssh 目标复现', '检查 ssh 客户端版本（本机为 OpenSSH 9.5p2）'],

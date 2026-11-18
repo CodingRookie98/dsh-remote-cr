@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { resolveRemoteDsh, type RemoteExecResult } from './runtime.ts'
 
@@ -33,21 +33,24 @@ interface InspectShape {
   readonly dir?: boolean
   readonly checkout?: boolean
   readonly staging?: string
-  /** 故意不给 TELEPORT_END：模拟远端 shell 把输出吃掉。 */
+  /** staging 里是否有我们装的 node（决定 argv[0] 用 staging/bin/node 还是 PATH 上的 node）。 */
+  readonly stagingNode?: boolean
+  /** 故意不给 REMOTE_CR_END：模拟远端 shell 把输出吃掉。 */
   readonly truncated?: boolean
 }
 
 /** 造一条与 `buildInspectScript` 同形的 stdout（标记行，末行 END）。 */
 function inspectOut(shape: InspectShape): string {
   const lines = [
-    'TELEPORT_HOME=' + (shape.home ?? '/home/hui'),
-    'TELEPORT_NODE=' + (shape.node ?? 'v22.22.1'),
-    'TELEPORT_DSH=' + (shape.dsh ?? ''),
+    'REMOTE_CR_HOME=' + (shape.home ?? '/home/hui'),
+    'REMOTE_CR_NODE=' + (shape.node ?? 'v22.22.1'),
+    'REMOTE_CR_DSH=' + (shape.dsh ?? ''),
   ]
-  if (shape.dir !== false) lines.push('TELEPORT_DIR=1')
-  if (shape.checkout === true) lines.push('TELEPORT_CHECKOUT=1')
-  if (shape.staging !== undefined) lines.push('TELEPORT_STAGING=' + shape.staging)
-  if (shape.truncated !== true) lines.push('TELEPORT_END=1')
+  if (shape.dir !== false) lines.push('REMOTE_CR_DIR=1')
+  if (shape.checkout === true) lines.push('REMOTE_CR_CHECKOUT=1')
+  if (shape.staging !== undefined) lines.push('REMOTE_CR_STAGING=' + shape.staging)
+  if (shape.stagingNode === true) lines.push('REMOTE_CR_STAGING_NODE=1')
+  if (shape.truncated !== true) lines.push('REMOTE_CR_END=1')
   return lines.join(String.fromCharCode(10)) + String.fromCharCode(10)
 }
 
@@ -69,25 +72,25 @@ function fakeExec(
     calls,
     exec: async (script, deadlineMs) => {
       calls.push({ script, deadlineMs })
-      // 检查脚本用 `p TELEPORT_HOME "$HOME"` 的形式问，不是字面量 `=`。
-      if (script.includes('p TELEPORT_HOME')) return { code: 0, stdout: inspectOut(shape), stderr: '' }
+      // 检查脚本用 `p REMOTE_CR_HOME "$HOME"` 的形式问，不是字面量 `=`。
+      if (script.includes('p REMOTE_CR_HOME')) return { code: 0, stdout: inspectOut(shape), stderr: '' }
       return rest(script) ?? { code: 1, stdout: '', stderr: 'unexpected script' }
     },
   }
 }
 
 const base = (home: string, extra: Record<string, unknown> = {}) => ({ homeDir: home, target: TARGET, auth: { kind: 'key' as const }, remoteRoot: REMOTE_ROOT, ...extra })
-const stateDirOf = (home: string): string => join(home, '.dsh-teleport', 'bootstrap')
+const stateDirOf = (home: string): string => join(home, '.dsh-remote-cr', 'bootstrap')
 
-function rethrowAsTeleport(error: unknown, code: string, extra?: (item: TeleportError) => void): true {
-  assert.ok(error instanceof TeleportError, '应是 TeleportError，实际 ' + String(error))
+function rethrowAsRemoteCr(error: unknown, code: string, extra?: (item: RemoteCrError) => void): true {
+  assert.ok(error instanceof RemoteCrError, '应是 RemoteCrError，实际 ' + String(error))
   assert.equal(error.code, code)
   extra?.(error)
   return true
 }
 
 test('有检出就用检出：argvPrefix 是 node + 检出里的 bin.js，且只跑一条远端命令', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const { exec, calls } = fakeExec({ dir: true, checkout: true })
   try {
     const runtime = await resolveRemoteDsh(base(home, { exec }))
@@ -101,11 +104,11 @@ test('有检出就用检出：argvPrefix 是 node + 检出里的 bin.js，且只
 })
 
 test('远端目录不存在：remote/path-unreadable，且在 detail 里写出那个目录', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const { exec } = fakeExec({ dir: false })
   try {
     await assert.rejects(() => resolveRemoteDsh(base(home, { exec })), (error: unknown) =>
-      rethrowAsTeleport(error, 'remote/path-unreadable', (item) => {
+      rethrowAsRemoteCr(error, 'remote/path-unreadable', (item) => {
         assert.ok(item.detail.includes('/home/hui/workspace'), item.detail)
       }),
     )
@@ -115,14 +118,14 @@ test('远端目录不存在：remote/path-unreadable，且在 detail 里写出�
 })
 
 test('staging 装过就复用：一次往返、不装任何东西', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
-  const { exec, calls } = fakeExec({ dir: true, staging: '0.2.2-rc.1' })
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
+  const { exec, calls } = fakeExec({ dir: true, staging: '0.2.2-rc.1', stagingNode: true })
   try {
     const runtime = await resolveRemoteDsh(base(home, { exec }))
     assert.equal(runtime.source, 'staging')
     const argv = runtime.argvPrefix
     // 末项是 dsh 入口；首项是 staging 的 node（dsh 的 shebang 依赖 PATH，显式带 node 才不挑远端环境）。
-    assert.match(argv[argv.length - 1] ?? '', /\/\.dsh-teleport\/staging\/[0-9a-f]{16}\/npm\/bin\/dsh$/)
+    assert.match(argv[argv.length - 1] ?? '', /\/\.dsh-remote-cr\/staging\/[0-9a-f]{16}\/npm\/bin\/dsh$/)
     assert.match(argv[0] ?? '', /\/bin\/node$/, 'staging 的 dsh 必须用 staging 的 node 执行')
     assert.equal(runtime.dshRoot.split('/').pop()?.length, 16, 'dshRoot 应是 staging/<16 位 id>')
     assert.equal(calls.length, 1, '复用路径只该花一次远端往返：这是首连 ≤10s 门禁的关键')
@@ -132,7 +135,7 @@ test('staging 装过就复用：一次往返、不装任何东西', async () => 
 })
 
 test('staging 没装过就装，装完必须验版本，账本落本地', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const scripts: string[] = []
   const { exec } = fakeExec({ dir: true }, (script) => {
     scripts.push(script)
@@ -152,11 +155,11 @@ test('staging 没装过就装，装完必须验版本，账本落本地', async 
 })
 
 test('装完却跑不出可用版本：remote/bootstrap-failed，输出写明（空）', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const { exec } = fakeExec({ dir: true }, () => ({ code: 0, stdout: String.fromCharCode(10), stderr: '' }))
   try {
     await assert.rejects(() => resolveRemoteDsh(base(home, { exec, stateDir: stateDirOf(home) })), (error: unknown) =>
-      rethrowAsTeleport(error, 'remote/bootstrap-failed', (item) => {
+      rethrowAsRemoteCr(error, 'remote/bootstrap-failed', (item) => {
         assert.equal(item.phase, 'bootstrap')
         assert.ok(item.detail.includes('（空）'), item.detail)
       }),
@@ -167,11 +170,11 @@ test('装完却跑不出可用版本：remote/bootstrap-failed，输出写明（
 })
 
 test('检查脚本没跑完（缺 END）：remote/probe-incomplete，不把「什么都没问出来」当成「都没有」', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const { exec } = fakeExec({ dir: true, truncated: true })
   try {
     await assert.rejects(() => resolveRemoteDsh(base(home, { exec })), (error: unknown) =>
-      rethrowAsTeleport(error, 'remote/probe-incomplete'),
+      rethrowAsRemoteCr(error, 'remote/probe-incomplete'),
     )
   } finally {
     rmSync(home, { recursive: true, force: true })
@@ -179,13 +182,18 @@ test('检查脚本没跑完（缺 END）：remote/probe-incomplete，不把「�
 })
 
 test('远端 home 为空：remote/dsh-missing，因为没有 home 就没有 staging 位置', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-runtime-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-runtime-'))
   const { exec } = fakeExec({ dir: true, home: '' })
   try {
     await assert.rejects(() => resolveRemoteDsh(base(home, { exec })), (error: unknown) =>
-      rethrowAsTeleport(error, 'remote/dsh-missing'),
+      rethrowAsRemoteCr(error, 'remote/dsh-missing'),
     )
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
+})
+test('stagingArgv：复用系统 node 时用 PATH 上的 node，不写死 staging/bin/node（真机回归）', async () => {
+  const { stagingArgv } = await import('./runtime.ts')
+  assert.deepEqual(stagingArgv('/s', '/s/npm/bin/dsh', false), ['node', '/s/npm/bin/dsh'])
+  assert.deepEqual(stagingArgv('/s', '/s/npm/bin/dsh', true), ['/s/bin/node', '/s/npm/bin/dsh'])
 })

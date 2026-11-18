@@ -19,13 +19,13 @@
 import { createHash } from 'node:crypto'
 
 /** 占位串的统一前缀；日志与抓包都能一眼认出来。 */
-export const PLACEHOLDER_PREFIX = 'dsh-teleport-'
+export const PLACEHOLDER_PREFIX = 'dsh-remote-cr-'
 
 /** 前缀之后的十六进制位数（96 bit）。碰撞概率可忽略，长度对 HTTP 头友好。 */
 const PLACEHOLDER_HEX_LENGTH = 24
 
 /** `docs/design/architecture.md` §7：占位串的形状属于对外契约，改动要同步文档。 */
-const PLACEHOLDER_PATTERN = /^dsh-teleport-[0-9a-f]{24}$/
+const PLACEHOLDER_PATTERN = /^dsh-remote-cr-[0-9a-f]{24}$/
 
 /** 由 `(salt, ref)` 确定性地算出占位串。 */
 export function mintPlaceholder(ref: string, salt: string): string {

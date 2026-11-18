@@ -9,7 +9,7 @@
  * 现在的顺序（每一步都记进 `log`，失败带码）：
  * 1. `remoteRoot/apps/cli/lib/bin.js` 存在 → 用检出（与 WSL 同语义）。
  * 2. 否则探测一次远端（平台/架构/home/node 版本），把 dsh 装进
- *    `<远端 home>/.dsh-teleport/staging/<目标 id>/`，用那里的 `npm/bin/dsh`。
+ *    `<远端 home>/.dsh-remote-cr/staging/<目标 id>/`，用那里的 `npm/bin/dsh`。
  *
  * 三条硬约束：
  *
@@ -25,7 +25,7 @@
 import { join } from 'node:path'
 import { posix } from 'node:path'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import { anchorIdFor, anchorTargetOf } from './anchors.ts'
 import {
   DEFAULT_MIRRORS,
@@ -60,13 +60,13 @@ export interface RemoteDshRuntime {
   /** 交给 `launchSshDsh` 的启动前缀（不含 `web --port …`）。 */
   readonly argvPrefix: readonly string[]
   readonly source: RemoteDshSource
-  /** 检出模式下是 `remoteRoot`，staging 模式下是 `<远端 home>/.dsh-teleport/staging/<id>`。 */
+  /** 检出模式下是 `remoteRoot`，staging 模式下是 `<远端 home>/.dsh-remote-cr/staging/<id>`。 */
   readonly dshRoot: string
   /**
-   * 远端 `$HOME`（同一条检查脚本里的 `TELEPORT_HOME`）。
+   * 远端 `$HOME`（同一条检查脚本里的 `REMOTE_CR_HOME`）。
    *
    * 环境策略要把隔离目录拼在它下面，而它**只有远端知道**：拿本地 home 拼出来的路径
-   * 正是 S9 真机踩过的那类错（`D:\\home\\hui/.dsh-teleport/...`）。
+   * 正是 S9 真机踩过的那类错（`D:\\home\\hui/.dsh-remote-cr/...`）。
    */
   readonly remoteHome: string
   /** 每一步做了什么、跳过了什么。失败时这条也进 `logTail`。 */
@@ -81,7 +81,7 @@ export interface ResolveRemoteDshRequest {
   readonly remoteRoot: string
   /** 检出模式下跑 `apps/cli/lib/bin.js` 的解释器；缺省 `node`。 */
   readonly nodeCommand?: string
-  /** 账本目录；缺省 `<本地 home>/.dsh-teleport/bootstrap`。 */
+  /** 账本目录；缺省 `<本地 home>/.dsh-remote-cr/bootstrap`。 */
   readonly stateDir?: string
   /** 装哪个版本的 dsh（staging 模式）；缺省由 `bootstrap.ts` 决定。 */
   readonly dshVersion?: string
@@ -101,7 +101,7 @@ export interface ResolveRemoteDshRequest {
 }
 
 
-const INSPECT_MARK = 'TELEPORT_'
+const INSPECT_MARK = 'REMOTE_CR_'
 
 /**
  * 一次远端往返就把「用哪份 dsh」定下来。
@@ -110,25 +110,29 @@ const INSPECT_MARK = 'TELEPORT_'
  * 每件单独发一条 `ssh` 就要各付一次连接与认证的固定开销。真机实测 gcp 一次往返约 1.5s，
  * 四件就是 6s——而 `requirements.md` §7 的首连门禁是 **10s 整**。
  *
- * 输出是「标记名=值」，末行 `TELEPORT_END=1` 证明脚本**跑完了**：缺末行说明远端 shell 的
+ * 输出是「标记名=值」，末行 `REMOTE_CR_END=1` 证明脚本**跑完了**：缺末行说明远端 shell 的
  * 启动横幅把输出吃掉了，或者远端根本没有 `sh`。这时宁可报错，不猜。
  */
 function buildInspectScript(request: ResolveRemoteDshRequest, stagingSuffix: string): string {
   const checkoutBin = posix.join(request.remoteRoot, 'apps/cli/lib/bin.js')
   return [
     'p() { printf "%s=%s\\n" "$1" "$2"; }',
-    'p TELEPORT_HOME "$HOME"',
-    'p TELEPORT_NODE "$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null || true)"',
-    'p TELEPORT_DSH "$(command -v dsh >/dev/null 2>&1 && dsh --version 2>/dev/null || true)"',
-    '[ -d ' + shellQuote(request.remoteRoot) + ' ] && p TELEPORT_DIR 1',
-    '[ -f ' + shellQuote(checkoutBin) + ' ] && p TELEPORT_CHECKOUT 1',
+    'p REMOTE_CR_HOME "$HOME"',
+    'p REMOTE_CR_NODE "$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null || true)"',
+    'p REMOTE_CR_DSH "$(command -v dsh >/dev/null 2>&1 && dsh --version 2>/dev/null || true)"',
+    '[ -d ' + shellQuote(request.remoteRoot) + ' ] && p REMOTE_CR_DIR 1',
+    '[ -f ' + shellQuote(checkoutBin) + ' ] && p REMOTE_CR_CHECKOUT 1',
     // `$(` … `)` 里那一段是**命令替换**，因此 stagingBin 要再引一次；外层整体由 shellQuote 包。
     // staging 在**远端** home 下，而远端 home 只有远端知道——所以脚本自己拼，别喂本地路径。
-    // 2026-11-13 真机踩过：拿本地 home 拼出 `C:\\Users\\hui/.dsh-teleport/...` 当成远端目录，
+    // 2026-11-13 真机踩过：拿本地 home 拼出 `C:\\Users\\hui/.dsh-remote-cr/...` 当成远端目录，
     // 引导器于是对着一个不存在的路径装包。
     'S="$HOME/' + stagingSuffix + '"',
-    '[ -x "$S/npm/bin/dsh" ] && p TELEPORT_STAGING "$("$S/bin/node" "$S/npm/bin/dsh" --version 2>/dev/null)"',
-    'p TELEPORT_END 1',
+    // node 可能来自 staging（我们自己装的），也可能是系统那份（node 步骤被跳过时）：
+  // 探版本必须两条都试，否则「已装好」永远探测不到，每次接入都重跑引导（真机回归发现）。
+  '[ -x "$S/bin/node" ] && p REMOTE_CR_STAGING_NODE 1',
+  'if [ -x "$S/bin/node" ]; then N="$S/bin/node"; else N=node; fi',
+  '[ -x "$S/npm/bin/dsh" ] && p REMOTE_CR_STAGING "$("$N" "$S/npm/bin/dsh" --version 2>/dev/null)"',
+    'p REMOTE_CR_END 1',
   ].join(String.fromCharCode(10))
 }
 
@@ -157,15 +161,15 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const checkoutBin = posix.join(request.remoteRoot, 'apps/cli/lib/bin.js')
   // staging 的**相对**位置只取决于目标（user@host:port 的 hash），与远端 home 无关；
   // 绝对路径则必须等检查脚本把远端 `$HOME` 报回来才能拼。
-  const stagingSuffix = posix.join('.dsh-teleport', 'staging', anchorIdFor(anchorTargetOf(request.target)))
+  const stagingSuffix = posix.join('.dsh-remote-cr', 'staging', anchorIdFor(anchorTargetOf(request.target)))
 
   const inspect = await exec(buildInspectScript(request, stagingSuffix), 30_000)
   const values = inspectValues(inspect.stdout)
   if (!values.has('END')) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/probe-incomplete',
       detail:
-        '远端没有跑完检查脚本（缺 TELEPORT_END）：' +
+        '远端没有跑完检查脚本（缺 REMOTE_CR_END）：' +
         (inspect.stderr.trim() === '' ? '无 stderr' : inspect.stderr.trim().slice(-300)),
       nextActions: ['确认远端有 sh、登录横幅不会吞掉 stdout', '重试一次', '改用 WSL 后端'],
       logTail: log.join(String.fromCharCode(10)),
@@ -187,7 +191,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     }
   }
   if (values.get('DIR') !== '1') {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/path-unreadable',
       detail: '远端目录 ' + request.remoteRoot + ' 不存在，无法在其中启动 dsh',
       nextActions: ['在面板里换一个存在的远端目录', '先在远端建好这个目录再接入'],
@@ -204,9 +208,12 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   const stagingBin = posix.join(stagingDir, 'npm/bin/dsh')
   log.push('staging：' + stagingDir)
   const reusedVersion = values.get('STAGING') ?? ''
+  // 判据是「staging 里到底有没有我们装的那份 node」，而不是「系统有没有 node」：
+  // 两者都有时优先用 staging 的（与当初装 dsh 时的运行时一致）。
+  const useStagingNode = values.get('STAGING_NODE') === '1'
   if (dshSupported(reusedVersion)) {
     log.push('staging：复用已装的 dsh ' + reusedVersion)
-    return { argvPrefix: stagingArgv(stagingDir, stagingBin), source: 'staging', dshRoot: stagingDir, remoteHome, log }
+    return { argvPrefix: stagingArgv(stagingDir, stagingBin, useStagingNode), source: 'staging', dshRoot: stagingDir, remoteHome, log }
   }
 
   const statePath = statePathOf(request)
@@ -228,7 +235,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   })
   if (!outcome.ok) {
     const failed = outcome.failed
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/bootstrap-failed',
       detail:
         '远端引导失败于 ' + String(failed?.id ?? '?') +
@@ -254,7 +261,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
   )
   const version = verify.stdout.trim()
   if (verify.code !== 0 || !dshSupported(version)) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/bootstrap-failed',
       detail:
         '引导器报成功，但 ' + stagingBin + ' 跑不出可用版本（退出码 ' + String(verify.code) +
@@ -264,7 +271,7 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
     })
   }
   log.push('staging：验过版本 ' + version)
-  return { argvPrefix: stagingArgv(stagingDir, stagingBin), source: 'staging', dshRoot: stagingDir, remoteHome, log }
+  return { argvPrefix: stagingArgv(stagingDir, stagingBin, useStagingNode), source: 'staging', dshRoot: stagingDir, remoteHome, log }
 }
 /**
  * staging 里的启动前缀：**用 staging 的 node 直接跑 dsh 入口**。
@@ -273,8 +280,18 @@ export async function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promis
  * 在干净机器上直接执行它会以 127 退出（`/usr/bin/env: node: No such file`），
  * 还会被误分类成 `remote/auth-failed`。显式带 node 就不依赖任何 PATH 约定。
  */
-function stagingArgv(stagingDir: string, stagingBin: string): readonly string[] {
-  return [posix.join(stagingDir, 'bin/node'), stagingBin]
+/**
+ * staging 里的启动 argv。
+ *
+ * node 有两个可能来源：我们自己装进 staging 的那份（`bin/node`），或远端系统那份。
+ * 后者在 node 步骤被跳过时**不存在于 staging**，写死 `staging/bin/node` 会让远端以
+ * `sh: bin/node: not found` 起来就死（真机回归在 gcp 上抓到，且被误判成 auth-failed）。
+ * @param stagingDir - staging 根。
+ * @param stagingBin - `staging/npm/bin/dsh`。
+ * @param useStagingNode - true 表示 node 也是我们装的。
+ */
+export function stagingArgv(stagingDir: string, stagingBin: string, useStagingNode: boolean): readonly string[] {
+  return [useStagingNode ? posix.join(stagingDir, 'bin/node') : 'node', stagingBin]
 }
 
 /** 缺省执行器：一条 `ssh` channel，非零退出**不**抛（引导器要按退出码分支）。 */
@@ -299,7 +316,7 @@ function defaultExec(request: ResolveRemoteDshRequest): RemoteExec {
 }
 
 function statePathOf(request: ResolveRemoteDshRequest): string {
-  const dir = request.stateDir ?? join(request.homeDir, '.dsh-teleport', 'bootstrap')
+  const dir = request.stateDir ?? join(request.homeDir, '.dsh-remote-cr', 'bootstrap')
   return join(dir, anchorIdFor(anchorTargetOf(request.target)) + '.json')
 }
 
@@ -309,8 +326,8 @@ async function loadState(file: string, target: SshTarget): Promise<BootstrapStat
   return loaded.ok === true ? loaded.state : emptyBootstrapState(anchorIdFor(anchorTargetOf(target)))
 }
 
-function failure(detail: string, log: readonly string[], request: ResolveRemoteDshRequest): TeleportError {
-  return new TeleportError({
+function failure(detail: string, log: readonly string[], request: ResolveRemoteDshRequest): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/dsh-missing',
     detail,
     nextActions: [

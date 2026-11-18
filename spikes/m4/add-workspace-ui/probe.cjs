@@ -239,11 +239,11 @@ async function main() {
   await cdp.shot('01-shell.png')
 
   await clickSelector(cdp, 'button[aria-label="Add workspace"]')
-  await waitFor(cdp, 'document.querySelector("[data-teleport=\'wizard\']") !== null', 20_000, '我们的向导挂载')
+  await waitFor(cdp, 'document.querySelector("[data-remote-cr=\'wizard\']") !== null', 20_000, '我们的向导挂载')
   record('R2 官方 Add workspace 打开的是我们的向导', true, {})
   const geometry = await cdp.evaluate(
-    '(() => { const node = document.querySelector("[data-teleport=\'wizard\']"); if (node === null) return null;' +
-    ' const rect = node.getBoundingClientRect(); const overlay = document.querySelector("[data-teleport=\'wizard-overlay\']");' +
+    '(() => { const node = document.querySelector("[data-remote-cr=\'wizard\']"); if (node === null) return null;' +
+    ' const rect = node.getBoundingClientRect(); const overlay = document.querySelector("[data-remote-cr=\'wizard-overlay\']");' +
     ' return { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height),' +
     ' layout: node.getAttribute("data-layout"), overlay: overlay !== null, viewport: { w: innerWidth, h: innerHeight } }; })()',
   )
@@ -251,33 +251,33 @@ async function main() {
   await clearHostModals(cdp)
   await cdp.shot('02-wizard-choose.png')
 
-  await waitFor(cdp, 'document.querySelectorAll("[data-teleport=\'source\']").length >= 3', 25_000, '来源列表')
-  await clickSelector(cdp, '[data-teleport="source"][data-source="local"]')
-  await waitFor(cdp, 'document.querySelector("[data-teleport=\'entries\']") !== null', 20_000, '本机目录条目')
-  const entries = await cdp.evaluate('Array.from(document.querySelectorAll("[data-teleport=\'entry\']")).slice(0, 5).map((n) => n.textContent)')
+  await waitFor(cdp, 'document.querySelectorAll("[data-remote-cr=\'source\']").length >= 3', 25_000, '来源列表')
+  await clickSelector(cdp, '[data-remote-cr="source"][data-source="local"]')
+  await waitFor(cdp, 'document.querySelector("[data-remote-cr=\'entries\']") !== null', 20_000, '本机目录条目')
+  const entries = await cdp.evaluate('Array.from(document.querySelectorAll("[data-remote-cr=\'entry\']")).slice(0, 5).map((n) => n.textContent)')
   record('R3 本机分支：真目录列出来了', Array.isArray(entries) && entries.length > 0, { entries })
   await clearHostModals(cdp)
   await cdp.shot('03-wizard-local.png')
 
-  await clickSelector(cdp, '[data-teleport="source"][data-source="wsl"]')
-  await waitFor(cdp, 'document.querySelector("[data-teleport=\'distro\']") !== null', 15_000, '发行版列表')
+  await clickSelector(cdp, '[data-remote-cr="source"][data-source="wsl"]')
+  await waitFor(cdp, 'document.querySelector("[data-remote-cr=\'distro\']") !== null', 15_000, '发行版列表')
   await clearHostModals(cdp)
   await cdp.shot('04-wizard-wsl-distros.png')
 
-  await clickSelector(cdp, '[data-teleport="distro"]')
+  await clickSelector(cdp, '[data-remote-cr="distro"]')
   let outcome = 'idle'
   const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {
     outcome = await cdp.evaluate(
-      '(() => { if (document.querySelector("[data-teleport=\'wake-error\']") !== null) return "failed";' +
-      ' if (document.querySelector("[data-teleport=\'entries\']") !== null) return "browsing";' +
-      ' if (document.querySelector("[data-teleport=\'wake-progress\']") !== null) return "waking"; return "idle"; })()',
+      '(() => { if (document.querySelector("[data-remote-cr=\'wake-error\']") !== null) return "failed";' +
+      ' if (document.querySelector("[data-remote-cr=\'entries\']") !== null) return "browsing";' +
+      ' if (document.querySelector("[data-remote-cr=\'wake-progress\']") !== null) return "waking"; return "idle"; })()',
     )
     if (outcome === 'failed' || outcome === 'browsing') break
     await sleep(500)
   }
   const wake = outcome === 'failed'
-    ? await cdp.evaluate('(() => { const card = document.querySelector("[data-teleport=\'wake-error\']"); if (card === null) return null; return { code: card.getAttribute("data-code"), text: card.textContent || "" } })()')
+    ? await cdp.evaluate('(() => { const card = document.querySelector("[data-remote-cr=\'wake-error\']"); if (card === null) return null; return { code: card.getAttribute("data-code"), text: card.textContent || "" } })()')
     : null
   const structured = wake !== null && typeof wake.code === 'string' && wake.code.startsWith('wsl/') && String(wake.text).length > 20
   record('R4 点发行版后一定有明确结果（进浏览 或 结构化诊断卡）', outcome === 'browsing' || structured, {
@@ -288,7 +288,7 @@ async function main() {
   await clearHostModals(cdp)
   await cdp.shot('05-wizard-wsl-failed.png')
 
-  const marks = await cdp.evaluate('Array.from(document.querySelectorAll("[data-teleport]")).map((n) => n.getAttribute("data-teleport"))')
+  const marks = await cdp.evaluate('Array.from(document.querySelectorAll("[data-remote-cr]")).map((n) => n.getAttribute("data-remote-cr"))')
   const needed = ['wizard', 'wizard-overlay', 'title', 'sources', 'source', 'confirm', 'wizard-cancel']
   const missing = needed.filter((name) => !Array.isArray(marks) || !marks.includes(name))
   record('R5 断言面完整（既有 + 新增标记都在）', missing.length === 0, { missing, total: Array.isArray(marks) ? marks.length : 0 })
@@ -298,14 +298,14 @@ async function main() {
   // 之前这三处只有可视状态（data-selected / data-active），读屏拿不到（R2-D3）。
   const a11y = await cdp.evaluate(
     '(() => { const problems = [];' +
-    ' const rail = document.querySelector("[data-teleport=\'sources\']");' +
+    ' const rail = document.querySelector("[data-remote-cr=\'sources\']");' +
     ' if (rail === null) problems.push("缺少 sources");' +
     ' else { if (rail.getAttribute("role") !== "radiogroup") problems.push("sources 缺 role=radiogroup");' +
-    ' const picked = rail.querySelector("[data-teleport=\'source\'][data-selected=\'true\']");' +
+    ' const picked = rail.querySelector("[data-remote-cr=\'source\'][data-selected=\'true\']");' +
     ' if (picked !== null && picked.getAttribute("aria-checked") !== "true") problems.push("选中来源缺 aria-checked"); }' +
-    ' const list = document.querySelector("[data-teleport=\'entries\']");' +
+    ' const list = document.querySelector("[data-remote-cr=\'entries\']");' +
     ' if (list !== null) { if (list.getAttribute("role") !== "listbox") problems.push("entries 缺 role=listbox");' +
-    ' const active = list.querySelector("[data-teleport=\'entry\'][data-active=\'true\']");' +
+    ' const active = list.querySelector("[data-remote-cr=\'entry\'][data-active=\'true\']");' +
     ' if (active !== null && active.getAttribute("aria-selected") !== "true") problems.push("游标条目缺 aria-selected"); }' +
     ' return problems; })()',
   )

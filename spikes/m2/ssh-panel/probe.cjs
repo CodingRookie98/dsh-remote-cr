@@ -57,7 +57,7 @@ function record(id, ok, detail) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 页内选择器：属性一律单引号，免得和页内表达式的双引号打架。 */
-const sel = (attr) => "[data-teleport='" + attr + "']"
+const sel = (attr) => "[data-remote-cr='" + attr + "']"
 const q = (attr) => 'document.querySelector("' + sel(attr) + '")'
 const qa = (attr) => 'Array.from(document.querySelectorAll("' + sel(attr) + '"))'
 /** 侧栏里的「瞬移」入口按钮。 */
@@ -379,8 +379,8 @@ async function snapshotDom(cdp, sessionId) {
   return evaluate(
     cdp,
     sessionId,
-    '(() => { const marks = Array.from(document.querySelectorAll("[data-teleport]"));' +
-      ' return { url: location.href, marks: marks.map(n => n.getAttribute("data-teleport")).slice(0, 40),' +
+    '(() => { const marks = Array.from(document.querySelectorAll("[data-remote-cr]"));' +
+      ' return { url: location.href, marks: marks.map(n => n.getAttribute("data-remote-cr")).slice(0, 40),' +
       ' buttons: Array.from(document.querySelectorAll("button")).map(b => (b.getAttribute("aria-label") || b.textContent || "").trim()).filter(s => s !== "").slice(0, 40),' +
       ' text: document.body.innerText.slice(0, 800) } })()',
   )
@@ -530,7 +530,7 @@ async function openPanel(cdp, sessionId) {
  * 接入计时（Node 侧打点）。
  *
  * 不用通用的 `measure`：接入成功会让官方 workspace owner 把视图导航到新工作区，
- * 面板被卸载，页内 rAF 谓词再也读不到 `[data-teleport='projected']`。所以每轮先
+ * 面板被卸载，页内 rAF 谓词再也读不到 `[data-remote-cr='projected']`。所以每轮先
  * 把面板点回来再判定；起止都取 Node 侧时钟，并把 source 标成 node —— 别冒充 rAF。
  */
 async function attachMeasured(cdp, sessionId, timeoutMs, label) {
@@ -685,7 +685,7 @@ async function gateEnsureHosts(cdp, sid) {
       cdp,
       sid,
       '(async () => { const t0 = performance.now(); try {' +
-        ' const r = await fetch("/teleport/api/sources", { credentials: "include" });' +
+        ' const r = await fetch("/remote-cr/api/sources", { credentials: "include" });' +
         ' const text = await r.text();' +
         ' return { ms: Math.round(performance.now() - t0), status: r.status, head: text.slice(0, 120) } }' +
         ' catch (e) { return { ms: Math.round(performance.now() - t0), err: String(e) } } })()',

@@ -8,15 +8,15 @@
 
 ```
 ┌─────────────────────────────── Windows / 本地 DSH ───────────────────────────────┐
-│  dsh-teleport-local（cordis 插件，挂在 desktop/web profile）                      │
-│   ├─ client 半：sidebar.panellist(id:'teleport') + main(key:'teleport')            │
-│   │            → 瞬移面板：主机 → 工作区统一视图（本地与远端混排）                 │
+│  dsh-remote-cr-local（cordis 插件，挂在 desktop/web profile）                      │
+│   ├─ client 半：sidebar.panellist(id:'dsh-remote-cr') + main(key:'dsh-remote-cr')            │
+│   │            → 「远端工作台」面板：主机 → 工作区统一视图（本地与远端混排）                 │
 │   │            + 顶掉 directoryFlow（priority:-1）→ 添加工作区四选一               │
 │   │              local / wsl / ssh / docker(灰)                                    │
 │   │            + shell.overlay（连接进度、错误 Toast）                             │
-│   │            + settings.section（瞬移分区）                                       │
+│   │            + settings.section（远端工作台分区）                                       │
 │   │            详见 ui-design.md §2–§6、ADR-0005                                   │
-│   ├─ host 半：/teleport/api/*（webServer + connection.requestRejection）          │
+│   ├─ host 半：/remote-cr/api/*（webServer + connection.requestRejection）          │
 │   ├─ Backend 抽象：WSL / SSH                                                      │
 │   │     probe → provision(可选) → start remote dsh → 双向隧道（反向通路见 §7.0）   │
 │   ├─ Provisioner：Node/dsh 版本解析、缓存、镜像测速、进度事件、失败分类            │
@@ -30,7 +30,7 @@
 ┌───────────────────────────────────▼──────────────────────────────────────────────┐
 │  远端（WSL2 发行版 或 SSH POSIX 主机）                                             │
 │   ├─ dsh 宿主（Node + dsh，版本对齐；独立或复用 DSH_HOME）                         │
-│   ├─ dsh-teleport-companion（远端 profile 插件）                                   │
+│   ├─ dsh-remote-cr-companion（远端 profile 插件）                                   │
 │   │     · 健康检查 / 版本上报 / 控制通道（MessageChannel 或原生 Remote 协议）      │
 │   │     · 会话与工作区快照、动作转发、iframe 父窗口校验（若走 iframe）             │
 │   └─ 用户的插件 / 技能 / 工具链（在远端原生可用）                                  │
@@ -86,7 +86,7 @@
 |---|---|---|---|
 | 本机 | 用户选中的本机目录 | 无（即路径本身） | 走官方机制，无投影 |
 | **WSL** | `\\wsl.localhost\<distro>\<path>`（UNC） | 同一路径的 Linux 形式记在插件存储 | **UNC 就是本机真实目录**：Windows-WSL 实测 `realpath` + `stat().isDirectory()` 均通过，`createWorkspace` 直接接受 |
-| **SSH** | 本地锚点 `~/.dsh-teleport/anchors/<hash>/` | 远端绝对路径存插件存储 | 远端路径不在本机 FS，`realpath` 必然失败；锚点是唯一同时满足「realpath 契约」与「本地可见」的办法 |
+| **SSH** | 本地锚点 `~/.dsh-remote-cr/anchors/<hash>/` | 远端绝对路径存插件存储 | 远端路径不在本机 FS，`realpath` 必然失败；锚点是唯一同时满足「realpath 契约」与「本地可见」的办法 |
 | Docker（M5） | 同 SSH（锚点） | 容器内路径存插件存储 | 接口位先留，见 §14 与 ADR-0005 |
 
 > **已知副作用与已验证的缓解（2026-10-26 spike）**：UNC 工作区里 `session.cwd` 是 UNC 路径，模型看到的是 `\\wsl.localhost\...` 而不是 `/home/...`。**缓解已验证可行**：插件在 `system-prompt/assemble` 上以 `{ prepend: true }` 注册监听，`await next()` 之后改写 `working-directory:current` 的 `contribution.text`；实测模型侧文本从 `\\\\wsl.localhost\\ubuntu_dev\\home\\hui\\workspace` 变为 `/home/hui/workspace`，而 `header.cwd` 与 `workingDirectory.get()` 保持 UNC（真实身份不被污染）。**必须 prepend**：`WorkingDirectoryService` 自己也注册了 prepend 监听，排在它之后的改写会被它覆盖。**投影必须覆盖多处（已实测）**：只改 `working-directory:current` 时同会话的 `sandbox:policy` context 仍写着 UNC 工作区路径（模型会以为写权限边界是 `\\wsl.localhost\...`）；同一个 assemble 监听里把 `the session workspace: <json>` 段一起改写后，cwd 与写权限边界同时变成 POSIX 路径，而本地 Windows 工作区的两条文本原样不动。**投影是提示词层、不是身份层**（M1 spike 另补：UNC 工作区双向读写闭环 `Windows 写→distro 读` / `distro 写→Windows 读` 均逐字一致，`cat >` exec 管道回退可用，见 `spikes/m1/wsl-closed-loop/`）：`session.header.cwd` / `ctx.fs` 真实目标 / `workingDirectory.get()` 全部保持 UNC。详见 `ui-design.md` §9.1 V4/V5/V7/V14/V15 与 §9.2。
@@ -110,7 +110,7 @@ v1 可选：远端通过 companion 提供目录/文件读取，本地只读预�
   ```
   规则：取 `productVersion` **较新**的一端，用**它的** `minCompatibleVersion` 判断较旧端。三种结果——①不兼容 → 阻止连接，展示「当前版本 / 最低版本 / 应升级哪一端」；②兼容但版本不同 → **非阻塞**「可更新」提示（侧栏小圆点，不改连接状态）；③缺失该字段 → 判为过旧，走升级。
   理由：宿主每发一个 rc 就强制用户升远端，体验不可接受；且 rc 之间绝大多数是兼容的。参照 `docs/research/zcode-remote/04-protocol-and-sync.md` §1.5。
-- **安装缓存**：按 `(平台, 架构, node版本, dsh版本)` 缓存到 `~/.dsh-teleport/cache/`，上传一次多目标复用；WSL 与 SSH 共用缓存包。
+- **安装缓存**：按 `(平台, 架构, node版本, dsh版本)` 缓存到 `~/.dsh-remote-cr/cache/`，上传一次多目标复用；WSL 与 SSH 共用缓存包。
 - **复用优先**：探测远端已有 `dsh`（PATH/已知目录）→ 版本匹配则直接复用；不匹配时给「复用/安装私有版本」二选一。
 - **镜像测速**：Node 分发镜像与 npm registry 各测 3 个候选，选最快并缓存结果（remote-explorer 的 `doctor` 已经证明这套有效）。
 - **进度事件**：探测 → 下载 → 校验 → 解压 → 安装 → 启动 → 隧道 → **同步屏障**，逐阶段上报（含字节数与来源），支持取消与断点复用。
@@ -120,7 +120,7 @@ v1 可选：远端通过 companion 提供目录/文件读取，本地只读预�
 
 | 档位 | 说明 | 适用 |
 |---|---|---|
-| `isolated` | 自管 DSH_HOME（如 `~/.dsh-teleport/<host>/`），不碰远端 `~/.dsh` | 干净、可回滚；但远端已有插件/技能不可用 |
+| `isolated` | 自管 DSH_HOME（如 `~/.dsh-remote-cr/<host>/`），不碰远端 `~/.dsh` | 干净、可回滚；但远端已有插件/技能不可用 |
 | `reuse` | 直接使用远端已有 `~/.dsh` 与 profile（要求版本匹配、用户确认） | **满足「用 WSL 里已有插件」的核心诉求**；风险：污染/版本冲突 |
 | `sync` | 隔离 home + 从本地显式同步插件/技能/配置（不含凭据） | 可控共享；需要同步协议与冲突提示 |
 
@@ -190,7 +190,7 @@ ssh -L 18802:127.0.0.1:18801 -R 18803:127.0.0.1:18899
 - **已发布之后**再同步失败，只留结构化 warning（可在状态面板看到），**不拆连接**——一次抖动不该打掉整条连接。
 - 同步单位是 **host（Environment）**，不是 workspace。多工作区共享一个远端时，配置写入必须**单飞**（同一 host 同时只有一次写入 flight），否则并发写会互相覆盖。
 
-> 与 ZCode 的差异：ZCode 推的是**真凭据快照**（`docs/remote/provider-provisioning.md`），dsh-teleport 只推**占位令牌 + 代理端点**（铁律 3）。但屏障、单飞、失败降级这三个语义照抄。
+> 与 ZCode 的差异：ZCode 推的是**真凭据快照**（`docs/remote/provider-provisioning.md`），dsh-remote-cr 只推**占位令牌 + 代理端点**（铁律 3）。但屏障、单飞、失败降级这三个语义照抄。
 
 ## 8. 生命周期、重连与回收
 
@@ -306,7 +306,7 @@ rootCtx
 ## 11. 仓库结构（建议）
 
 ```
-dsh-teleport/
+dsh-remote-cr/
 ├── packages/
 │   ├── local/          # 本地插件（host 半 + client 半）
 │   ├── companion/      # 远端伴生插件
@@ -328,11 +328,11 @@ dsh-teleport/
 | 远端安装体积/时间 | 缓存、镜像测速、复用远端已有 dsh、增量 |
 | DSH 版本契约漂移 | 能力探测 + 兼容矩阵 + 双版本 CI |
 | 工作区必须是本地目录 | **已定且已验证**：WSL 走 UNC（真本机目录，spike 实测可 create/attach/落盘）、SSH 走锚点（§4.1）。cwd 投影层机制已验证（§4.1 副作用条），**投影覆盖范围已闭合**（V14：全量枚举后运行时只有 `working-directory:current` 与 `sandbox:policy` 两处渲染 cwd，均已覆盖）；**工具参数侧路径已闭合**（V15：UNC cwd 下 POSIX 路径与 UNC 路径天然等价，不需要改写层）。**剩余风险**：远端 Host 等价性、锚点后端的虚拟根映射（§9.2） |
-| 工具/插件命名冲突 | `teleport_*` 前缀 + 命名空间检查 |
+| 工具/插件命名冲突 | `remote_cr_*` 前缀 + 命名空间检查（旧前缀已随 ADR-0006 退役） |
 | Windows/WSL 网络细节 | localhost 转发策略、发行版自动启动、防火墙提示 |
 | 维护成本 | 先窄后宽：M1 WSL → M2 SSH → M5 Docker（§14）；复用成熟实现的设计而非代码 |
 | 单通道被 WS 独占后无法复用 | 见 §8.3：WS upgrade 后 agent 是否还能承载业务流量**未验证**（ZCode 是 upgrade 完即独占）；M0 spike 必须验 |
-| 同一远端被两个本地 DSH 实例连接 | 会产生并发部署/配置写入冲突。ZCode 用 `mkdir` 抢锁 + 30s 心跳 + 600s stale 抢占解决；dsh-teleport 单用户场景**暂不做**，M0 判定是否需要 |
+| 同一远端被两个本地 DSH 实例连接 | 会产生并发部署/配置写入冲突。ZCode 用 `mkdir` 抢锁 + 30s 心跳 + 600s stale 抢占解决；dsh-remote-cr 单用户场景**暂不做**，M0 判定是否需要 |
 | WSL 代理网关改写在 mirrored networking 下多余 | Windows 11 22H2+ 的 mirrored 模式下 WSL 可直接访问宿主 loopback；实现要「先探测再改写」，改写失败保留原值。**M1 实测后：网关档（②）已退役**，默认走 ③ stdio 桥、① 当 mirrored 下的优化，此条只剩「别把 ① 写成硬前提」这一层含义（§7.0 M1 段） |
 | Windows→WSL 路径拼接风格错误 | MCP 配置里的本地绝对路径必须按**目标远端形态**重写，不能用 `process.platform` 决定分隔符 |
 | **`reuse` 默认值会让远端环境差异直接泄漏进会话**（R1-10） | 默认 `reuse` 意味着远端已有 profile/插件/版本**未经我们控制**。应对：连接前做**版本与 profile 指纹探测**并展示差异（版本不匹配 → A10 拒绝连接；插件集合差异 → 非阻塞提示）；`reuse` 下**不写**远端 `~/.dsh` 的任何文件（除 dsh 自身会写的会话数据）；出问题时可一键切 `isolated` 复现对照。M1 首个任务必须先固化这个探测的字段与提示文案，否则 A5 的「二次连接」口径会随环境漂移 |
@@ -342,7 +342,7 @@ dsh-teleport/
 ## 13. M0 验证清单（结论已写入 ADR-0003，2026-10-26 定稿）
 
 1. ~~在隔离 profile 中尝试 `import('@deepseek-ai/dsh-api-remotes')`，确认第三方可用性与权限模型~~ **已完成**（ADR-0003）：判据不是「能不能 import」，而是「它是否已经提供了 transport 无关的 RPC + 事件流 + 连接生命周期」。**四条阈值全过**——`ClientTransport` 是 transport 无关接口、api-gateway 有事件流、连接生命周期与重连由 `dsh-client-connection` 提供、五个包均 `private: false` 可发。净收益边界：只省「协议与连接层」，不省 transport；
-2. ~~**槽位最小原型**~~ **已完成**（`ui-design.md` §9.1 V1/V2/V6/V8/V9）：`sidebar.panellist`（id `teleport`，order 20）+ `main`（key `teleport`）配对挂出瞬移面板；`priority: -1` 顶掉两个 `directoryFlow` hole（实测与官方 priority 0 并存、lowest 渲染、官方工作区列表不受影响）；`local` 分支**自写目录浏览器走插件自有 webServer 路由**（官方 picker 发布产物不含 src 无法深引；`ctx.uiWorkspace.listDirectory` 也不可用——本机 capability 是 `native` 只有 `pick`）。验收「官方 Add workspace… 被接管、本机分支仍能建工作区」已实测通过；
+2. ~~**槽位最小原型**~~ **已完成**（`ui-design.md` §9.1 V1/V2/V6/V8/V9）：`sidebar.panellist`（id `dsh-remote-cr`，order 20）+ `main`（key `dsh-remote-cr`）配对挂出「远端工作台」面板；`priority: -1` 顶掉两个 `directoryFlow` hole（实测与官方 priority 0 并存、lowest 渲染、官方工作区列表不受影响）；`local` 分支**自写目录浏览器走插件自有 webServer 路由**（官方 picker 发布产物不含 src 无法深引；`ctx.uiWorkspace.listDirectory` 也不可用——本机 capability 是 `native` 只有 `pick`）。验收「官方 Add workspace… 被接管、本机分支仍能建工作区」已实测通过；
 3. iframe 最小原型：本地回环代理 → 远端 dsh 页面，验证 cookie/token/父窗口校验；
 4. ~~**工作区身份验证**~~ **已完成**（`ui-design.md` §9.1 V3/V4/V5/V7/V10/V14/V15/V16）：WSL UNC 可 `createWorkspace` + `attachSession`，`header.cwd` 原样落盘，cwd 投影层用 `system-prompt/assemble` prepend 监听实现且已覆盖 `sandbox:policy` 边界，`ctx.fs` 接受 UNC、相对路径在 UNC cwd 下可解析。**实参衔接已验**：在挂载 preset 的真实 agent realm 里派发 `read`，POSIX 绝对路径 / 相对路径 / UNC 绝对路径三种形式读到同一文件，反证路径证明根是 share 根而非 `C:\` 根——**不需要 `tools/execute` 改写层**（UNC 后端）。**转为待办**：锚点后端的「虚拟根 → 远端路径」映射、`write`/`edit` 路径等价补测；
 5. **单通道验证**：一条 SSH 隧道上依次跑「HTTP GET → HTTP POST → WS upgrade」，确认 WS 之后同一条通道还能承载第二路业务 WS（§8.3 的未验证项）；

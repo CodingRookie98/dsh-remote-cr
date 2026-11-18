@@ -7,18 +7,18 @@
  *
  * 三条硬约束，每一条都有真机理由：
  *
- * 1. **机密只进环境变量**（`TELEPORT_SSH_SECRET`）→ askpass helper 从环境读。
+ * 1. **机密只进环境变量**（`REMOTE_CR_SSH_SECRET`）→ askpass helper 从环境读。
  *    argv 在 Windows 上能被其他进程看到（任务管理器、WMI），口令进 argv 等于公开。
  *    `buildSshInvocation` 的测试会断言 argv 里**没有**机密子串。
  * 2. **密码登录必须显式禁用公钥与 agent**（`PubkeyAuthentication=no` + `IdentitiesOnly=yes`）。
  *    否则 agent 里的钥匙会先被试一遍，把 `MaxAuthTries` 用光，密码还没轮到就被踢。
- * 3. **主机密钥走私有 known_hosts**（`~/.dsh-teleport/known_hosts`），不写用户的
+ * 3. **主机密钥走私有 known_hosts**（`~/.dsh-remote-cr/known_hosts`），不写用户的
  *    `~/.ssh/known_hosts`：插件无权替用户改全局信任库。
  */
 
 import { spawn } from 'node:child_process'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { classifySshFailure } from './errors.ts'
 
@@ -33,7 +33,7 @@ export interface SshAuth {
 }
 
 /** 机密环境变量名：askpass helper 只认这个。 */
-export const SECRET_ENV = 'TELEPORT_SSH_SECRET'
+export const SECRET_ENV = 'REMOTE_CR_SSH_SECRET'
 /** OpenSSH 8.4+：无 tty 时也强制走 askpass（9.5p2 支持）。 */
 export const ASKPASS_REQUIRE_ENV = 'SSH_ASKPASS_REQUIRE'
 
@@ -135,7 +135,7 @@ function authEnv(options: SshConnectOptions): Readonly<Record<string, string>> {
   const env: Record<string, string> = {}
   if (!needsSecret(auth)) return env
   if (options.askpassPath === undefined) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/unknown',
       detail: '口令认证需要 askpass helper 的路径，但调用方没有提供（askpassPath）。',
       nextActions: ['重试连接', '改用私钥或 agent 认证'],
@@ -214,13 +214,13 @@ function needsSecret(auth: SshAuth): boolean {
 /**
  * askpass helper 的脚本正文。
  *
- * 它**不包含任何机密**：只把 `TELEPORT_SSH_SECRET` 打到 stdout。这样脚本可以落盘
- * （`~/.dsh-teleport/askpass.cjs`，权限 600），而机密始终只活在父进程的环境里。
+ * 它**不包含任何机密**：只把 `REMOTE_CR_SSH_SECRET` 打到 stdout。这样脚本可以落盘
+ * （`~/.dsh-remote-cr/askpass.cjs`，权限 600），而机密始终只活在父进程的环境里。
  * 用 CommonJS 后缀是刻意的：`node` 直接执行单文件时不必关心上层 `package.json` 的 `type`。
  */
 export function askpassScript(): string {
   return [
-    '// 由 dsh-teleport 生成：把环境里的口令原样交给 ssh，不做任何加工。',
+    '// 由 dsh-remote-cr 生成：把环境里的口令原样交给 ssh，不做任何加工。',
     '// 机密只经环境变量传递；这个文件本身不含机密。',
     "process.stdout.write(String(process.env['" + SECRET_ENV + "'] ?? ''))",
     '',
@@ -268,7 +268,7 @@ const defaultSpawn: SshSpawn = (executable, args, env) =>
   }) as unknown as SshChild
 
 /**
- * 跑一条远端命令并收集输出；非零退出**必定**变成 `TeleportError`。
+ * 跑一条远端命令并收集输出；非零退出**必定**变成 `RemoteCrError`。
  *
  * 超时/取消的语义：立刻 reject 并 kill，之后的 `exit`/`error` 事件一律忽略
  * （`settled` 闸门）。这条不是洁癖——杀掉 `ssh` 之后它还会吐一个 `exit`，
@@ -288,7 +288,7 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
     // 某些平台的 spawn 失败），此时 `onAbort` 还没初始化，直接引用会踩 TDZ。
     let detachAbort: (() => void) | undefined
 
-    const finish = (outcome: { readonly error: TeleportError } | { readonly result: SshRunResult }): void => {
+    const finish = (outcome: { readonly error: RemoteCrError } | { readonly result: SshRunResult }): void => {
       if (settled) return
       settled = true
       if (timer !== undefined) clearTimeout(timer)
@@ -318,12 +318,12 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
       const missing = /ENOENT/.test(String((error as NodeJS.ErrnoException).code ?? error.message))
       finish({
         error: missing
-          ? new TeleportError({
+          ? new RemoteCrError({
               code: 'remote/ssh-missing',
               detail: '找不到 ssh 客户端（' + invocation.executable + '）。',
               nextActions: ['安装 OpenSSH 客户端（Windows 可选功能里勾选）', '在设置里指定 ssh.exe 的绝对路径'],
             })
-          : new TeleportError({
+          : new RemoteCrError({
               code: 'remote/unknown',
               detail: '启动 ssh 客户端失败：' + error.message,
               nextActions: ['重试连接', '在终端里手动执行同一条 ssh 命令'],
@@ -342,7 +342,7 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
     const onAbort = (): void => {
       child.kill('SIGTERM')
       finish({
-        error: new TeleportError({
+        error: new RemoteCrError({
           code: 'remote/cancelled',
           detail: '连接 ' + context.target + ' 的操作被取消。',
           nextActions: ['重新连接'],
@@ -364,7 +364,7 @@ export async function runSsh(options: SshRunOptions): Promise<SshRunResult> {
     timer = setTimeout(() => {
       child.kill('SIGTERM')
       finish({
-        error: new TeleportError({
+        error: new RemoteCrError({
           code: 'remote/auth-timeout',
           detail: '连接 ' + context.target + ' 超过 ' + String(Math.round(deadlineMs / 1000)) + ' 秒没有结束，已主动终止。',
           nextActions: ['检查网络与主机是否在线', '确认端口与跳板配置', '重试（网络抖动时重试常能成功）'],

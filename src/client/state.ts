@@ -28,6 +28,8 @@ import type {
 } from '../shared/api.ts'
 import type { SourceOption, WorkspaceSource } from '../shared/choices.ts'
 import { flowReport, progressOf, type FlowState } from '../shared/flow.ts'
+import { t } from './i18n.ts'
+import { localizeFailure, type FailureLike } from './panel.ts'
 
 /** 向导当前停在哪一屏。终态三选一（done / failed / cancelled）互斥。 */
 export type WizardStep = 'closed' | 'choose' | 'browse' | 'running' | 'done' | 'failed' | 'cancelled'
@@ -55,6 +57,14 @@ export interface WizardState {
   }[]
   /** 探测失败的原因（没有 wsl.exe 之类）；成功为 null。 */
   readonly sourcesError: string | null
+  /**
+   * 各通道最近一次失败的**结构化原件**（code + 宿主原文）。
+   *
+   * 分通道而不是单槽（Delta-5 U2）：目录与四选一可以同时失败，单槽会被后者顶掉；
+   * 而且成功之后必须清掉，否则复制日志会一直打印已经解决的旧码。
+   * 界面只显示本地化后的句子；码与原文只进「复制日志」。
+   */
+  readonly failures: Readonly<Partial<Record<FailureChannel, FailureLike>>>
   readonly source: WorkspaceSource | null
   readonly distro: string | null
   readonly wake: WakeState
@@ -109,8 +119,8 @@ const IDLE_WAKE: WakeState = { status: 'idle', distro: null, diagnosis: null }
 /** 唤醒失败但宿主没给诊断时的兜底：宁可显示一句干话，也不显示空白错误框。 */
 const UNKNOWN_DIAGNOSIS: WslDiagnosis = {
   code: 'wsl/unknown',
-  detail: '唤醒发行版失败，宿主没有返回诊断文本',
-  nextActions: ['复制诊断贴到 issue', '换一个发行版再试'],
+  detail: t('wake.noDiagnosis'),
+  nextActions: [t('action.copyDiagnosis'), t('action.tryOtherDistro')],
   wslCode: null,
   logTail: '',
 }
@@ -122,6 +132,7 @@ export function initialWizard(): WizardState {
     options: null,
     distros: [],
     sourcesError: null,
+    failures: {},
     source: null,
     distro: null,
     wake: IDLE_WAKE,
@@ -179,6 +190,7 @@ export function receiveSources(
     ...state,
     options: payload.options,
     distros: payload.distros,
+    failures: withoutFailure(state.failures, 'sources'),
     sourcesError: payload.probeError,
     distro: state.distro ?? defaultDistro(payload.distros),
     defaults: payload.defaults,
@@ -186,8 +198,15 @@ export function receiveSources(
 }
 
 /** 探测本身失败（路由 500、网络断）。与「探测成功但没装 WSL」是两件事，分开记。 */
-export function failSources(state: WizardState, message: string): WizardState {
-  return { ...state, options: null, distros: [], sourcesError: message }
+export function failSources(state: WizardState, failure: FailureLike | string): WizardState {
+  const message = typeof failure === 'string' ? failure : localizeFailure(failure).detail
+  return {
+    ...state,
+    options: null,
+    distros: [],
+    sourcesError: message,
+    failures: withFailure(state.failures, 'sources', failure),
+  }
 }
 
 /** 选一个来源。不可用的来源**不许选中**——灰显只是外观，这里是真正的门。 */
@@ -355,14 +374,29 @@ export function receiveListing(state: WizardState, listing: DirListing, seq: num
     ...state,
     listing,
     listingError: null,
+    failures: withoutFailure(state.failures, 'listing'),
     path: listing.path,
     active: firstDirectory,
   }
 }
 
-export function failListing(state: WizardState, message: string, seq: number): WizardState {
+/**
+ * 目录读取失败。
+ *
+ * `failure` 可以是**已经本地化过的字符串**（我们自己写的引导语），也可以是结构化失败
+ * ——后者在这里就换成当前语言的文案：宿主 `detail` 是中文明码，直接渲染会让英文界面
+ * 半中半英（Delta-2 ④-1/④-4）。
+ */
+export function failListing(state: WizardState, failure: FailureLike | string, seq: number): WizardState {
   if (seq !== state.navSeq) return state
-  return { ...state, listing: null, listingError: message, active: -1 }
+  const message = typeof failure === 'string' ? failure : localizeFailure(failure).detail
+  return {
+    ...state,
+    listing: null,
+    listingError: message,
+    failures: withFailure(state.failures, 'listing', failure),
+    active: -1,
+  }
 }
 
 /**
@@ -465,8 +499,9 @@ export function canConfirm(state: WizardState, busy: boolean): boolean {
  *
  * 不退回选择屏：用户可能只是想看进度，被一脚踢回去还要重新选目录。
  */
-export function failPoll(state: WizardState, message: string): WizardState {
-  return { ...state, pollError: message }
+export function failPoll(state: WizardState, failure: FailureLike | string): WizardState {
+  const message = typeof failure === 'string' ? failure : localizeFailure(failure).detail
+  return { ...state, pollError: message, failures: withFailure(state.failures, 'poll', failure) }
 }
 
 /** 把当前选择包成宿主半要的入参。 */
@@ -484,7 +519,13 @@ export function beginFlow(state: WizardState, snapshot: FlowSnapshot): WizardSta
   // 漏了这条就有完整回放——点完「添加此目录」立刻 Esc，晚到的 /workspace 响应把 closed 翻成
   // running，重开后 step!=='closed' 让 openWizard 被跳过，最后由 onPicked 回传旧路径（R1D-4）。
   if (state.step === 'closed') return state
-  return { ...state, step: stepOf(snapshot.state), flow: snapshot, pollError: null }
+  return {
+    ...state,
+    step: stepOf(snapshot.state),
+    flow: snapshot,
+    pollError: null,
+    failures: withoutFailure(state.failures, 'poll'),
+  }
 }
 
 /**
@@ -499,7 +540,13 @@ export function receiveFlow(state: WizardState, snapshot: FlowSnapshot): WizardS
   if (state.step === 'closed') return state
   if (isTerminal(state) && snapshot.state.status === 'running') return state
   // 拿到快照就说明链路是通的：上一次的轮询失败到此为止。
-  return { ...state, step: stepOf(snapshot.state), flow: snapshot, pollError: null }
+  return {
+    ...state,
+    step: stepOf(snapshot.state),
+    flow: snapshot,
+    pollError: null,
+    failures: withoutFailure(state.failures, 'poll'),
+  }
 }
 
 /** 流程状态 -> 屏幕。终态之后不再被后续快照改回 running（轮询晚到的旧快照不能翻案）。 */
@@ -521,6 +568,26 @@ export function shouldPoll(state: WizardState): boolean {
   return state.step === 'running'
 }
 
+/** 失败通道：三类失败各有各的展示位置，日志里要分别保留。 */
+export type FailureChannel = 'listing' | 'sources' | 'poll'
+
+/** 记一条结构化失败（字符串型失败不记：那是我们自己写的引导语，没有码）。 */
+function withFailure(
+  failures: WizardState['failures'],
+  channel: FailureChannel,
+  failure: FailureLike | string,
+): WizardState['failures'] {
+  return typeof failure === 'string' ? failures : { ...failures, [channel]: failure }
+}
+
+/** 通道成功时清掉旧失败，避免复制日志打印已经解决的码。 */
+function withoutFailure(failures: WizardState['failures'], channel: FailureChannel): WizardState['failures'] {
+  if (failures[channel] === undefined) return failures
+  const next = { ...failures }
+  delete next[channel]
+  return next
+}
+
 /** 进度百分比；没有流程时为 0。 */
 export function progressPercent(state: WizardState): number {
   return state.flow === null ? 0 : progressOf(state.flow.state)
@@ -533,6 +600,22 @@ export function progressPercent(state: WizardState): number {
  * 保证用户复制到的与宿主日志里记的是同一组事实。没失败时给一段人话，让按钮永远
  * 有内容可复制（空剪贴板是最让人困惑的一种「成功」）。
  */
+/** 来源不可用原因里的宿主原文（只在复制日志里出现；界面只渲染本地化文案）。 */
+function sourceDetailLines(state: WizardState): string[] {
+  return (state.options ?? [])
+    .filter((option) => option.reasonDetail !== undefined && option.reasonDetail !== '')
+    .map((option) => 'source(' + option.id + '): ' + String(option.reasonDetail))
+}
+
+/** 三通道失败的码与宿主原文：两个分支都要追加（否则 failure 记录永远渲染不出来）。 */
+function channelFailureLines(state: WizardState): string[] {
+  return (['listing', 'sources', 'poll'] as const).flatMap((channel) => {
+    const failure = state.failures[channel]
+    if (failure === undefined) return []
+    return ['code(' + channel + '): ' + failure.code, 'detail(' + channel + '): ' + failure.detail]
+  })
+}
+
 export function reportOf(state: WizardState): string {
   if (state.flow === null) {
     return [
@@ -544,11 +627,21 @@ export function reportOf(state: WizardState): string {
       state.sourcesError === null ? '' : 'sources: ' + state.sourcesError,
       state.listingError === null ? '' : 'listing: ' + state.listingError,
       state.wake.diagnosis === null ? '' : 'wsl: ' + state.wake.diagnosis.code + ' ' + (state.wake.diagnosis.wslCode ?? ''),
+      // 码与宿主原文只进复制日志：界面上一律本地化，排障时需要原始事实（Delta-4 U2）。
+      // 来源原因里的宿主原文只在这里出现（界面上只渲染本地化文案）。
+      ...sourceDetailLines(state),
+      ...channelFailureLines(state),
     ]
       .filter((line) => line !== '')
       .join('\n')
   }
-  return flowReport(state.flow.state)
+  // 有流程也要追加：`beginFlow → failPoll` 这条真路径上 flow 不是 null，
+  // 只走 flowReport 会让三通道的码与原文永远渲染不出来（Delta-6 U2）。
+  return [
+    flowReport(state.flow.state),
+    ...sourceDetailLines(state),
+    ...channelFailureLines(state),
+  ].join('\n')
 }
 
 /** 把 flow 的成果转成给 owner 的路径；还没成功时为 null。 */

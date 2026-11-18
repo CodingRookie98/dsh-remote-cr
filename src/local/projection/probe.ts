@@ -75,7 +75,7 @@ export function newDoneToken(): string {
 /** 终端尺寸给足，避免长命令行被折行拆成两行。 */
 export const PROBE_COLS = 200
 export const PROBE_ROWS = 50
-export const PROBE_TERMINAL_ID = 'teleport-probe'
+export const PROBE_TERMINAL_ID = 'remote-cr-probe'
 export const DEFAULT_PROBE_TIMEOUT_MS = 20_000
 
 /**

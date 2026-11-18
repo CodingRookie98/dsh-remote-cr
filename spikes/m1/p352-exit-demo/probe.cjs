@@ -318,8 +318,8 @@ async function snapshotDom(cdp, sessionId) {
   return evaluate(
     cdp,
     sessionId,
-    '(() => { const marks = Array.from(document.querySelectorAll("[data-teleport]"));' +
-      ' return { url: location.href, mounts: marks.map(n => n.getAttribute("data-teleport")).slice(0, 40),' +
+    '(() => { const marks = Array.from(document.querySelectorAll("[data-remote-cr]"));' +
+      ' return { url: location.href, mounts: marks.map(n => n.getAttribute("data-remote-cr")).slice(0, 40),' +
       ' buttons: Array.from(document.querySelectorAll("button")).map(b => (b.getAttribute("aria-label") || b.textContent || "").trim()).filter(s => s !== "").slice(0, 40),' +
       ' text: document.body.innerText.slice(0, 600) } })()',
   )
@@ -434,14 +434,14 @@ async function createSessionMeasured(cdp, sessionId, key, label) {
   const before = await evaluate(
     cdp,
     sessionId,
-    'Array.from(document.querySelectorAll("[data-teleport=\'session-id\']")).map(n => n.textContent)',
+    'Array.from(document.querySelectorAll("[data-remote-cr=\'session-id\']")).map(n => n.textContent)',
   )
   const known = Array.isArray(before) ? before.map((v) => String(v)) : []
   const freshId =
     '(() => { const ids = ' + JSON.stringify(known) + ';' +
-    ' const rows = Array.from(document.querySelectorAll("[data-teleport=\'session\']"));' +
+    ' const rows = Array.from(document.querySelectorAll("[data-remote-cr=\'session\']"));' +
     ' for (const row of rows) {' +
-    '   const id = row.querySelector("[data-teleport=\'session-id\']")?.textContent ?? "";' +
+    '   const id = row.querySelector("[data-remote-cr=\'session-id\']")?.textContent ?? "";' +
     '   if (id !== "" && ids.indexOf(id) === -1) return id }' +
     ' return null })()'
   await measure(
@@ -449,7 +449,7 @@ async function createSessionMeasured(cdp, sessionId, key, label) {
     sessionId,
     key,
     freshId + ' !== null',
-    '(() => { const b = document.querySelector("[data-teleport=\'new-session\']"); b.click(); return true })()',
+    '(() => { const b = document.querySelector("[data-remote-cr=\'new-session\']"); b.click(); return true })()',
     300_000,
     label,
   )
@@ -470,10 +470,10 @@ async function probeMeasured(cdp, sessionId, target, key, label) {
   const previous = await evaluate(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'probe-report\']")?.textContent ?? null',
+    'document.querySelector("[data-remote-cr=\'probe-report\']")?.textContent ?? null',
   )
   const changed =
-    '(() => { const el = document.querySelector("[data-teleport=\'probe-report\']");' +
+    '(() => { const el = document.querySelector("[data-remote-cr=\'probe-report\']");' +
     ' if (el === null) return false;' +
     ' return (el.textContent || "") !== ' + JSON.stringify(typeof previous === 'string' ? previous : '') + ' })()'
   await measure(
@@ -481,11 +481,11 @@ async function probeMeasured(cdp, sessionId, target, key, label) {
     sessionId,
     key,
     changed,
-    '(() => { const rows = Array.from(document.querySelectorAll("[data-teleport=\'session\']"));' +
-      ' const hit = rows.find(r => (r.querySelector("[data-teleport=\'session-id\']")?.textContent ?? "") === ' +
+    '(() => { const rows = Array.from(document.querySelectorAll("[data-remote-cr=\'session\']"));' +
+      ' const hit = rows.find(r => (r.querySelector("[data-remote-cr=\'session-id\']")?.textContent ?? "") === ' +
       JSON.stringify(target) +
       ');' +
-      ' if (!hit) return false; const b = hit.querySelector("[data-teleport=\'probe\']"); if (!b || b.disabled) return false;' +
+      ' if (!hit) return false; const b = hit.querySelector("[data-remote-cr=\'probe\']"); if (!b || b.disabled) return false;' +
       ' b.click(); return true })()',
     300_000,
     label,
@@ -493,12 +493,12 @@ async function probeMeasured(cdp, sessionId, target, key, label) {
   const remote = await evaluate(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'probe-result\']")?.getAttribute("data-remote") ?? null',
+    'document.querySelector("[data-remote-cr=\'probe-result\']")?.getAttribute("data-remote") ?? null',
   )
   const report = await evaluate(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'probe-report\']")?.textContent ?? ""',
+    'document.querySelector("[data-remote-cr=\'probe-report\']")?.textContent ?? ""',
   )
   const text = typeof report === 'string' ? report : ''
   const detail = {
@@ -529,8 +529,8 @@ function summarise(prefix) {
 
 const SEL_ADD = 'Array.from(document.querySelectorAll("button[aria-label]")).find(b => /添加工作区|Add workspace/.test(b.getAttribute("aria-label")))'
 const SEL_TELEPORT = 'document.querySelector("button[aria-label=\'瞬移\']")'
-const SEL_LINK = 'document.querySelector("[data-teleport=\'panel-connected\']")?.getAttribute("data-link")'
-const SEL_ACTIVE_SESSION = 'document.querySelector("[data-teleport=\'session\'][data-active=\'true\']")'
+const SEL_LINK = 'document.querySelector("[data-remote-cr=\'panel-connected\']")?.getAttribute("data-link")'
+const SEL_ACTIVE_SESSION = 'document.querySelector("[data-remote-cr=\'session\'][data-active=\'true\']")'
 
 /** 在目录浏览器里逐段下钻到远端检出根。 */
 async function enterRemoteRoot(cdp, sessionId) {
@@ -542,20 +542,20 @@ async function enterRemoteRoot(cdp, sessionId) {
     await waitFor(
       cdp,
       sessionId,
-      'Array.from(document.querySelectorAll("[data-teleport=\'entry\']")).some(n => n.textContent === ' + label + ')',
+      'Array.from(document.querySelectorAll("[data-remote-cr=\'entry\']")).some(n => n.textContent === ' + label + ')',
       30_000,
       '目录项 ' + segment + '/ 出现',
     )
     await evaluate(
       cdp,
       sessionId,
-      '(() => { const row = Array.from(document.querySelectorAll("[data-teleport=\'entry\']"))' +
+      '(() => { const row = Array.from(document.querySelectorAll("[data-remote-cr=\'entry\']"))' +
         '.find(n => n.textContent === ' + label + '); if (row) row.click(); return true })()',
     )
     await waitFor(
       cdp,
       sessionId,
-      'document.querySelector("[data-teleport=\'listing-path\']")?.textContent === ' + JSON.stringify(expected),
+      'document.querySelector("[data-remote-cr=\'listing-path\']")?.textContent === ' + JSON.stringify(expected),
       30_000,
       '进入 ' + expected,
     )
@@ -564,18 +564,18 @@ async function enterRemoteRoot(cdp, sessionId) {
 
 async function runWizard(cdp, sessionId) {
   await evaluate(cdp, sessionId, '(' + SEL_ADD + ')?.click()')
-  await waitFor(cdp, sessionId, 'document.querySelector("[data-teleport=\'wizard\']") !== null', 30_000, '向导打开')
+  await waitFor(cdp, sessionId, 'document.querySelector("[data-remote-cr=\'wizard\']") !== null', 30_000, '向导打开')
   await waitFor(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'wizard\']")?.getAttribute("data-step") === "choose"',
+    'document.querySelector("[data-remote-cr=\'wizard\']")?.getAttribute("data-step") === "choose"',
     30_000,
     '向导进入 choose',
   )
   await waitFor(
     cdp,
     sessionId,
-    'document.querySelectorAll("[data-teleport=\'source\']").length > 0',
+    'document.querySelectorAll("[data-remote-cr=\'source\']").length > 0',
     60_000,
     '来源列表就绪',
   )
@@ -584,14 +584,14 @@ async function runWizard(cdp, sessionId) {
   const picked = await evaluate(
     cdp,
     sessionId,
-    '(() => { const b = document.querySelector("[data-teleport=\'source\'][data-source=\'wsl\']");' +
+    '(() => { const b = document.querySelector("[data-remote-cr=\'source\'][data-source=\'wsl\']");' +
       ' if (!b) return "no-wsl"; if (b.disabled) return "disabled:" + (b.getAttribute("title") || ""); b.click(); return "clicked" })()',
   )
   if (picked !== 'clicked') throw new Error('WSL 来源不可选：' + String(picked))
   await waitFor(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'wizard\']")?.getAttribute("data-step") === "browse"',
+    'document.querySelector("[data-remote-cr=\'wizard\']")?.getAttribute("data-step") === "browse"',
     30_000,
     '向导进入 browse',
   )
@@ -599,10 +599,10 @@ async function runWizard(cdp, sessionId) {
   const confirmDisabled = await evaluate(
     cdp,
     sessionId,
-    'document.querySelector("[data-teleport=\'confirm\']")?.disabled === true',
+    'document.querySelector("[data-remote-cr=\'confirm\']")?.disabled === true',
   )
   if (confirmDisabled === true) throw new Error('「选择这个目录」在目录就绪后仍不可点')
-  await evaluate(cdp, sessionId, 'document.querySelector("[data-teleport=\'confirm\']")?.click()')
+  await evaluate(cdp, sessionId, 'document.querySelector("[data-remote-cr=\'confirm\']")?.click()')
 
   // done 帧一闪而过：官方 owner 在 onPicked 之后立刻把界面切到新工作区，
   // 我们这棵树整个被卸载。所以这里同时盯 done-path 与 wizard 消失，谁先到算谁。
@@ -612,8 +612,8 @@ async function runWizard(cdp, sessionId) {
     const probe = await evaluate(
       cdp,
       sessionId,
-      '(() => ({ step: document.querySelector("[data-teleport=\'wizard\']")?.getAttribute("data-step") ?? null,' +
-        ' path: document.querySelector("[data-teleport=\'done-path\']")?.textContent ?? null }))()',
+      '(() => ({ step: document.querySelector("[data-remote-cr=\'wizard\']")?.getAttribute("data-step") ?? null,' +
+        ' path: document.querySelector("[data-remote-cr=\'done-path\']")?.textContent ?? null }))()',
     )
     if (probe !== null && typeof probe === 'object') {
       if (typeof probe.path === 'string' && probe.path !== '') {
@@ -627,10 +627,10 @@ async function runWizard(cdp, sessionId) {
 
   // 还挂着就替用户点掉；官方已经接管就不用管。
   if (donePath !== null) {
-    await evaluate(cdp, sessionId, 'document.querySelector("[data-teleport=\'close\']")?.click()')
+    await evaluate(cdp, sessionId, 'document.querySelector("[data-remote-cr=\'close\']")?.click()')
   }
   await waitUntil(
-    async () => (await evaluate(cdp, sessionId, 'document.querySelector("[data-teleport=\'wizard\']") === null')) === true,
+    async () => (await evaluate(cdp, sessionId, 'document.querySelector("[data-remote-cr=\'wizard\']") === null')) === true,
     30_000,
   )
   // 官方切视图有 1–2 秒延迟；等它落定再去点侧栏，否则点了也会被下一次重渲染顶掉。
@@ -689,17 +689,17 @@ async function main() {
   // 向导结束后官方界面会自己切到新建的工作区视图，所以这里要等它落定再点侧栏「瞬移」，
   // 否则下一次重渲染会把面板顶掉——这不是产品缺陷，是官方 owner 的导航行为。
   await evaluate(cdp, sid, '(' + SEL_TELEPORT + ')?.click()')
-  await waitFor(cdp, sid, 'document.querySelector("[data-teleport=\'panel\']") !== null', 60_000, '瞬移面板渲染')
-  await waitFor(cdp, sid, 'document.querySelector("[data-teleport=\'workspace\']") !== null', 60_000, '面板列出已添加的目录')
+  await waitFor(cdp, sid, 'document.querySelector("[data-remote-cr=\'panel\']") !== null', 60_000, '瞬移面板渲染')
+  await waitFor(cdp, sid, 'document.querySelector("[data-remote-cr=\'workspace\']") !== null', 60_000, '面板列出已添加的目录')
   const workspacePath = await evaluate(
     cdp,
     sid,
-    'document.querySelector("[data-teleport=\'workspace-path\']")?.textContent ?? ""',
+    'document.querySelector("[data-remote-cr=\'workspace-path\']")?.textContent ?? ""',
   )
   const attachOk = await evaluate(
     cdp,
     sid,
-    'document.querySelector("[data-teleport=\'attach\']")?.getAttribute("data-ok") === "true"',
+    'document.querySelector("[data-remote-cr=\'attach\']")?.getAttribute("data-ok") === "true"',
   )
   console.log('面板：workspace-path=' + workspacePath + ' attach.data-ok=' + String(attachOk))
 
@@ -723,10 +723,10 @@ async function main() {
 
   if (NEG) {
     // 负控：接入按钮必须是「明确拒绝」而不是「点了没反应」。点一下，看有没有真连上。
-    await evaluate(cdp, sid, 'document.querySelector("[data-teleport=\'attach\']")?.click()')
+    await evaluate(cdp, sid, 'document.querySelector("[data-remote-cr=\'attach\']")?.click()')
     await sleep(1000)
     const link = await evaluate(cdp, sid, SEL_LINK)
-    const projected = await evaluate(cdp, sid, 'document.querySelectorAll("[data-teleport=\'projected\']").length')
+    const projected = await evaluate(cdp, sid, 'document.querySelectorAll("[data-remote-cr=\'projected\']").length')
     record('P352-3', attachOk === true && projected > 0, { attachOk, link, projected })
     record('P352-4', false, { reason: '负控：宿主没有远端检出根，接入被拒，不可能有远端会话' })
     record('P352-5', false, { reason: '负控：没有投影会话，不可能有远端执行取证' })
@@ -737,15 +737,15 @@ async function main() {
       cdp,
       sid,
       'cold-attach',
-      'document.querySelector("[data-teleport=\'projected\'][data-availability=\'online\']") !== null',
-      '(() => { const b = document.querySelector("[data-teleport=\'attach\']"); b.click(); return true })()',
+      'document.querySelector("[data-remote-cr=\'projected\'][data-availability=\'online\']") !== null',
+      '(() => { const b = document.querySelector("[data-remote-cr=\'attach\']"); b.click(); return true })()',
       300_000,
       '首连（冷）',
     )
     const availability = await evaluate(
       cdp,
       sid,
-      'document.querySelector("[data-teleport=\'projected\']")?.getAttribute("data-availability") ?? null',
+      'document.querySelector("[data-remote-cr=\'projected\']")?.getAttribute("data-availability") ?? null',
     )
     record('P352-3', availability === 'online', { firstConnectMs: Math.round(firstMs), availability })
 
@@ -778,34 +778,34 @@ async function main() {
     // 三件事都靠「远端进程活着、只换传输」才有机会达标，所以每轮开头**不**重启远端。
     for (let index = 1; index <= SAMPLES; index += 1) {
       try {
-        await evaluate(cdp, sid, 'document.querySelector("[data-teleport=\'disconnect\']")?.click()')
+        await evaluate(cdp, sid, 'document.querySelector("[data-remote-cr=\'disconnect\']")?.click()')
         await waitFor(cdp, sid, SEL_LINK + ' === "idle"', 90_000, '断开后 link=idle')
         await measure(
           cdp,
           sid,
           'reconnect-' + String(index),
           SEL_LINK + ' === "connected"',
-          '(() => { const b = document.querySelector("[data-teleport=\'reconnect\']"); b.click(); return true })()',
+          '(() => { const b = document.querySelector("[data-remote-cr=\'reconnect\']"); b.click(); return true })()',
           300_000,
           '手动重连第 ' + String(index) + ' 次',
         )
         await waitFor(
           cdp,
           sid,
-          'document.querySelector("[data-teleport=\'projected\'][data-availability=\'online\']") !== null',
+          'document.querySelector("[data-remote-cr=\'projected\'][data-availability=\'online\']") !== null',
           180_000,
           '重连后投影回到 online',
         )
 
         // 二次连接：再断一次，这回走「接入远端」那条路（面板上的正常入口）。
-        await evaluate(cdp, sid, 'document.querySelector("[data-teleport=\'disconnect\']")?.click()')
+        await evaluate(cdp, sid, 'document.querySelector("[data-remote-cr=\'disconnect\']")?.click()')
         await waitFor(cdp, sid, SEL_LINK + ' === "idle"', 90_000, '二次连接前断开')
         await measure(
           cdp,
           sid,
           'attach-hot-' + String(index),
-          'document.querySelector("[data-teleport=\'projected\'][data-availability=\'online\']") !== null',
-          '(() => { const b = document.querySelector("[data-teleport=\'attach\']"); b.click(); return true })()',
+          'document.querySelector("[data-remote-cr=\'projected\'][data-availability=\'online\']") !== null',
+          '(() => { const b = document.querySelector("[data-remote-cr=\'attach\']"); b.click(); return true })()',
           300_000,
           '二次连接第 ' + String(index) + ' 次（热）',
         )
@@ -834,7 +834,7 @@ async function main() {
   let detachedKept = true
   let remoteReleased = true
   if (!NEG) {
-    await evaluate(cdp, sid, 'document.querySelector("[data-teleport=\'disconnect\']")?.click()')
+    await evaluate(cdp, sid, 'document.querySelector("[data-remote-cr=\'disconnect\']")?.click()')
     await waitFor(cdp, sid, SEL_LINK + ' === "idle"', 90_000, '退出前断开')
     // 断开之后远端必须**还在**（这是「重连不用付冷启动」的前提，别把它当成泄漏）。
     await sleep(1500)

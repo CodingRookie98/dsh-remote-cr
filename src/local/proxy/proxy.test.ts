@@ -61,7 +61,7 @@ test('占位串被换成真值再发给上游，且逐条登记替换记录', as
 
   const response = await fetch(`http://127.0.0.1:${port}/r/deepseek/chat/completions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${placeholder}`, 'content-type': 'application/json', 'x-teleport-host': 'wsl:ubuntu_dev' },
+    headers: { authorization: `Bearer ${placeholder}`, 'content-type': 'application/json', 'x-remote-cr-host': 'wsl:ubuntu_dev' },
     body: JSON.stringify({ model: 'x' }),
   })
   assert.equal(response.status, 200)
@@ -71,7 +71,7 @@ test('占位串被换成真值再发给上游，且逐条登记替换记录', as
   assert.equal(upstream.seen[0]?.headers['authorization'], 'Bearer sk-real-value')
   assert.equal(upstream.seen[0]?.body, '{"model":"x"}')
   // 远端标识是代理自加的，不该外泄给上游。
-  assert.equal(upstream.seen[0]?.headers['x-teleport-host'], undefined)
+  assert.equal(upstream.seen[0]?.headers['x-remote-cr-host'], undefined)
 
   const record = proxy.records()[0]
   assert.equal(record?.outcome, 'ok')
@@ -92,7 +92,7 @@ test('远端带非占位串（真钥匙）时 403 挡下，不转发、不泄漏
 
   const port = await proxy.start()
   const response = await fetch(`http://127.0.0.1:${port}/r/deepseek/chat/completions`, {
-    headers: { authorization: 'Bearer sk-leaked-real-key', 'x-teleport-host': 'wsl:ubuntu_dev' },
+    headers: { authorization: 'Bearer sk-leaked-real-key', 'x-remote-cr-host': 'wsl:ubuntu_dev' },
   })
   assert.equal(response.status, 403)
   const body = (await response.json()) as { error: { code: string } }

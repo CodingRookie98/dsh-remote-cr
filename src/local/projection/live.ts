@@ -27,7 +27,7 @@
 
 import { join } from 'node:path'
 import { shellQuote } from '../backend/posix-probe.ts'
-import { TeleportError, type ConnectionPhase } from '../backend/errors.ts'
+import { RemoteCrError, type ConnectionPhase } from '../backend/errors.ts'
 import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
 import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
@@ -40,12 +40,13 @@ import { runSsh, type SshAuth } from '../backend/ssh/transport.ts'
 import { launchRemoteDsh } from '../backend/wsl/launch.ts'
 import { runInDistro } from '../backend/wsl/exec.ts'
 import { planEnvInjection, resolveEnvPolicy, type EnvPolicy } from '../env-policy/index.ts'
+import { envConflictHint } from '../migration/legacy-names.ts'
 import type { AttachControl, ConnectTarget, RemoteConnection, SshConnectTarget } from './service.ts'
 import { RemoteRpc } from './remote.ts'
 
 /** SSH 后端需要的宿主侧材料；不给就明确报错，不猜默认值。 */
 export interface LiveSshOptions {
-  /** 本地 home：`~/.ssh/config` 与 `.dsh-teleport/`（known_hosts、anchors）都挂在这里。 */
+  /** 本地 home：`~/.ssh/config` 与 `.dsh-remote-cr/`（known_hosts、anchors）都挂在这里。 */
   readonly homeDir: string
   /**
    * 按别名解析认证方式。
@@ -68,7 +69,7 @@ export interface LiveSshOptions {
    */
   readonly proxyPort?: number | (() => number | undefined)
   /**
-   * 追加给远端 dsh 进程的环境变量（值里可用 `$TELEPORT_PROXY_URL`）。
+   * 追加给远端 dsh 进程的环境变量（值里可用 `$REMOTE_CR_PROXY_URL`）。
    *
    * 为什么入口要能传：远端 provider 的 `baseURL`/key 只能靠环境变量在启动时指定，
    * 而代理的远端端口是转发建好之后才分配 —— 调用方在启动前不知道它，
@@ -140,7 +141,7 @@ interface LiveControl {
  */
 function abortIfCancelled(signal?: AbortSignal): void {
   if (signal === undefined || !signal.aborted) return
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/cancelled',
     detail: '已取消这次接入',
     nextActions: ['重新点一次「接入」', '换个目标再试'],
@@ -170,12 +171,28 @@ async function connectWsl(
   return openConnection(handle, policy, control.signal)
 }
 
-/** 档位字符串 → 枚举；写错时给结构化错误，不静默回落到 `reuse`。 */
-function resolvePolicy(raw: string | undefined): EnvPolicy {
+/**
+ * 环境档位冲突哨兵：`REMOTE_CR_ENV_POLICY` 与旧名同时设置且值不同时由 `index.ts` 传入。
+ * 它**不是**合法档位，走到这里必然失败 —— 这就是「不替用户选」的落点。
+ *
+ * 前缀用 NUL 是有意的：环境变量的值**不可能**包含 NUL，所以用户永远无法手工构造出这个值，
+ * 也就不会出现「用户写了 conflict 却被当成冲突」的误报（Delta 复审的 nit）。
+ */
+export const ENV_POLICY_CONFLICT = '\u0000env-policy-conflict'
+
+/** 档位字符串 → 枚举；写错时给结构化错误，不静默回落到 `reuse`。导出供单测。 */
+export function resolvePolicy(raw: string | undefined): EnvPolicy {
+  if (raw === ENV_POLICY_CONFLICT) {
+    throw new RemoteCrError({
+      code: 'remote/env-conflict',
+      detail: envConflictHint('REMOTE_CR_ENV_POLICY'),
+      nextActions: ['删掉旧名变量后重启宿主', '或把新旧两个变量改成同一个值'],
+    })
+  }
   try {
     return resolveEnvPolicy(raw)
   } catch (error) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/env-policy-invalid',
       detail: error instanceof Error ? error.message : String(error),
       nextActions: ['把环境档位改成 reuse 或 isolated', '清空该配置即回到默认档 reuse'],
@@ -189,7 +206,7 @@ async function wslHome(executable: string | undefined, distro: string): Promise<
   const result = await runInDistro(executable ?? 'wsl.exe', distro, ['sh', '-c', 'printf %s "$HOME"'])
   const home = result.stdoutText.trim()
   if (result.exitCode !== 0 || home === '') {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/probe-incomplete',
       detail: '读不到 WSL 发行版 ' + distro + ' 的 $HOME（退出码 ' + String(result.exitCode) + '，stderr ' + result.stderrText.trim().slice(-200) + '）',
       nextActions: ['确认该发行版里有 sh', '改用 reuse 档，或改连 SSH 目标'],
@@ -213,7 +230,7 @@ async function connectSsh(
   const ssh = options.ssh
   abortIfCancelled(control.signal)
   if (ssh === undefined) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/ssh-target-unresolved',
       detail: `宿主没有配置 SSH 后端（本地 home 与认证解析），无法连 ${target.alias}`,
       nextActions: ['在宿主配置里填 SSH 后端参数', '改连 WSL 目标', '查看 docs/architecture.md 的 SSH 一节'],
@@ -225,7 +242,7 @@ async function connectSsh(
   try {
     config = readSshConfig({ file, homeDir: ssh.homeDir })
   } catch (error) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/ssh-target-unresolved',
       detail: `读不到 SSH 配置 ${file}：${error instanceof Error ? error.message : String(error)}`,
       nextActions: ['检查该文件是否存在且有读权限', '在宿主配置里指定 configFile'],
@@ -235,7 +252,7 @@ async function connectSsh(
 
   const resolved = resolveSshTarget(config.parsed, target.alias, { homeDir: ssh.homeDir, file })
   if (resolved.target === undefined) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/ssh-target-unresolved',
       detail: `${file} 里没有 Host ${target.alias}`,
       nextActions: ['在 ~/.ssh/config 里加一个 Host 段', '改选已有的别名'],
@@ -244,7 +261,7 @@ async function connectSsh(
   // 配置问题一律先报：`identity-is-public-key` 这种，连上去也只会得到 permission denied。
   const problem = resolved.problems[0] ?? config.problems[0]
   if (problem !== undefined) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/ssh-target-unresolved',
       detail: `${problem.file}:${String(problem.line)} ${problem.message}`,
       nextActions: ['按提示改这一行', '改选其他别名'],
@@ -532,8 +549,8 @@ export function readTarget(body: unknown): ConnectTarget {
 }
 
 /** 传输层已经没了、但连接对象仍被持有时，读写 `rpc` 的兜底错误。 */
-export function detachedError(): TeleportError {
-  return new TeleportError({
+export function detachedError(): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/disconnected',
     detail: '这条远端连接的传输层已经释放，需要先重连',
     nextActions: ['点「重连」再试一次'],

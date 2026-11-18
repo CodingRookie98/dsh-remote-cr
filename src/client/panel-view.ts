@@ -1,5 +1,5 @@
 /**
- * 「瞬移」面板（`main` 槽里的仪表盘）。
+ * 「远端工作台」面板（`main` 槽里的仪表盘）。
  *
  * 为什么从 components.ts 拆出来：那个文件已经 1800 行，而面板与向导是两个**独立的渲染根**
  * ——它们没有共享状态、没有互相引用，只共享「怎么把 store 里的状态读进组件」这几个小工具。
@@ -20,7 +20,7 @@ import type {
   SshSourceReport,
   WorkspaceRecord,
 } from '../shared/api.ts'
-import { describeFlow, FLOW_PHASE_LABELS } from '../shared/flow.ts'
+import { t } from './i18n.ts'
 import {
   attachWorkspace,
   cancelAttach,
@@ -34,7 +34,7 @@ import {
   readProjection,
   reconnectRemote,
   stopRemote,
-  TeleportApiError,
+  RemoteCrApiError,
 } from './api.ts'
 import { copyText, messageOf, useWizard } from './components.ts'
 import {
@@ -42,7 +42,10 @@ import {
   disconnectPlan,
   envPolicyLine,
   formatUpdatedAt,
+  flowLine,
   linkLine,
+  localizeFailure,
+  phaseLabel,
   planAttach,
   planSshAttach,
   probeReport,
@@ -69,15 +72,15 @@ export interface PanelFailure {
   readonly intent?: RetryIntent
 }
 
-/** 把任何异常折成可展示的失败；宿主给的 `TeleportApiError` 四字段原样透出。 */
+/** 把任何异常折成可展示的失败；宿主给的 `RemoteCrApiError` 四字段原样透出。 */
 function failureOf(error: unknown, intent?: RetryIntent): PanelFailure {
-  if (error instanceof TeleportApiError) {
+  if (error instanceof RemoteCrApiError) {
     const report = [
-      '瞬移接入失败',
-      '错误码：' + error.code,
-      '原因：' + error.detail,
-      '下一步：' + (error.nextActions.length === 0 ? '（宿主没给）' : error.nextActions.join(' / ')),
-      '原始信息：' + error.message,
+      t('panel.attachFailed'),
+      t('panel.errorCode') + error.code,
+      t('panel.reason') + error.detail,
+      t('panel.errorNext') + (error.nextActions.length === 0 ? t('panel.missingFromHost') : error.nextActions.join(' / ')),
+      t('panel.raw') + error.message,
     ].join('\n')
     return {
       code: error.code,
@@ -89,10 +92,10 @@ function failureOf(error: unknown, intent?: RetryIntent): PanelFailure {
   }
   const detail = messageOf(error)
   return {
-    code: 'teleport/client-failed',
+    code: 'remote-cr/client-failed',
     detail,
-    nextActions: ['重试一次', '还不行就看宿主日志'],
-    report: '瞬移面板操作失败\n原因：' + detail,
+    nextActions: [t('panel.retryOnce'), t('panel.checkHostLog')],
+    report: t('panel.opFailed') + detail,
     ...(intent === undefined ? {} : { intent }),
   }
 }
@@ -109,16 +112,16 @@ function cancelledOrNull(error: unknown, intent?: RetryIntent): PanelFailure | n
 /** 面板自己拒绝时的失败（例如目标还没选）：不是宿主故障，但同样要能复制与重试。 */
 function refusalOf(reason: string): PanelFailure {
   return {
-    code: 'teleport/not-ready',
+    code: 'remote-cr/not-ready',
     detail: reason,
-    nextActions: ['按上面这句补齐再点一次'],
-    report: '瞬移还没准备好：' + reason,
+    nextActions: [t('panel.fixThenRetry')],
+    report: t('panel.notReady') + reason,
   }
 }
 
 /** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
-export function TeleportIcon(): unknown {
-  return h('span', { 'data-teleport': 'panellist-icon', title: '瞬移' }, 'TP')
+export function RemoteCrIcon(): unknown {
+  return h('span', { 'data-remote-cr': 'panellist-icon', title: t('panel.title') }, t('panel.icon'))
 }
 
 /**
@@ -145,7 +148,7 @@ type RetryIntent =
   | { readonly kind: 'link'; readonly action: 'disconnect' | 'reconnect' }
   | { readonly kind: 'probe'; readonly sessionId: string }
 
-export function TeleportPanel(): unknown {
+export function RemoteCrPanel(): unknown {
   const state = useWizard()
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
   const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
@@ -429,7 +432,7 @@ export function TeleportPanel(): unknown {
   }
 
   const flow = state.flow?.state
-  const summary = useMemo(() => (flow === undefined ? '尚未连接远端' : describeFlow(flow)), [flow])
+  const summary = useMemo(() => (flow === undefined ? t('panel.notConnected') : flowLine(flow)), [flow])
   const defaults = snapshot?.defaults ?? state.defaults
   const sshHosts = ssh?.targets ?? []
   const sshPlan = sshAttachPlan(sshHosts, { alias: sshAlias, remotePath: sshPath }, defaults)
@@ -440,16 +443,16 @@ export function TeleportPanel(): unknown {
       ? null
       : h(
           'div',
-          { 'data-teleport': 'attach-progress', 'data-phase': attachProgress.phase },
-          h('span', { 'data-teleport': 'attach-phase-text' }, attachPhaseText(attachProgress.phase)),
+          { 'data-remote-cr': 'attach-progress', 'data-phase': attachProgress.phase },
+          h('span', { 'data-remote-cr': 'attach-phase-text' }, attachPhaseText(attachProgress.phase)),
           h(
             'button',
             {
               type: 'button',
-              'data-teleport': 'attach-cancel',
+              'data-remote-cr': 'attach-cancel',
               onClick: () => void onCancelAttach(),
             },
-            '取消接入',
+            t('panel.cancelAttach'),
           ),
         )
   const reconnect = reconnectPlan(snapshot)
@@ -464,29 +467,29 @@ export function TeleportPanel(): unknown {
    */
   const sshBox = h(
     'div',
-    { 'data-teleport': 'ssh', 'data-hosts': String(sshHosts.length) },
-    h('div', { 'data-teleport': 'ssh-title' }, 'SSH 远端'),
+    { 'data-remote-cr': 'ssh', 'data-hosts': String(sshHosts.length) },
+    h('div', { 'data-remote-cr': 'ssh-title' }, t('panel.sshTitle')),
     sshHosts.length === 0
       ? h(
           'div',
-          { 'data-teleport': 'ssh-empty' },
+          { 'data-remote-cr': 'ssh-empty' },
           sshError !== null
-            ? '读 ~/.ssh/config 失败：' + sshError
+            ? t('panel.sshReadFailed') + sshError
             : ssh === null
-              ? '还没读到 ~/.ssh/config'
-              : (ssh.problems[0]?.message ?? '~/.ssh/config 里没有可用的主机：写一个 Host 块后刷新'),
+              ? t('panel.sshNotRead')
+              : (ssh.problems[0]?.message ?? t('panel.sshNoHosts')),
           h(
             'button',
-            { type: 'button', 'data-teleport': 'ssh-reload', onClick: () => void loadSsh() },
-            sshError !== null ? '重试读取' : '重新读取',
+            { type: 'button', 'data-remote-cr': 'ssh-reload', onClick: () => void loadSsh() },
+            sshError !== null ? t('panel.retryRead') : t('panel.reload'),
           ),
         )
       : h(
           'div',
-          { 'data-teleport': 'ssh-form' },
+          { 'data-remote-cr': 'ssh-form' },
           h(
             'div',
-            { 'data-teleport': 'ssh-aliases' },
+            { 'data-remote-cr': 'ssh-aliases' },
             // 13 个别名平铺会占三行、把下面的内容推走。默认只渲染「当前选中的」那一个；
             // 展开按钮（ssh-toggle）列出全部，探针也走同一条展开路径。
             ...(sshExpanded
@@ -500,13 +503,14 @@ export function TeleportPanel(): unknown {
                 {
                   type: 'button',
                   key: host.alias,
-                  'data-teleport': 'ssh-alias',
+                  'data-remote-cr': 'ssh-alias',
                   'data-selected': String(sshAlias === host.alias),
                   onClick: () => {
                     setSshAlias(host.alias)
                   },
                 },
-                host.alias + ' · 端口 ' + String(host.port) + (host.hasIdentityFile ? ' · 有密钥' : ''),
+                t('panel.sshHostLine', { alias: host.alias, port: host.port })
+                  + (host.hasIdentityFile ? t('panel.withKey') : ''),
               ),
             ),
             sshHosts.length > 1
@@ -514,20 +518,20 @@ export function TeleportPanel(): unknown {
                   'button',
                   {
                     type: 'button',
-                    'data-teleport': 'ssh-toggle',
+                    'data-remote-cr': 'ssh-toggle',
                     onClick: () => {
                       setSshExpanded((current) => !current)
                     },
                   },
-                  sshExpanded ? '收起主机' : '切换主机（' + String(sshHosts.length) + '）',
+                  sshExpanded ? t('panel.collapseHosts') : t('panel.switchHost', { count: sshHosts.length }),
                 )
               : null,
           ),
           h('input', {
-            'data-teleport': 'ssh-path',
+            'data-remote-cr': 'ssh-path',
             type: 'text',
             value: sshPath,
-            placeholder: '/home/hui/workspace（远端绝对路径）',
+            placeholder: t('panel.sshPathPlaceholder'),
             onInput: (event: unknown) => {
               const value = (event as { target?: { value?: unknown } }).target?.value
               if (typeof value === 'string') setSshPath(value)
@@ -537,12 +541,12 @@ export function TeleportPanel(): unknown {
             'button',
             {
               type: 'button',
-              'data-teleport': 'ssh-attach',
+              'data-remote-cr': 'ssh-attach',
               disabled: !sshPlan.ok || busy !== null,
-              title: sshPlan.ok ? '接入这个 SSH 远端' : sshPlan.reason,
+              title: sshPlan.ok ? t('panel.attachSshHint') : sshPlan.reason,
               onClick: () => void onSshAttach(),
             },
-            busy === 'ssh-attach' ? '接入中…' : '接入 SSH 远端',
+            busy === 'ssh-attach' ? t('panel.attaching') : t('panel.attachSsh'),
           ),
         ),
   )
@@ -551,22 +555,22 @@ export function TeleportPanel(): unknown {
     const plan = planAttach(record, defaults)
     return h(
       'div',
-      { key: record.localPath, 'data-teleport': 'workspace', 'data-source': record.source },
-      h('span', { 'data-teleport': 'workspace-source' }, record.source),
-      h('span', { 'data-teleport': 'workspace-path' }, record.localPath),
+      { key: record.localPath, 'data-remote-cr': 'workspace', 'data-source': record.source },
+      h('span', { 'data-remote-cr': 'workspace-source' }, record.source),
+      h('span', { 'data-remote-cr': 'workspace-path' }, record.localPath),
       h(
         'button',
         {
           type: 'button',
-          'data-teleport': 'attach',
+          'data-remote-cr': 'attach',
           'data-ok': String(plan.ok),
           // 全局单飞：任何一次接入在进行中，其他行的按钮也必须禁用 —— 否则点下去只会
           // 收到 `remote/attach-busy`，用户看到的是「按钮能点但报错」（R1-M-1）。
           disabled: !plan.ok || busy !== null,
-          title: plan.ok ? '在远端注册这个工作区并拉取会话' : plan.reason,
+          title: plan.ok ? t('panel.attachHint') : plan.reason,
           onClick: () => void onAttach(record),
         },
-        busy === record.localPath ? '接入中…' : '接入远端',
+        busy === record.localPath ? t('panel.attaching') : t('panel.attach'),
       ),
     )
   })
@@ -574,19 +578,19 @@ export function TeleportPanel(): unknown {
   const projectedRows = (snapshot?.workspaces ?? []).map((workspace: ProjectedWorkspaceInfo) =>
     h(
       'div',
-      { key: workspace.id, 'data-teleport': 'projected', 'data-availability': workspace.availability },
-      h('span', { 'data-teleport': 'projected-title' }, workspace.title),
-      h('span', { 'data-teleport': 'projected-path' }, workspace.remotePath ?? workspace.localPath),
+      { key: workspace.id, 'data-remote-cr': 'projected', 'data-availability': workspace.availability },
+      h('span', { 'data-remote-cr': 'projected-title' }, workspace.title),
+      h('span', { 'data-remote-cr': 'projected-path' }, workspace.remotePath ?? workspace.localPath),
       h(
         'button',
         {
           type: 'button',
-          'data-teleport': 'new-session',
+          'data-remote-cr': 'new-session',
           disabled: busy === 'session:' + workspace.id || snapshot?.connected !== true,
-          title: snapshot?.connected === true ? '在远端这个工作区里新建会话' : '尚未连接远端，先点「接入远端」',
+          title: snapshot?.connected === true ? t('panel.newSessionHint') : t('panel.notConnectedAttach'),
           onClick: () => void onCreateSession(workspace.id),
         },
-        busy === 'session:' + workspace.id ? '新建中…' : '新建会话',
+        busy === 'session:' + workspace.id ? t('panel.creating') : t('panel.newSession'),
       ),
     ),
   )
@@ -596,28 +600,28 @@ export function TeleportPanel(): unknown {
       'div',
       {
         key: session.sessionId,
-        'data-teleport': 'session',
+        'data-remote-cr': 'session',
         'data-availability': session.availability,
         'data-active': String(activeSession === session.sessionId),
       },
-      h('span', { 'data-teleport': 'session-id' }, session.sessionId),
+      h('span', { 'data-remote-cr': 'session-id' }, session.sessionId),
       // M3-2a：远端是否还在跑 —— 只靠「最后活动」看不出任务是不是活着。
       h(
         'span',
-        { 'data-teleport': 'session-running', 'data-running': String(session.running) },
-        session.running ? '运行中' : '空闲',
+        { 'data-remote-cr': 'session-running', 'data-running': String(session.running) },
+        session.running ? t('panel.running') : t('panel.idle'),
       ),
-      h('span', { 'data-teleport': 'session-updated' }, formatUpdatedAt(session.updatedAt)),
+      h('span', { 'data-remote-cr': 'session-updated' }, formatUpdatedAt(session.updatedAt)),
       h(
         'button',
         {
           type: 'button',
-          'data-teleport': 'probe',
+          'data-remote-cr': 'probe',
           disabled: busy === 'probe:' + session.sessionId || session.availability !== 'online',
-          title: session.availability === 'online' ? '在远端会话终端里跑 pwd + uname -a' : '会话离线，重连后再取证',
+          title: session.availability === 'online' ? t('panel.probeHint') : t('panel.probeOffline'),
           onClick: () => void onProbe(session.sessionId),
         },
-        busy === 'probe:' + session.sessionId ? '取证中…' : '取证',
+        busy === 'probe:' + session.sessionId ? t('panel.probing') : t('panel.probe'),
       ),
     ),
   )
@@ -627,202 +631,214 @@ export function TeleportPanel(): unknown {
       ? null
       : h(
           'div',
-          { 'data-teleport': 'probe-result', 'data-remote': String(probe.executedRemotely) },
-          h('div', { 'data-teleport': 'probe-summary' }, probeSummary(probe)),
+          { 'data-remote-cr': 'probe-result', 'data-remote': String(probe.executedRemotely) },
+          h('div', { 'data-remote-cr': 'probe-summary' }, probeSummary(probe)),
           h(
             'pre',
-            { 'data-teleport': 'probe-report', style: { whiteSpace: 'pre-wrap', fontSize: '11px' } },
+            { 'data-remote-cr': 'probe-report', style: { whiteSpace: 'pre-wrap', fontSize: '11px' } },
             probeReport(probe),
           ),
           h(
             'button',
-            { type: 'button', 'data-teleport': 'probe-copy', onClick: () => void copyText(probeReport(probe)) },
-            '复制取证报告',
+            { type: 'button', 'data-remote-cr': 'probe-copy', onClick: () => void copyText(probeReport(probe)) },
+            t('panel.copyProbe'),
           ),
         )
 
-  return h(
-    'div',
-    { 'data-teleport': 'panel' },
-    h(
-      'header',
-      { 'data-teleport': 'panel-head' },
-      h(
-        'div',
-        { 'data-teleport': 'panel-head-main' },
-        h('div', { 'data-teleport': 'panel-title' }, '瞬移'),
-        flow === undefined ? null : h('div', { 'data-teleport': 'panel-flow' }, summary),
-        flow === undefined ? null : h('div', { 'data-teleport': 'panel-phase' }, FLOW_PHASE_LABELS[flow.phase]),
-        isTerminal(state) ? h('div', { 'data-teleport': 'panel-terminal' }, state.step) : null,
-      ),
-      h(
-        'div',
-        { 'data-teleport': 'panel-status' },
-        h('div', { 'data-teleport': 'panel-connected', 'data-link': snapshot?.link ?? 'unknown' }, linkLine(snapshot)),
-        h(
-          'div',
-          { 'data-teleport': 'panel-env', 'data-env-policy': snapshot?.envPolicy ?? 'unknown' },
-          envPolicyLine(snapshot),
-        ),
-      ),
-      h(
-        'div',
-        { 'data-teleport': 'panel-link-actions' },
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-teleport': 'reconnect',
-            'data-ok': String(reconnect.ok),
-            disabled: !reconnect.ok || busy === 'reconnect',
-            title: reconnect.ok ? '立刻重连远端（失败会把自动重连挂起来）' : reconnect.reason,
-            onClick: () => void onLink('reconnect'),
-          },
-          busy === 'reconnect' ? '重连中…' : '重连',
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-teleport': 'disconnect',
-            'data-ok': String(disconnect.ok),
-            disabled: !disconnect.ok || busy === 'disconnect',
-            title: disconnect.ok ? '断开远端连接（投影条目会留着并标为离线）' : disconnect.reason,
-            onClick: () => void onLink('disconnect'),
-          },
-          busy === 'disconnect' ? '断开中…' : '断开',
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-teleport': 'stop-remote',
-            disabled: busy !== null,
-            title: '把远端 dsh 真的收掉（「断开」只断传输、进程留着温热）',
-            onClick: () => void onStopRemote(),
-          },
-          busy === 'stop-remote' ? '结束中…' : '结束远端',
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-teleport': 'import-open',
-            disabled: snapshot?.connected !== true || busy !== null,
-            title: snapshot?.connected === true ? '列出远端已有的工作区，勾选后投影到本地侧栏' : '尚未连接远端',
-            onClick: () => void onLoadImportable(),
-          },
-          busy === 'import-list' ? '读取中…' : '导入远端工作区',
-        ),
-      ),
-    ),
-    attachBox,
-    h(
-      'div',
-      { 'data-teleport': 'panel-body' },
-      h(
-        'div',
-        { 'data-teleport': 'panel-column' },
-        h(
-          'div',
-          { 'data-teleport': 'panel-workspaces', 'data-empty': String(addRows.length === 0) },
-          ...(addRows.length === 0 && projectedRows.length === 0
-            ? [h('div', { 'data-teleport': 'panel-empty' }, '还没有添加目录')]
-            : addRows),
-        ),
-        h(
-          'div',
-          { 'data-teleport': 'panel-projected' },
-          ...(projectedRows.length === 0
-            ? [h('div', { 'data-teleport': 'panel-projected-empty' }, '远端还没有投影的工作区')]
-            : projectedRows),
-        ),
-      ),
-      h(
-        'div',
-        { 'data-teleport': 'panel-side' },
-        sshBox,
-        h(
-          'div',
-          { 'data-teleport': 'import' },
-          importable === null
-            ? null
-            : h(
-                'div',
-                { 'data-teleport': 'import-list' },
-                importable.length === 0
-                  ? h('div', { 'data-teleport': 'import-empty' }, '远端没有其它可导入的工作区')
-                  : null,
-                ...importable.map((item: ImportableWorkspaceInfo) =>
-                  h(
-                    'label',
-                    { key: item.workspaceId, 'data-teleport': 'import-row' },
-                    h('input', {
-                      type: 'checkbox',
-                      'data-teleport': 'import-check',
-                      checked: importPick.includes(item.path),
-                      onChange: (event: { target: { checked: boolean } }) => {
-                        setImportPick((current) =>
-                          event.target.checked ? [...current, item.path] : current.filter((path) => path !== item.path),
-                        )
-                      },
-                    }),
-                    h('span', { 'data-teleport': 'import-path' }, item.path),
-                  ),
-                ),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    'data-teleport': 'import-go',
-                    disabled: importPick.length === 0 || busy !== null,
-                    onClick: () => void onImport(),
-                  },
-                  busy === 'import' ? '导入中…' : '导入选中 (' + String(importPick.length) + ')',
-                ),
-              ),
-        ),
-      ),
-    ),
-    h(
-      'div',
-      { 'data-teleport': 'panel-sessions' },
-      ...(sessionRows.length === 0
-        ? [h('div', { 'data-teleport': 'panel-sessions-empty' }, '还没有远端会话')]
-        : sessionRows),
-    ),
-    probeBox,
-    error === null
+  // 渲染前算一次：同一份失败面被 detail / nextActions 两处用到（Delta-2 ④-7）。
+  const errorText = error === null ? { detail: '', nextActions: [] as readonly string[] } : localizeFailure(error)
+
+  const importBox =
+    importable === null
       ? null
       : h(
           'div',
-          { 'data-teleport': 'panel-error', 'data-error-code': error.code, role: 'alert' },
-          h('div', { 'data-teleport': 'panel-error-code' }, error.code),
-          h('div', { 'data-teleport': 'panel-error-detail' }, error.detail),
-          h(
-            'ul',
-            { 'data-teleport': 'panel-error-next' },
-            ...error.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
-          ),
+          { 'data-remote-cr': 'import' },
           h(
             'div',
-            { 'data-teleport': 'panel-error-actions' },
-            h(
-              'button',
-              { type: 'button', 'data-teleport': 'panel-error-copy', onClick: () => void copyText(error.report) },
-              '复制日志',
+            { 'data-remote-cr': 'import-list' },
+            importable.length === 0
+              ? h('div', { 'data-remote-cr': 'import-empty' }, t('panel.importEmpty'))
+              : null,
+            ...importable.map((item: ImportableWorkspaceInfo) =>
+              h(
+                'label',
+                { key: item.workspaceId, 'data-remote-cr': 'import-row' },
+                h('input', {
+                  type: 'checkbox',
+                  'data-remote-cr': 'import-check',
+                  checked: importPick.includes(item.path),
+                  onChange: (event: { target: { checked: boolean } }) => {
+                    setImportPick((current) =>
+                      event.target.checked ? [...current, item.path] : current.filter((path) => path !== item.path),
+                    )
+                  },
+                }),
+                h('span', { 'data-remote-cr': 'import-path' }, item.path),
+              ),
             ),
             h(
               'button',
               {
                 type: 'button',
-                'data-teleport': 'panel-error-retry',
+                'data-remote-cr': 'import-go',
+                disabled: importPick.length === 0 || busy !== null,
+                onClick: () => void onImport(),
+              },
+              busy === 'import' ? t('panel.importing') : t('panel.importSelected', { count: importPick.length }),
+            ),
+          ),
+        )
+
+  return h(
+    'div',
+    { 'data-remote-cr': 'panel' },
+    // ① 状态带：标题 / 进度 / 连接态 / 环境 / 动作收在一条头里（原来是三行堆叠）
+    h(
+      'header',
+      { 'data-remote-cr': 'panel-head' },
+      h(
+        'div',
+        { 'data-remote-cr': 'panel-head-main' },
+        h('h2', { 'data-remote-cr': 'panel-title' }, t('panel.title')),
+        flow === undefined ? null : h('span', { 'data-remote-cr': 'panel-flow' }, summary),
+        flow === undefined ? null : h('span', { 'data-remote-cr': 'panel-phase' }, phaseLabel(flow.phase)),
+        isTerminal(state) ? h('span', { 'data-remote-cr': 'panel-terminal' }, state.step) : null,
+      ),
+      h(
+        'div',
+        { 'data-remote-cr': 'panel-status' },
+        h('span', { 'data-remote-cr': 'panel-connected', 'data-link': snapshot?.link ?? 'unknown' }, linkLine(snapshot)),
+        h(
+          'span',
+          { 'data-remote-cr': 'panel-env', 'data-env-policy': snapshot?.envPolicy ?? 'unknown' },
+          envPolicyLine(snapshot),
+        ),
+      ),
+      h(
+        'div',
+        { 'data-remote-cr': 'panel-link-actions' },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-remote-cr': 'reconnect',
+            'data-ok': String(reconnect.ok),
+            disabled: !reconnect.ok || busy === 'reconnect',
+            title: reconnect.ok ? t('panel.reconnectHint') : reconnect.reason,
+            onClick: () => void onLink('reconnect'),
+          },
+          busy === 'reconnect' ? t('panel.reconnecting') : t('panel.reconnect'),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-remote-cr': 'disconnect',
+            'data-ok': String(disconnect.ok),
+            disabled: !disconnect.ok || busy === 'disconnect',
+            title: disconnect.ok ? t('panel.disconnectHint') : disconnect.reason,
+            onClick: () => void onLink('disconnect'),
+          },
+          busy === 'disconnect' ? t('panel.disconnecting') : t('panel.disconnect'),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-remote-cr': 'stop-remote',
+            disabled: busy !== null,
+            title: t('panel.stopRemoteHint'),
+            onClick: () => void onStopRemote(),
+          },
+          busy === 'stop-remote' ? t('panel.stopping') : t('panel.stopRemote'),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-remote-cr': 'import-open',
+            disabled: snapshot?.connected !== true || busy !== null,
+            title: snapshot?.connected === true ? t('panel.importHint') : t('panel.importDisabled'),
+            onClick: () => void onLoadImportable(),
+          },
+          busy === 'import-list' ? t('panel.reading') : t('panel.importOpen'),
+        ),
+      ),
+    ),
+    attachBox,
+    // ② 主体：左主机 → 右该主机的投影工作区与会话（两级主从，宽度撑满）
+    h(
+      'div',
+      { 'data-remote-cr': 'panel-body' },
+      h(
+        'aside',
+        { 'data-remote-cr': 'panel-hosts' },
+        h('h3', { 'data-remote-cr': 'panel-section-title' }, t('panel.hostsTitle')),
+        h(
+          'div',
+          { 'data-remote-cr': 'panel-workspaces', 'data-empty': String(addRows.length === 0) },
+          ...(addRows.length === 0
+            ? [h('div', { 'data-remote-cr': 'panel-empty' }, t('panel.emptyWorkspaces'))]
+            : addRows),
+        ),
+        sshBox,
+      ),
+      h(
+        'div',
+        { 'data-remote-cr': 'panel-detail' },
+        h('h3', { 'data-remote-cr': 'panel-section-title' }, t('panel.projectedTitle')),
+        h(
+          'div',
+          { 'data-remote-cr': 'panel-projected' },
+          ...(projectedRows.length === 0
+            ? [h('div', { 'data-remote-cr': 'panel-projected-empty' }, t('panel.emptyProjected'))]
+            : projectedRows),
+        ),
+        importBox,
+        h('h3', { 'data-remote-cr': 'panel-section-title' }, t('panel.sessionsTitle')),
+        h(
+          'div',
+          { 'data-remote-cr': 'panel-sessions' },
+          ...(sessionRows.length === 0
+            ? [h('div', { 'data-remote-cr': 'panel-sessions-empty' }, t('panel.emptySessions'))]
+            : sessionRows),
+        ),
+        probeBox,
+      ),
+    ),
+    // ③ 错误块：唯一一处结构化失败面
+    error === null
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'panel-error', 'data-error-code': error.code, role: 'alert' },
+          h('div', { 'data-remote-cr': 'panel-error-code' }, error.code),
+          // 双语：可见文案按错误码本地化；宿主原文只留在「复制日志」里（R2-B2）。
+          h('div', { 'data-remote-cr': 'panel-error-detail' }, errorText.detail),
+          h(
+            'ul',
+            { 'data-remote-cr': 'panel-error-next' },
+            ...errorText.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
+          ),
+          h(
+            'div',
+            { 'data-remote-cr': 'panel-error-actions' },
+            h(
+              'button',
+              { type: 'button', 'data-remote-cr': 'panel-error-copy', onClick: () => void copyText(error.report) },
+              t('action.copyLog'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-remote-cr': 'panel-error-retry',
                 disabled: error.intent === undefined,
-                title:
-                  error.intent === undefined ? '这次失败没有可重放的动作，重新点一次相应操作' : '用当前表单重跑上一次失败的动作',
+                title: error.intent === undefined ? t('panel.retryHint') : t('panel.retryReplayHint'),
                 onClick: () => void onRetry(),
               },
-              '重试',
+              t('action.retry'),
             ),
           ),
         ),

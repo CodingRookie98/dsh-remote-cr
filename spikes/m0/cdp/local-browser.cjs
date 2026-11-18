@@ -52,19 +52,19 @@ async function main() {
   })()`)
   await sleep(1200)
   const readBrowser = `(() => {
-    const node = document.querySelector('[data-teleport-spike="local-browser"]')
+    const node = document.querySelector('[data-remote-cr-spike="local-browser"]')
     return node === null ? 'no-browser' : node.textContent
   })()`
   out.beforeBrowse = await evaluate(readBrowser)
   out.clickOfficial = await evaluate(`(() => {
-    const btn = document.querySelector('[data-teleport-spike="browse-cwd"]')
+    const btn = document.querySelector('[data-remote-cr-spike="browse-cwd"]')
     if (btn === null) return 'no-button'
     btn.click(); return 'clicked'
   })()`)
   await sleep(2500)
   out.afterOfficial = await evaluate(readBrowser)
   out.clickOwn = await evaluate(`(() => {
-    const btn = document.querySelector('[data-teleport-spike="browse-own"]')
+    const btn = document.querySelector('[data-remote-cr-spike="browse-own"]')
     if (btn === null) return 'no-button'
     btn.click(); return 'clicked'
   })()`)

@@ -9,11 +9,11 @@
  * 校验责任悄悄丢掉，而这里每一个返回值都必须先过 `typeof` 检查。
  */
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 
 /** 形状不对：带上端点名，让用户能定位到是哪一次远端调用。 */
 export function badShape(endpoint: string, detail: string): never {
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/unknown',
     detail: '远端 ' + endpoint + ' 的返回值形状不对：' + detail,
     nextActions: ['确认远端 dsh 版本与本地一致', '重连后重试'],

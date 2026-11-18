@@ -28,7 +28,7 @@
  * 宿主一死 OS 就把它带走，distro 侧随之回收（`children.ts` 头注释的 A7 实测）。
  */
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import type { ConnectionPhase } from '../backend/errors.ts'
 import type { EnvPolicy } from '../env-policy/index.ts'
 import { type LinkPhase, ReconnectDriver, type ReconnectTimers } from '../../shared/reconnect.ts'
@@ -233,7 +233,7 @@ export class ProjectionService {
     // 另一次会从此不可取消（R1-M-1）。显式拒绝比静默覆盖诚实。
     const running = this.#attach
     if (running !== undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/attach-busy',
         detail: '已经有一次接入在进行中（阶段 ' + running.phase + '）',
         nextActions: ['等它结束', '或先点面板上的「取消接入」'],
@@ -295,7 +295,7 @@ export class ProjectionService {
           const clean = await live.connection.dispose()
           if (clean === false) {
             // 用户取消了，但远端没收干净：这比「已取消」更需要他知道（A7 要求可回收）。
-            throw new TeleportError({
+            throw new RemoteCrError({
               code: 'remote/recycle-incomplete',
               detail: '已取消这次接入，但远端 dsh 没有确认退出（看门狗未在窗口内回收）',
               nextActions: ['在远端确认没有残留 dsh', '关掉宿主让看门狗回收', '重试接入'],
@@ -321,14 +321,14 @@ export class ProjectionService {
     const connection = this.#requireLive()
     return this.#guardTransport(async () => {
       const deps = { rpc: connection.rpc, store: this.#store }
-      let preheatError: TeleportError | undefined
+      let preheatError: RemoteCrError | undefined
       const created = await createRemoteSession(deps, workspaceId, {
         ...options,
         preheat: async (sessionId) => {
           try {
             return await preheatProbe(deps, sessionId, options.signal === undefined ? {} : { signal: options.signal })
           } catch (error) {
-            preheatError = asTeleportError(error)
+            preheatError = asRemoteCrError(error)
             return undefined
           }
         },
@@ -420,10 +420,10 @@ export class ProjectionService {
   async reconnectNow(): Promise<void> {
     const target = this.#lastTarget
     if (target === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/disconnected',
         detail: '还没有连过任何远端，无从重连',
-        nextActions: ['先在瞬移面板里接入一个远端工作区'],
+        nextActions: ['先在「远端工作台」面板里接入一个远端工作区'],
       })
     }
     this.#stopDriver()
@@ -476,7 +476,7 @@ export class ProjectionService {
   async importable(): Promise<readonly RemoteWorkspaceRow[]> {
     const live = this.#live
     if (live === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/not-attached',
         detail: '还没有连上远端，读不到远端的工作区列表',
         nextActions: ['先在面板里接入一个远端'],
@@ -490,7 +490,7 @@ export class ProjectionService {
       // 首帧可能是错误帧（网关/远端拒绝）：吞掉会变成「列表为空」，用户查不出原因。
       const failure = readFrameError(first)
       if (failure !== undefined) {
-        throw new TeleportError({
+        throw new RemoteCrError({
           code: 'remote/tunnel-unavailable',
           detail: '读 workspace/follow 被远端拒绝：' + failure,
           nextActions: ['重试一次', '确认远端版本支持 workspace/follow'],
@@ -511,7 +511,7 @@ export class ProjectionService {
   async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number }> {
     const live = this.#live
     if (live === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/not-attached',
         detail: '还没有连上远端，无法导入工作区',
         nextActions: ['先在面板里接入一个远端'],
@@ -519,7 +519,7 @@ export class ProjectionService {
     }
     const anchorFor = live.connection.anchorFor
     if (anchorFor === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/not-attached',
         detail: '当前后端没有提供锚点解析（导入只支持 SSH 后端）',
         nextActions: ['改用 SSH 后端接入后再导入'],
@@ -748,10 +748,10 @@ export class ProjectionService {
   #requireLive(): RemoteConnection {
     const live = this.#live
     if (live === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/disconnected',
         detail: '还没有连接到远端：先完成一次「添加远端工作区」',
-        nextActions: ['在瞬移面板里接入一个远端工作区', '点「重连」再试一次'],
+        nextActions: ['在「远端工作台」面板里接入一个远端工作区', '点「重连」再试一次'],
       })
     }
     return live.connection
@@ -761,7 +761,7 @@ export class ProjectionService {
 /** 用户取消的边界检查：底层不认 signal 时，服务层也要能及时退出。 */
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal === undefined || !signal.aborted) return
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/cancelled',
     detail: '已取消这次接入',
     nextActions: ['重新点一次「接入」', '换个目标再试'],
@@ -770,13 +770,13 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 /** 传输层失败：隧道断了 / 握手超时。业务拒绝不算。 */
 function isTransportLoss(error: unknown): boolean {
-  return error instanceof TeleportError && error.code === 'remote/tunnel-unavailable'
+  return error instanceof RemoteCrError && error.code === 'remote/tunnel-unavailable'
 }
 
-/** 把任意抛出物归一成 `TeleportError`：面板要能显示 code，而不是一句 `[object Object]`。 */
-function asTeleportError(error: unknown): TeleportError {
-  if (error instanceof TeleportError) return error
-  return new TeleportError({
+/** 把任意抛出物归一成 `RemoteCrError`：面板要能显示 code，而不是一句 `[object Object]`。 */
+function asRemoteCrError(error: unknown): RemoteCrError {
+  if (error instanceof RemoteCrError) return error
+  return new RemoteCrError({
     code: 'remote/unknown',
     detail: error instanceof Error ? error.message : String(error),
     nextActions: ['重试', '查看远端日志'],
@@ -837,7 +837,7 @@ async function firstFrame(stream: StreamHandle, timeoutMs: number): Promise<unkn
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           reject(
-            new TeleportError({
+            new RemoteCrError({
               code: 'remote/tunnel-unavailable',
               detail: '读 workspace/follow 首帧超过 ' + String(timeoutMs) + 'ms',
               nextActions: ['重试一次', '确认远端实例还活着'],

@@ -29,7 +29,7 @@ import { createServer } from 'node:net'
 
 import { classifyStartFailure, parseDshEndpoint, tailLines } from '../dsh-output.ts'
 import { classifySshFailure } from './errors.ts'
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { DshEndpoint, RemoteDshHandle } from '../handle.ts'
 import type { SshTarget } from './config.ts'
 import { knownHostsPath } from './known-hosts.ts'
@@ -37,11 +37,11 @@ import { shellQuote } from '../posix-probe.ts'
 import { buildSshInvocation, describeTarget, type SshAuth, type SshConnectOptions } from './transport.ts'
 
 /** 远端 agent 读这个变量取凭据代理地址；名字写进远端脚本，改它就是改契约。 */
-export const PROXY_URL_ENV = 'TELEPORT_PROXY_URL'
+export const PROXY_URL_ENV = 'REMOTE_CR_PROXY_URL'
 
 /** 看门狗标记：回收是否干净靠它们从日志里判，不靠猜。 */
-export const WATCHDOG_PID_MARK = 'TELEPORT_WATCHDOG_PID='
-export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
+export const WATCHDOG_PID_MARK = 'REMOTE_CR_WATCHDOG_PID='
+export const WATCHDOG_KILLED_MARK = 'REMOTE_CR_WATCHDOG_KILLED'
 /**
  * 显式回收行。
  *
@@ -50,7 +50,7 @@ export const WATCHDOG_KILLED_MARK = 'TELEPORT_WATCHDOG_KILLED'
  * 本地 SIGTERM 才跑，回收判定因此晚 4s 以上、被误报成「远端子进程可能还活着」。
  * 改成写一行明确的控制行，回收就不再依赖 EOF 的语义。
  */
-export const WATCHDOG_EXIT_LINE = 'TELEPORT_WATCHDOG_EXIT'
+export const WATCHDOG_EXIT_LINE = 'REMOTE_CR_WATCHDOG_EXIT'
 /**
  * 驻留行：本地要走，但**别杀**远端 dsh。
  *
@@ -58,7 +58,7 @@ export const WATCHDOG_EXIT_LINE = 'TELEPORT_WATCHDOG_EXIT'
  * KEEP = 放手（M3-2b 的「长任务」）。同一行控制字里做分支，而不是靠「关 stdin 还是发信号」
  * 区分 —— 后者在真机上已经证明不可靠（-R 连接不保证把 EOF 送到远端）。
  */
-export const WATCHDOG_KEEP_LINE = 'TELEPORT_WATCHDOG_KEEP'
+export const WATCHDOG_KEEP_LINE = 'REMOTE_CR_WATCHDOG_KEEP'
 
 /** 关掉 stdin 之后给远端看门狗多久（含一次远端 kill + 连接拆除）。 */
 const DISPOSE_GRACE_MS = 3_000
@@ -128,7 +128,7 @@ export interface SshLaunchOptions {
   readonly cwd?: string | null
   readonly extraArgs?: readonly string[]
   /**
-   * 追加给远端 dsh 进程的环境变量；值里可用 `$TELEPORT_PROXY_URL`（拿到 `-R` 端口后才展开）。
+   * 追加给远端 dsh 进程的环境变量；值里可用 `$REMOTE_CR_PROXY_URL`（拿到 `-R` 端口后才展开）。
    *
    * 用途：把远端 provider 的 baseURL / key 指到本机代理。没有它，「凭据不出本机」只能靠
    * 用户手工在远端写配置，而那一步没法验证。
@@ -194,7 +194,7 @@ export function buildRemoteLaunchScript(options: {
    *
    * 为什么需要它：凭据代理的**远端端口是转发建立之后才分配的**（`-R 127.0.0.1:0:…`），
    * 而「把模型请求指向本机代理」只能靠环境变量告诉远端（provider 的 baseURL 读
-   * `DEEPSEEK_BASE_URL`，key 读 `DEEPSEEK_API_KEY`）。值里可以写 `$TELEPORT_PROXY_URL`，
+   * `DEEPSEEK_BASE_URL`，key 读 `DEEPSEEK_API_KEY`）。值里可以写 `$REMOTE_CR_PROXY_URL`，
    * 由本脚本在拿到端口之后展开 —— 调用方在启动前并不知道端口，所以必须支持这个引用。
    */
   readonly extraEnv?: Readonly<Record<string, string>>
@@ -212,30 +212,30 @@ export function buildRemoteLaunchScript(options: {
   const cwd = options.cwd === undefined ? options.remoteRoot : options.cwd
   const lines: string[] = cwd === null || cwd === '' ? [] : ['cd ' + shellQuote(cwd) + ' || exit 1']
   if (options.waitForProxyPort) {
-    lines.push('IFS= read -r _teleport_proxy_port || exit 1')
-    lines.push('export ' + PROXY_URL_ENV + '="http://127.0.0.1:$_teleport_proxy_port"')
+    lines.push('IFS= read -r _remote_cr_proxy_port || exit 1')
+    lines.push('export ' + PROXY_URL_ENV + '="http://127.0.0.1:$_remote_cr_proxy_port"')
   }
   for (const [name, value] of Object.entries(options.extraEnv ?? {})) {
     lines.push('export ' + name + '=' + shellWordWithProxyUrl(value))
   }
   lines.push(argv.map((part) => shellQuote(part)).join(' ') + ' < /dev/null &')
-  lines.push('_teleport_child=$!')
-  lines.push("printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$_teleport_child"')
+  lines.push('_remote_cr_child=$!')
+  lines.push("printf '%s%s\\n' " + JSON.stringify(WATCHDOG_PID_MARK) + ' "$_remote_cr_child"')
   // 读到回收行、或读到 EOF（老路径仍然有效）才往下走。
-  lines.push('while IFS= read -r _teleport_line; do')
-  lines.push('  [ "$_teleport_line" = ' + shellQuote(WATCHDOG_EXIT_LINE) + ' ] && break')
+  lines.push('while IFS= read -r _remote_cr_line; do')
+  lines.push('  [ "$_remote_cr_line" = ' + shellQuote(WATCHDOG_EXIT_LINE) + ' ] && break')
   // 驻留：脚本自己退出，但**不 kill** 子进程 —— dsh 留在远端继续跑。
-  lines.push('  [ "$_teleport_line" = ' + shellQuote(WATCHDOG_KEEP_LINE) + ' ] && exit 0')
+  lines.push('  [ "$_remote_cr_line" = ' + shellQuote(WATCHDOG_KEEP_LINE) + ' ] && exit 0')
   lines.push('done')
-  lines.push('kill "$_teleport_child" 2>/dev/null')
+  lines.push('kill "$_remote_cr_child" 2>/dev/null')
   lines.push("printf '%s\\n' " + JSON.stringify(WATCHDOG_KILLED_MARK))
   return lines.join('\n')
 }
 
 /**
- * 把 `extraEnv` 的一个值渲染成 shell 词：`$TELEPORT_PROXY_URL` 保持为引用，其余按单引号转义。
+ * 把 `extraEnv` 的一个值渲染成 shell 词：`$REMOTE_CR_PROXY_URL` 保持为引用，其余按单引号转义。
  *
- * 为什么不能整体 `shellQuote`：那会把引用变成字面量 `$TELEPORT_PROXY_URL`，远端拿到的
+ * 为什么不能整体 `shellQuote`：那会把引用变成字面量 `$REMOTE_CR_PROXY_URL`，远端拿到的
  * 就是一个不存在的地址 —— 而且是**看起来像成功**的那种失败（dsh 起来了、推理才连不上）。
  */
 export function shellWordWithProxyUrl(value: string): string {
@@ -254,21 +254,21 @@ export function assertExtraEnv(extraEnv: Readonly<Record<string, string>>, hasPr
   const token = '$' + PROXY_URL_ENV
   for (const [name, value] of Object.entries(extraEnv)) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/startup-failed',
         detail: '环境变量名不合法：' + JSON.stringify(name),
         nextActions: ['改成 POSIX 变量名（字母或下划线开头，只含字母数字下划线）后重试'],
       })
     }
     if (/[\n\r\0]/.test(value)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/startup-failed',
         detail: '环境变量 ' + name + ' 的值里有换行或 NUL，无法安全写进远端脚本',
         nextActions: ['去掉换行后重试'],
       })
     }
     if (!hasProxyPort && value.includes(token)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/startup-failed',
         detail: '环境变量 ' + name + ' 引用了 ' + PROXY_URL_ENV + '，但这次连接没有挂反向转发（没有代理端口）',
         nextActions: ['先启动凭据代理并把端口传进来', '或把值改成不含 ' + token + ' 的字面量'],
@@ -299,9 +299,9 @@ export function parseAllocatedPort(logText: string): number | undefined {
  * 必须在 `classifyStartFailure` 之前判：那条分类器认的是 dsh 自己的启动话术，
  * 而转发失败发生在 dsh 还没被启动的时候（`ExitOnForwardFailure` 让 ssh 提前退出）。
  */
-export function classifyTunnelFailure(logText: string): TeleportError | undefined {
+export function classifyTunnelFailure(logText: string): RemoteCrError | undefined {
   if (/remote port forwarding failed|forwarding failed for listen port|administratively prohibited/i.test(logText)) {
-    return new TeleportError({
+    return new RemoteCrError({
       code: 'remote/forward-unavailable',
       detail:
         '远端拒绝建立反向转发（凭据代理的回流通道），远端多半把 AllowTcpForwarding 关了：远端 agent 将拿不到本机代理。',
@@ -314,7 +314,7 @@ export function classifyTunnelFailure(logText: string): TeleportError | undefine
     })
   }
   if (/bind: Address already in use|Cannot bind any address|Address already in use/i.test(logText)) {
-    return new TeleportError({
+    return new RemoteCrError({
       code: 'remote/startup-failed',
       detail: '隧道端口被占用（本地或远端其一），本次没有建立起可用的连接。',
       nextActions: ['重试（本地端口会重新挑一个）', '检查远端 dsh 端口是否被上一个没回收的进程占着'],
@@ -330,7 +330,7 @@ export async function pickFreeLocalPort(): Promise<number> {
     const server = createServer()
     server.once('error', (error) => {
       reject(
-        new TeleportError({
+        new RemoteCrError({
           code: 'remote/startup-failed',
           detail: '没有可用的本地端口：' + error.message,
           nextActions: ['重试', '关闭占用大量端口的本地程序'],
@@ -344,7 +344,7 @@ export async function pickFreeLocalPort(): Promise<number> {
         if (port > 0) resolve(port)
         else
           reject(
-            new TeleportError({
+            new RemoteCrError({
               code: 'remote/startup-failed',
               detail: '没有可用的本地端口（内核没有返回端口号）',
               nextActions: ['重试'],
@@ -400,7 +400,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
    * +「没有给出可识别的原因」，而 `ssh/errors.ts` 那张认证错误表（`remote/auth-failed` /
    * `remote/password-unavailable` / `remote/password-rejected`）一次都没被调用（R1 #3 M-B）。
    */
-  const classifyFailure = (extra: string): TeleportError => {
+  const classifyFailure = (extra: string): RemoteCrError => {
     const text = buffer + extra
     const sshSide = classifySshFailure(text, {
       target: describeTarget(options.target),
@@ -424,7 +424,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
   let notifyKilled: (() => void) | undefined
 
   // 标记可能被切成两块到达（pty/管道按 4KB 切片），只匹配单块会漏判——
-  // 2026-11-12 真机上 `TELEPORT_WATCHDOG_KILLED` 就被切开过：日志里明明有，
+  // 2026-11-12 真机上 `REMOTE_CR_WATCHDOG_KILLED` 就被切开过：日志里明明有，
   // 判定却认为没见到，于是「回收干净」被误报成「远端子进程可能还活着」。
   const scanMarks = (text: string): void => {
     const window = markTail + text
@@ -506,7 +506,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
       killChild()
       finish(() =>
         reject(
-          new TeleportError({
+          new RemoteCrError({
             code: 'remote/cancelled',
             detail: '用户取消了远端启动',
             nextActions: ['重试'],
@@ -537,7 +537,7 @@ export async function launchSshDsh(options: SshLaunchOptions): Promise<SshRemote
     child.on('error', (error) => {
       finish(() =>
         reject(
-          new TeleportError({
+          new RemoteCrError({
             code: 'remote/startup-failed',
             detail: '无法启动 ' + invocation.executable + '：' + error.message,
             nextActions: ['确认本机装有 OpenSSH 客户端', '检查 ssh 可执行文件路径'],
@@ -773,7 +773,7 @@ export async function openSshTunnel(options: {
     } catch {
       // 已经退了
     }
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/tunnel-unavailable',
       detail: 'attach-only 隧道 ' + String(options.readyTimeoutMs ?? 5_000) + 'ms 内没建起来（本地端口 ' + String(localPort) + '）',
       nextActions: ['确认远端实例还在监听', '重新接入（会回落到正常启动）'],

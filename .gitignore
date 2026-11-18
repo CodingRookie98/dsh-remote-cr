@@ -8,7 +8,7 @@ pnpm-lock.yaml.bak*
 *.log
 
 # local runtime artifacts
-.dsh-teleport/
+.dsh-remote-cr/
 .remote-test/
 test-artifacts/
 # 预览 harness（scripts/preview-wizard.mjs）的截图与 dump：生成物，不入库

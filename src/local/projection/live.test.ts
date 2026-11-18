@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { createLiveConnect, describeTarget, readTarget } from './live.ts'
 import type { ProjectionRpc } from './remote.ts'
 import { attachDeps, sameTarget, type ConnectTarget } from './service.ts'
@@ -87,7 +87,7 @@ test('createLiveConnect：没配 SSH 后端时点 SSH 目标要结构化报错�
   await assert.rejects(
     () => connect(SSH),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/ssh-target-unresolved')
       assert.equal(error.phase, 'probe')
       assert.ok(error.detail.includes('gcp'), error.detail)
@@ -98,7 +98,7 @@ test('createLiveConnect：没配 SSH 后端时点 SSH 目标要结构化报错�
 })
 
 test('createLiveConnect：别名不在 ~/.ssh/config 里时同样带码报错，并指出文件', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-live-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-live-'))
   const configFile = join(home, 'config')
   writeFileSync(configFile, ['Host other', '  HostName 10.0.0.1', '  User hui', ''].join(String.fromCharCode(10)), 'utf8')
   try {
@@ -106,7 +106,7 @@ test('createLiveConnect：别名不在 ~/.ssh/config 里时同样带码报错，
     await assert.rejects(
       () => connect(SSH),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/ssh-target-unresolved')
         assert.ok(error.detail.includes('gcp'), error.detail)
         assert.ok(error.detail.includes('config'), error.detail)
@@ -119,7 +119,7 @@ test('createLiveConnect：别名不在 ~/.ssh/config 里时同样带码报错，
 })
 
 test('createLiveConnect：SSH 先解析「远端 dsh 用哪一份」，解析失败就不启隧道', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-live-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-live-'))
   const configFile = join(home, 'config')
   writeFileSync(configFile, ['Host gcp', '  HostName 10.0.0.9', '  User hui', ''].join(String.fromCharCode(10)), 'utf8')
   let resolved = 0
@@ -132,14 +132,14 @@ test('createLiveConnect：SSH 先解析「远端 dsh 用哪一份」，解析失
         resolveDsh: async (request) => {
           resolved += 1
           assert.equal(request.remoteRoot, SSH.remoteRoot)
-          throw new TeleportError({ code: 'remote/dsh-missing', detail: '远端没有可用的 dsh（测试注入）', nextActions: ['装一个 dsh'] })
+          throw new RemoteCrError({ code: 'remote/dsh-missing', detail: '远端没有可用的 dsh（测试注入）', nextActions: ['装一个 dsh'] })
         },
       },
     })
     await assert.rejects(
       () => connect(SSH),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/dsh-missing')
         return true
       },
@@ -148,4 +148,20 @@ test('createLiveConnect：SSH 先解析「远端 dsh 用哪一份」，解析失
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
+})
+test('环境档位冲突哨兵：接入时以 remote/env-conflict 失败，且与用户合法值不撞车', async () => {
+  const { ENV_POLICY_CONFLICT, resolvePolicy } = await import('./live.ts')
+  const { RemoteCrError } = await import('../backend/errors.ts')
+  assert.throws(
+    () => resolvePolicy(ENV_POLICY_CONFLICT),
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/env-conflict',
+    '哨兵必须给出 remote/env-conflict',
+  )
+  assert.throws(
+    () => resolvePolicy('conflict'),
+    (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/env-policy-invalid',
+    '用户写 conflict 只是非法档位，不能被当成「新旧冲突」',
+  )
+  assert.equal(resolvePolicy('isolated'), 'isolated')
+  assert.equal(resolvePolicy(undefined), 'reuse')
 })

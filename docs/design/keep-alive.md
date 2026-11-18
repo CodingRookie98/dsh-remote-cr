@@ -26,7 +26,7 @@
 
 ## 3. 实例登记（下一片）
 
-`~/.dsh-teleport/instances/<anchorId>.json`：
+`~/.dsh-remote-cr/instances/<anchorId>.json`：
 
 ```json
 { "version": 1, "pid": 117362, "port": 8946, "token": "…", "startedAt": "2026-11-13T13:01:05Z", "argvPrefix": "…" }

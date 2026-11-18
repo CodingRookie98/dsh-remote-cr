@@ -10,7 +10,7 @@
  */
 
 import type { BackendProbe } from '../backend.ts'
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import {
   buildProbeScript,
   emptyToUndefined,
@@ -57,7 +57,7 @@ export async function probeSshTarget(request: SshProbeRequest): Promise<SshProbe
     const reasons: string[] = []
     if (!parsed.complete) reasons.push('输出里没有结束标记（远端被截断或脚本没跑完）')
     if (parsed.conflicts.length > 0) reasons.push('同一字段给出两个不同的值：' + parsed.conflicts.join('、'))
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/probe-incomplete',
       detail: '探测 ' + describeSshTarget(request.target) + ' 的结果不可用：' + reasons.join('；'),
       nextActions: [

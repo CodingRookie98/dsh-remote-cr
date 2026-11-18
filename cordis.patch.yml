@@ -9,8 +9,10 @@
 # 在补丁文件所在目录（`packages/boot/app-boot/src/index.ts:551`）。
 
 - insert:
-    # `id` 是 Loader 的行标识，**刻意保持 `teleport`**：它是运行时标识（与 `~/.dsh-teleport`、
-    # `DSH_TELEPORT_*`、`/teleport` API 前缀同一层）。改它会让已安装 profile 里的补丁行对不上，
-    # 表现为重复插入或整行失效。品牌层（包名/插件 id）已改成 `dsh-remote-cr` —— 两层不要混。
-    - id: teleport
+    # `id` 是 Loader 的行标识，与包名、状态根（`~/.dsh-remote-cr`）、环境变量前缀
+    # （`DSH_REMOTE_CR_*`）、API 前缀（`/remote-cr/api`）**统一为 `remote-cr`**（ADR-0006）。
+    # 0.4.0 起不再保留 `teleport` 行，但**没有自动清理程序**：从 0.3.0 升级要手工编辑
+    # profile 的 `cordis.patch.yml`，删掉 `- id: teleport` 那一行后重启宿主，
+    # 否则「旧行 + 新行」并存会让插件被加载两次或整行失效（ADR-0006 §5）。
+    - id: remote-cr
       name: 'dsh-remote-cr'

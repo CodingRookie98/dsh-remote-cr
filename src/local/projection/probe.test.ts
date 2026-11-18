@@ -133,7 +133,7 @@ function fakeRpc(
         if (options.shells instanceof Error) throw options.shells
         return (options.shells ?? []) as T
       }
-      return { id: 'teleport-probe', title: 'probe', shell: 'bash', cwd: '/home/hui', cols: 200, rows: 50, state: 'running', exitCode: null } as T
+      return { id: 'remote-cr-probe', title: 'probe', shell: 'bash', cwd: '/home/hui', cols: 200, rows: 50, state: 'running', exitCode: null } as T
     },
     openStream(endpoint: string, payload: unknown, uplink?: AsyncIterable<unknown>): StreamHandle {
       seen.streams.push({ endpoint, payload, uplink: uplink !== undefined })
@@ -187,7 +187,7 @@ test('runSessionProbe 走 terminal/create + terminal/attach，agentId 用 sessio
   const { rpc, seen } = fakeRpc((command) => {
     const token = tokenOf(command)
     return [
-      { type: 'snapshot', sequence: 1, screen: '', info: { id: 'teleport-probe' }, writable: true },
+      { type: 'snapshot', sequence: 1, screen: '', info: { id: 'remote-cr-probe' }, writable: true },
       { type: 'output', sequence: 2, data: transcriptOf('/home/hui/workspace', LINUX_UNAME, { token }) },
     ]
   })
@@ -198,7 +198,7 @@ test('runSessionProbe 走 terminal/create + terminal/attach，agentId 用 sessio
   assert.deepEqual(seen.calls.map((entry) => entry.endpoint), ['terminal/shells', 'terminal/create'])
   const create = seen.calls[1]?.payload as { args: { agentId: string; request: { id: string; cols: number; rows: number } } }
   assert.equal(create.args.agentId, 'sess-1', 'agent 的线上身份就是 sessionId')
-  assert.equal(create.args.request.id, 'teleport-probe')
+  assert.equal(create.args.request.id, 'remote-cr-probe')
 
   assert.deepEqual(seen.streams.map((entry) => entry.endpoint), ['terminal/attach'])
   assert.equal(seen.streams[0]?.uplink, true, '不带上行就发不出命令')

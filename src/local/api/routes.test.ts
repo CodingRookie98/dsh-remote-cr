@@ -16,9 +16,9 @@ import type {
 import { API_PREFIX } from '../../shared/api.ts'
 import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '../projection/service.ts'
 import { ProjectionStore } from '../projection/store.ts'
-import type { HostDeps, MountedRoute, TeleportHostContext } from './routes.ts'
-import { TeleportError } from '../backend/errors.ts'
-import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerTeleportRoutes } from './routes.ts'
+import type { HostDeps, MountedRoute, RemoteCrHostContext } from './routes.ts'
+import { RemoteCrError } from '../backend/errors.ts'
+import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerRemoteCrRoutes } from './routes.ts'
 import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
 import type { SshTarget } from '../backend/ssh/config.ts'
 
@@ -177,7 +177,7 @@ function rig(
 
   const routes = new Map<string, (req: never, res: never) => Promise<void> | void>()
   const effects: string[] = []
-  const ctx: TeleportHostContext = {
+  const ctx: RemoteCrHostContext = {
     webServer: {
       register(route) {
         assert.equal(route.kind, 'exact', '全部路由必须是 exact，前缀会吃掉将来的子路径')
@@ -192,7 +192,7 @@ function rig(
     },
   }
 
-  const mounted = registerTeleportRoutes(ctx, {
+  const mounted = registerRemoteCrRoutes(ctx, {
     deps,
     wslExecutable: 'wsl.exe',
     ...(extra.homeDir === undefined ? {} : { homeDir: extra.homeDir }),
@@ -205,7 +205,7 @@ function rig(
     deps,
     mounted,
     async call(input) {
-      const url = new URL(API_PREFIX + input.path, 'http://teleport.invalid')
+      const url = new URL(API_PREFIX + input.path, 'http://remote-cr.invalid')
       for (const [key, value] of Object.entries(input.query ?? {})) url.searchParams.set(key, value)
       const handler = routes.get(url.pathname)
       assert.notEqual(handler, undefined, '没有挂载 ' + url.pathname)
@@ -224,29 +224,29 @@ function rig(
   }
 }
 
-test('全部路由都挂载在 /teleport/api 下，且各自声明允许的 method', () => {
+test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 method', () => {
   const { mounted } = rig()
   assert.deepEqual(
     mounted.map((route) => route.path + ' ' + route.allowed.join('|')).sort(),
     [
-      '/teleport/api/anchors GET',
-      '/teleport/api/attach POST',
-      '/teleport/api/attach/cancel POST',
-      '/teleport/api/disconnect POST',
-      '/teleport/api/flow GET',
-      '/teleport/api/flow/cancel POST',
-      '/teleport/api/list GET',
-      '/teleport/api/probe POST',
-      '/teleport/api/projection GET',
-      '/teleport/api/reconnect POST',
-      '/teleport/api/session POST',
-      '/teleport/api/sources GET',
-  '/teleport/api/stop POST',
-      '/teleport/api/workspace POST',
-  '/teleport/api/workspace/import POST',
-  '/teleport/api/workspace/importable GET',
-      '/teleport/api/workspaces GET',
-      '/teleport/api/wsl/wake POST',
+      '/remote-cr/api/anchors GET',
+      '/remote-cr/api/attach POST',
+      '/remote-cr/api/attach/cancel POST',
+      '/remote-cr/api/disconnect POST',
+      '/remote-cr/api/flow GET',
+      '/remote-cr/api/flow/cancel POST',
+      '/remote-cr/api/list GET',
+      '/remote-cr/api/probe POST',
+      '/remote-cr/api/projection GET',
+      '/remote-cr/api/reconnect POST',
+      '/remote-cr/api/session POST',
+      '/remote-cr/api/sources GET',
+  '/remote-cr/api/stop POST',
+      '/remote-cr/api/workspace POST',
+  '/remote-cr/api/workspace/import POST',
+  '/remote-cr/api/workspace/importable GET',
+      '/remote-cr/api/workspaces GET',
+      '/remote-cr/api/wsl/wake POST',
     ],
   )
 })
@@ -277,10 +277,11 @@ test('/sources 回四选一 + 可点清单；探测失败也回 200（灰显不�
   const noDistro = await rig({
     listSources: async () => ({ wslAvailable: false, distros: [], probeError: null, ssh: NO_SSH }),
   }).call({ path: '/sources' })
-  const noDistroOptions = (noDistro.json as { value: { options: { id: string; reason: string }[] } }).value.options
+  const noDistroOptions = (noDistro.json as { value: { options: { id: string; reasonId: string }[] } }).value.options
   assert.equal(
-    noDistroOptions.find((option) => option.id === 'wsl')?.reason,
-    '没有已安装的发行版（在 PowerShell 里跑 wsl --install）',
+    noDistroOptions.find((option) => option.id === 'wsl')?.reasonId,
+    'wsl-no-distro',
+    '共享层只回 id：文案由客户端字典渲染（ADR-0007）',
   )
 })
 
@@ -482,7 +483,7 @@ test('parseAttachInput：WSL 省略 localPath 仍推 UNC；SSH 省略则结构�
   assert.throws(
     () => parseAttachInput({ target: sshTarget, remotePath: '/home/dev/proj' }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/workspace-unwritable')
       assert.ok(error.detail.includes('gcp'), error.detail)
       return true
@@ -529,21 +530,21 @@ test('注入锚点落实器后，SSH 目标省略 localPath 也能接入（且�
   projection.attach = original
 })
 test('defaultAnchorResolver：别名不在 config 里带码报出，绝不猜一个本地路径', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'teleport-anchor-'))
+  const home = await mkdtemp(join(tmpdir(), 'remote-cr-anchor-'))
   const resolver = defaultAnchorResolver(home)
   await assert.rejects(
     () => resolver({ backend: 'ssh', alias: 'nope', port: 8899, remoteRoot: '/home/dev/h' }, '/home/dev/proj'),
     (error: unknown) => {
-      const teleport = error as TeleportError
-      assert.equal(teleport.code, 'remote/ssh-target-unresolved')
-      assert.ok(teleport.detail.includes('nope'), teleport.detail)
+      const remoteCr = error as RemoteCrError
+      assert.equal(remoteCr.code, 'remote/ssh-target-unresolved')
+      assert.ok(remoteCr.detail.includes('nope'), remoteCr.detail)
       return true
     },
   )
 })
 
 test('defaultAnchorResolver：别名在 config 里就建出锚点目录并返回它（本地路径真的存在）', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'teleport-anchor-'))
+  const home = await mkdtemp(join(tmpdir(), 'remote-cr-anchor-'))
   const sshDir = join(home, '.ssh')
   await mkdir(sshDir, { recursive: true })
   await writeFile(join(sshDir, 'config'), 'Host gcp\n  HostName 10.0.0.9\n  User hui\n', 'utf8')
@@ -564,7 +565,7 @@ test('defaultAnchorResolver：别名在 config 里就建出锚点目录并返回
   assert.equal(map.target.host, '10.0.0.9')
 })
 test('/anchors 打印本机锚点映射；没有锚点时是空清单而不是错误', async () => {
-  const emptyHome = await mkdtemp(join(tmpdir(), 'teleport-routes-home-'))
+  const emptyHome = await mkdtemp(join(tmpdir(), 'remote-cr-routes-home-'))
   const empty = await rig({}, { homeDir: emptyHome }).call({ path: '/anchors' })
   assert.equal(empty.status, 200)
   const emptyValue = (empty.json as { value: { directory: string; anchors: unknown[] } }).value
@@ -572,7 +573,7 @@ test('/anchors 打印本机锚点映射；没有锚点时是空清单而不是�
   assert.ok(emptyValue.directory.endsWith('anchors'), emptyValue.directory)
 
   // 用产品自己的 ensureAnchorDir 造一份真锚点，再让路由读出来：两边必须指向同一份 map.json
-  const homeDir = await mkdtemp(join(tmpdir(), 'teleport-routes-home-'))
+  const homeDir = await mkdtemp(join(tmpdir(), 'remote-cr-routes-home-'))
   const anchorTarget: SshTarget = {
     alias: 'gcp',
     hostName: '10.0.0.9',

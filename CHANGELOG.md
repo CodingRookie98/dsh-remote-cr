@@ -3,6 +3,35 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 0.x 期间的次版本号可能包含不兼容变更；破坏性改动会在条目里明说。
 
+## [0.4.0] - 2026-11-15
+
+### 破坏性变更（升级前必读）
+
+- **运行时标识全量改名**：`dsh-teleport` → `dsh-remote-cr`；`~/.dsh-teleport` → `~/.dsh-remote-cr`；`DSH_TELEPORT_*` → `DSH_REMOTE_CR_*`；`/teleport/api` → `/remote-cr/api`；`data-teleport` → `data-remote-cr`；`cordis.patch.yml` 的行 id `teleport` → `remote-cr`。映射表与理由见 [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)。
+- **升级三步**：① 手工编辑 profile 的 `cordis.patch.yml`，删掉 `- id: teleport` 那一行后重启宿主（**没有自动清理程序**）；② 若远端还跑着旧实例，先在面板「结束远端」；③ 本地 `known_hosts` / `hostkeys.json` 会自动复制到新根（只复制不删除，回滚 = 删掉新根）。
+- **共享层接口形状变更**（[ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md)）：`GET /remote-cr/api/sources` 的 `options[]` 由 `{ id, label, reason, availability }` 改为 `{ id, reasonId, reasonDetail?, availability }`；`describeFlow()` 由 `flowProgress()` 取代、`FLOW_PHASE_LABELS` 删除、`describeLink()` 改名 `describeLinkPhase()`（只给日志）。本地半与浏览器半同包升级，无兼容双挂。
+- **不迁移项**：本地 `anchors/`、`staging/`，远端 `instances/`、`staging/`。后果与用户操作见 ADR-0006 §3.5（典型表现：SSH 工作区出现「多一份」、二次启动撞端口报 `remote/port-in-use`）。
+
+### 新增
+
+- **界面双语（中文 / English）**：侧栏入口、面板、添加工作区向导、失败面全部走宿主 `dsh-client-locale`（命名空间 `remote-cr`，**310 个键 × 2 语言**（含 66 个错误码的失败面与 6 类命名空间兜底）），跟随 设置 → 通用 → 语言 即时切换；其余语言回落英文。
+- **「远端工作台」面板重设计**：三行堆叠改为一条状态带（标题 / 进度 / 连接态 / 环境档位 / 动作），主体改两级主从（左主机 → 右投影工作区与会话），宽度撑满、窄屏单列；分区标题从 CSS `::before` 改为真实元素（可翻译、可断言）。
+- **环境变量双名兼容**：旧名仍可读并告警一次；新旧同时设置且值不同 → 接入时以 `remote/env-conflict` 失败，不替用户选。
+- **状态根迁移可续跑**：迁移闸门改为标记文件，复制中途失败后下次启动会补齐缺失文件并记一条「续跑」日志。
+
+### 修复
+
+- **SSH 远端冷启动引导失败（真机回归发现）**：远端 node 已满足版本时，node 步骤被跳过，但 dsh 安装仍去调 `staging/bin/npm`、启动仍去调 `staging/bin/node` → `remote/bootstrap-failed`（127）。现在 npm/node 都按「staging 里有没有」二选一，复用系统那份。
+- **认证失败误判**：`ssh -v` 的成功行 `Authenticated to … using "publickey"` 会被当成认证失败；改为只认 `Permission denied` / `Authentication failed` 等失败行。
+- 远端失败面在英文界面下仍是中文（改为客户端按错误码本地化，宿主原文只进「复制日志」）。
+- `api.ts` 三条 `detail` 未过字典。
+- 真浏览器验收脚本的选择器与 mock 路由在改名后失效（`data-teleport` / `/teleport/api`），首跑 0 标记。
+
+### 已知限制
+
+- **没有版本探针**：老远端 + 新本地混跑会表现为 `remote/port-in-use`（`remote/version-mismatch` 这个码不存在）。
+- 窄屏（<900px）按**视口**分栏，宿主把主区压窄但不改视口时仍是双列（`@container` 进 Backlog）。
+
 ## [0.3.0] - 2026-11-15
 
 ### 新增

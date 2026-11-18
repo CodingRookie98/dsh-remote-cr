@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import { buildProbeScript, parseProbeOutput, probeCommand, probeSshTarget, shellQuote } from './probe.ts'
 import type { SshChild, SshSpawn } from './transport.ts'
 
-const M = '__DSH_TELEPORT_PROBE__'
+const M = '__DSH_REMOTE_CR_PROBE__'
 const DOLLAR_BRACE = String.fromCharCode(36) + '{'
 
 const HOST_KEY = 'debug1: Server host key: ssh-ed25519 SHA256:8gvH0mq2xQ0mY0aQ0bFq3sZrKQ0mY0aQ0bFq3sZrKQ0\r\n'
@@ -76,7 +76,7 @@ function spawnOf(options: {
 }
 
 function sandbox(): { readonly home: string; readonly keyFile: string; readonly cleanup: () => void } {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-probe-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-probe-'))
   const keyFile = join(home, 'id_ed25519')
   writeFileSync(
     keyFile,
@@ -205,7 +205,7 @@ test('输出不完整：抛 probe-incomplete，文案带目标与下一步', asy
         spawn: spawnOf({ stdout: output(['platform=Linux']) }),
       }),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/probe-incomplete')
         assert.match(error.detail, /hui@198\.51\.100\.8/)
         assert.match(error.detail, /结束标记/)
@@ -229,7 +229,7 @@ test('字段冲突同样拒绝：换机器/重放不能被静默吞掉', async (
         auth: { kind: 'key' },
         spawn: spawnOf({ stdout: conflicting }),
       }),
-      (error: unknown) => error instanceof TeleportError && error.code === 'remote/probe-incomplete' && /platform/.test(error.detail),
+      (error: unknown) => error instanceof RemoteCrError && error.code === 'remote/probe-incomplete' && /platform/.test(error.detail),
     )
   } finally {
     cleanup()

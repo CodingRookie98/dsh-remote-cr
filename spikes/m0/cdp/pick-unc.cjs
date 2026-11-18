@@ -39,12 +39,12 @@ async function main() {
   out.unc = await evaluate('globalThis.__TELEPORT_SPIKE__ ? globalThis.__TELEPORT_SPIKE__.unc : null')
   out.clickAdd = await evaluate(`(() => { const b = Array.from(document.querySelectorAll('button[aria-label]')).find(n => n.getAttribute('aria-label') === 'Add workspace'); if (!b) return 'no-add'; b.click(); return 'clicked' })()`)
   await sleep(1200)
-  out.clickPickUnc = await evaluate(`(() => { const b = document.querySelector('[data-teleport-spike="pick-unc"]'); if (!b) return 'no-button'; b.click(); return 'clicked' })()`)
+  out.clickPickUnc = await evaluate(`(() => { const b = document.querySelector('[data-remote-cr-spike="pick-unc"]'); if (!b) return 'no-button'; b.click(); return 'clicked' })()`)
   await sleep(4000)
   out.after = await evaluate(`({
     bodySnippet: document.body.innerText.slice(0, 900),
     workspaceRows: Array.from(document.querySelectorAll('[data-testid]')).map(n => n.getAttribute('data-testid')).slice(0, 40),
-    flowTexts: Array.from(document.querySelectorAll('[data-teleport-spike="directory-flow"]')).map(n => n.innerText),
+    flowTexts: Array.from(document.querySelectorAll('[data-remote-cr-spike="directory-flow"]')).map(n => n.innerText),
   })`)
   console.log(JSON.stringify(out, null, 2))
   ws.close(); chrome.kill()

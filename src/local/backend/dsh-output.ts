@@ -10,7 +10,7 @@
  * - 无 node：`nohup: failed to run command 'node': No such file or directory`
  */
 
-import { TeleportError, portInUseError } from './errors.ts'
+import { RemoteCrError, portInUseError } from './errors.ts'
 import type { DshEndpoint } from './handle.ts'
 
 // 端点的形状是中立的（见 `../handle.ts`），这里只做解析，不再拥有这个类型。
@@ -20,7 +20,7 @@ const URL_LINE = /dsh web:\s+(https?:\/\/[^\s]+)/
 const EADDRINUSE = /EADDRINUSE: address already in use (\S+):(\d+)/
 /**
  * 「找不到可执行文件」有两种真实形态，都要认：
- * - `--exec` 直派：`WSL (172982 - Relay) ERROR: CreateProcessCommon:875: execvpe(node-missing-teleport) failed: No such file or directory`
+ * - `--exec` 直派：`WSL (172982 - Relay) ERROR: CreateProcessCommon:875: execvpe(node-missing-remote-cr) failed: No such file or directory`
  * - 经 shell + nohup：`nohup: failed to run command 'node': No such file or directory`
  * 两种都是真机实测输出（前者见 P32-6 首跑失败、后者见 T6-3），不能只认一种。
  */
@@ -92,14 +92,14 @@ export function readStartFailure(logText: string): StartFailureFacts {
  * 否则所有失败都会被「2 required plugins did not activate」这层包装吞掉，用户拿不到
  * 「是端口被占了」这种能立刻动手的信息（铁律 4「失败要响」）。
  */
-export function classifyStartFailure(logText: string): TeleportError {
+export function classifyStartFailure(logText: string): RemoteCrError {
   const facts = readStartFailure(logText)
   const tail = tailLines(logText)
   if (facts.portInUse !== undefined) {
     return portInUseError(facts.portInUse.port, tail)
   }
   if (facts.missingCommand !== undefined) {
-    return new TeleportError({
+    return new RemoteCrError({
       code: 'remote/node-missing',
       detail: `远端找不到可执行文件 ${facts.missingCommand}`,
       nextActions: ['安装 Node 22+ 到远端', '或用引导器安装远端运行时后重试'],
@@ -107,14 +107,14 @@ export function classifyStartFailure(logText: string): TeleportError {
     })
   }
   if (facts.startupFailed !== undefined) {
-    return new TeleportError({
+    return new RemoteCrError({
       code: 'remote/startup-failed',
       detail: `远端 dsh 启动失败：${facts.startupFailed}`,
       nextActions: ['查看完整日志确认哪个插件没起来', '重试', '换个远端目录作为 DSH_HOME'],
       logTail: tail,
     })
   }
-  return new TeleportError({
+  return new RemoteCrError({
     code: 'remote/startup-failed',
     detail: '远端 dsh 没有打印访问 URL，也没有给出可识别的原因',
     nextActions: ['查看完整日志', '重试'],

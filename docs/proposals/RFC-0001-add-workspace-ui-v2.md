@@ -11,7 +11,7 @@
 
 | 编号 | 现象 | 根因（已取证） |
 |---|---|---|
-| D1 | 添加工作区 UI 丑、交互差 | `DirectoryFlow` 的 10 个 `data-teleport` 容器在 `styles.ts` 里**零命中**（面板 24 个样式区块全是 `[data-teleport='panel']` 前缀）；且浏览屏**没有上一级**、点来源即跳转、失败态丢失路径 |
+| D1 | 添加工作区 UI 丑、交互差 | `DirectoryFlow` 的 10 个 `data-remote-cr` 容器在 `styles.ts` 里**零命中**（面板 24 个样式区块全是 `[data-remote-cr='panel']` 前缀）；且浏览屏**没有上一级**、点来源即跳转、失败态丢失路径 |
 | D2 | WSL 无实例时点 WSL 报错 | `wslAvailable = distros.length > 0` 把 Stopped/损坏的发行版算作可用；`wsl.exe` 的启动失败诊断走 stdout 且是 UTF-16LE，被按 UTF-8 解码成乱码；`browse.ts` 只读 stderr，于是错误退化成「ls 退出码 -1」；无发行版时 `enterBrowse` 是 no-op 但代码仍发起列目录，`distro` 为 undefined 落到本机分支 |
 
 真机证据（2026-11-14 19:07）：`wsl.exe -d ubuntu_dev --exec ls -1aF -- /` -> stdout 为 UTF-16LE 的 `Failed to attach disk '\\?\D:\My_Tools\wsl2-ubuntu-dev\ext4.vhdx' ... Error code: Wsl/Service/CreateInstance/MountDisk/HCS/E_INVALIDARG`，`EXIT=-1`，stderr 为空。
@@ -21,8 +21,8 @@
 **目标**
 1. 「添加工作区」改为双栏工作台：左栏常驻来源（本机 / WSL 发行版 / SSH / Docker），右栏目录浏览器，一次进入即可完成所有比较与切换。
 2. WSL 分支做到「**先探测再浏览**」：发行版起不来时**不进入浏览**，就地给出可读诊断与三条出路。
-3. 「瞬移」面板按同一套视觉语言重排（用户明确要求顺带）。
-4. 全流程保留既有 `data-teleport` 断言面，E2E 探针可继续工作。
+3. 「远端工作台」面板按同一套视觉语言重排（用户明确要求顺带）。
+4. 全流程保留既有 `data-remote-cr` 断言面，E2E 探针可继续工作。
 
 **非目标**
 - 不实装 Docker（仍为 M5 计划项，保持灰色不可选）。
@@ -47,15 +47,15 @@
 +---------------------------------------------------------------+
 ```
 
-- 左栏 `data-teleport='sources'` 保持标记不变，内部由「竖排按钮」改为「来源分组 + 可展开子项」；`source` 行保留 `data-source` / `data-availability`。
+- 左栏 `data-remote-cr='sources'` 保持标记不变，内部由「竖排按钮」改为「来源分组 + 可展开子项」；`source` 行保留 `data-source` / `data-availability`。
 - 右栏新增：`browser-bar`（面包屑 `browser-crumbs` + 路径输入 `browser-path` + `up` + `browser-refresh`）。`listing` / `entries` / `entry[data-kind]` / `listing-path` / `listing-error` 语义不变。
 - 底栏 `actions`：`back`（返回位置选择，语义与今天一致）+ `confirm`（添加此目录）+ 新增 `actions-path` 显示已选路径。
 - 头部新增 `wizard-cancel`（×）与 `wizard-hint`；终态 `close` / `done-path` / `error` / `report` / `copy` / `retry` 不变。
 
-### 3.1 「瞬移」面板重排
+### 3.1 「远端工作台」面板重排
 
 ```
-+ 瞬移 -------------------------------------------------------------+
++ 远端工作台 -------------------------------------------------------------+
 | * 已连接 gcp · 环境 复用 · 12ms        [重连][断开][结束远端][导入] |
 | ----------------------------------------------------------------- |
 | 工作区（本机 3 · 投影 2）              | SSH 远端                   |
@@ -82,7 +82,7 @@
 | 新 `WslWakeResult` | `{ distro, ok, ms, diagnosis }` | 新类型 |
 | `DirListing` | 不变 | — |
 
-新增路由：`POST /teleport/api/wsl/wake`，body `{ distro }`；宿主半执行 `wsl.exe -d <distro> --exec true`（超时 60s，见 `routes.ts#WAKE_TIMEOUT_MS`：真机冷启动 >20s，20 s 会把冷启动判成失败），成功回 `{ ok: true, ms }`，失败回 `{ ok: false, diagnosis }`（**200 + ok:false**，不是 5xx：这是可预期的用户环境状态，不是服务器故障）。
+新增路由：`POST /remote-cr/api/wsl/wake`，body `{ distro }`；宿主半执行 `wsl.exe -d <distro> --exec true`（超时 60s，见 `routes.ts#WAKE_TIMEOUT_MS`：真机冷启动 >20s，20 s 会把冷启动判成失败），成功回 `{ ok: true, ms }`，失败回 `{ ok: false, diagnosis }`（**200 + ok:false**，不是 5xx：这是可预期的用户环境状态，不是服务器故障）。
 
 ## 5. 状态机变更（`src/client/state.ts`）
 

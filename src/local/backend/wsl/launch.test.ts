@@ -19,8 +19,8 @@ test('dsh 的 argv 是显式的 --no-open --port --host，不依赖远端默认�
 })
 
 test('nodeCommand 可替换：T6 的「远端无 node」失败路径靠它', () => {
-  const args = buildDshArgs({ ...base, nodeCommand: 'node-missing-teleport' })
-  assert.equal(args[0], 'node-missing-teleport')
+  const args = buildDshArgs({ ...base, nodeCommand: 'node-missing-remote-cr' })
+  assert.equal(args[0], 'node-missing-remote-cr')
 })
 
 test('工作目录走 wsl --cd，而不是 spawn 的 cwd（后者是 Windows 路径）', () => {

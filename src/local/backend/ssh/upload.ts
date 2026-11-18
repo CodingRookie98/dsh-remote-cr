@@ -2,7 +2,7 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import { knownHostsPath } from './known-hosts.ts'
 import { shellQuote } from '../posix-probe.ts'
 import type { SshTarget } from './config.ts'
@@ -117,8 +117,8 @@ function realSpawn(): UploadSpawn {
   }) as unknown as UploadChild
 }
 
-function uploadFailed(detail: string, nextActions: readonly string[]): TeleportError {
-  return new TeleportError({ code: 'remote/upload-failed', detail, nextActions })
+function uploadFailed(detail: string, nextActions: readonly string[]): RemoteCrError {
+  return new RemoteCrError({ code: 'remote/upload-failed', detail, nextActions })
 }
 
 interface ChildOutcome {
@@ -277,7 +277,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
       if (!info.isFile()) throw uploadFailed('本地上传源不是普通文件：' + options.localPath, ['换一个文件'])
       size = info.size
     } catch (error) {
-      if (error instanceof TeleportError) throw error
+      if (error instanceof RemoteCrError) throw error
       throw uploadFailed('读不到本地上传源：' + options.localPath + '（' + (error instanceof Error ? error.message : String(error)) + '）', ['检查本地文件是否存在', '重试上传'])
     }
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { planEnvInjection } from './apply.ts'
 
 const FACTS = { home: '/home/hui', hostKey: 'ssh:gcp' }
@@ -21,15 +21,15 @@ test('reuse：调用方给的 extraEnv 原样透传，不掺 DSH_HOME', () => {
 
 test('isolated：只加 DSH_HOME，落到远端 home 下的隔离目录', () => {
   const injection = planEnvInjection('isolated', FACTS)
-  assert.deepEqual(injection.env, { DSH_HOME: '/home/hui/.dsh-teleport/ssh:gcp' })
-  assert.equal(injection.dshHome, '/home/hui/.dsh-teleport/ssh:gcp')
+  assert.deepEqual(injection.env, { DSH_HOME: '/home/hui/.dsh-remote-cr/ssh:gcp' })
+  assert.equal(injection.dshHome, '/home/hui/.dsh-remote-cr/ssh:gcp')
 })
 
 test('isolated：与 extraEnv 合并，不覆盖调用方的其它变量', () => {
   const injection = planEnvInjection('isolated', FACTS, { DEEPSEEK_BASE_URL: 'http://127.0.0.1:1/r/deepseek' })
   assert.deepEqual(injection.env, {
     DEEPSEEK_BASE_URL: 'http://127.0.0.1:1/r/deepseek',
-    DSH_HOME: '/home/hui/.dsh-teleport/ssh:gcp',
+    DSH_HOME: '/home/hui/.dsh-remote-cr/ssh:gcp',
   })
 })
 
@@ -37,21 +37,21 @@ test('isolated：extraEnv 里已有一个不同的 DSH_HOME 时拒绝，不猜�
   assert.throws(
     () => planEnvInjection('isolated', FACTS, { DSH_HOME: '/tmp/other' }),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/env-policy-conflict')
       return true
     },
   )
   // 同一个值不算冲突：调用方照着文档拼了一样的路径，没必要报错。
-  const same = planEnvInjection('isolated', FACTS, { DSH_HOME: '/home/hui/.dsh-teleport/ssh:gcp' })
-  assert.equal(same.dshHome, '/home/hui/.dsh-teleport/ssh:gcp')
+  const same = planEnvInjection('isolated', FACTS, { DSH_HOME: '/home/hui/.dsh-remote-cr/ssh:gcp' })
+  assert.equal(same.dshHome, '/home/hui/.dsh-remote-cr/ssh:gcp')
 })
 
 test('sync：M3 才落地，当前明确拒绝而不是悄悄按 isolated 办', () => {
   assert.throws(
     () => planEnvInjection('sync', FACTS),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/env-policy-unavailable')
       assert.match(error.detail, /M3/)
       assert.ok(error.nextActions.length > 0, '失败要响：必须给下一步')

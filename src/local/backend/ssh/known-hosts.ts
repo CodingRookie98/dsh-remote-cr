@@ -3,7 +3,7 @@
  *
  * 三层分工必须分清，否则会写出「看起来在验证、实际没验证」的假安全：
  *
- * 1. **执行层是 OpenSSH**：私有 `known_hosts`（`~/.dsh-teleport/known_hosts`）+
+ * 1. **执行层是 OpenSSH**：私有 `known_hosts`（`~/.dsh-remote-cr/known_hosts`）+
  *    `StrictHostKeyChecking=accept-new`。首次自动接受，指纹变了 OpenSSH 自己会拒绝握手并打印
  *    `REMOTE HOST IDENTIFICATION HAS CHANGED`——拦截能力来自它，不是我们逐字节比对。
  * 2. **记账层是本文件**：把 `LogLevel=VERBOSE` 里的 `Server host key: <algo> SHA256:<fp>`
@@ -18,11 +18,11 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 
 /** 插件自己的状态目录（与 `-o UserKnownHostsFile` 同一个目录，便于一起备份/清理）。 */
-export const TELEPORT_DIR_NAME = '.dsh-teleport'
+export const REMOTE_CR_DIR_NAME = '.dsh-remote-cr'
 
 export interface ObservedHostKey {
   /** `ssh-ed25519` / `ssh-rsa` / `ecdsa-sha2-nistp256` … */
@@ -31,18 +31,18 @@ export interface ObservedHostKey {
   readonly fingerprint: string
 }
 
-export function teleportDir(homeDir: string): string {
-  return join(homeDir, TELEPORT_DIR_NAME)
+export function remoteCrDir(homeDir: string): string {
+  return join(homeDir, REMOTE_CR_DIR_NAME)
 }
 
 /** 交给 OpenSSH 的私有 known_hosts（`-o UserKnownHostsFile=`）。 */
 export function knownHostsPath(homeDir: string): string {
-  return join(teleportDir(homeDir), 'known_hosts')
+  return join(remoteCrDir(homeDir), 'known_hosts')
 }
 
 /** 我们自己记的指纹账本。 */
 export function hostKeysPath(homeDir: string): string {
-  return join(teleportDir(homeDir), 'hostkeys.json')
+  return join(remoteCrDir(homeDir), 'hostkeys.json')
 }
 
 /**
@@ -284,7 +284,7 @@ export async function assertTrustedHostKey(options: RememberOptions): Promise<Re
   const detail = result.check.changed
     .map((change) => change.algorithm + ' 记账为 ' + change.expected + '，本次是 ' + change.observed)
     .join('；')
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/host-key-changed',
     detail: result.check.host + ' 的主机密钥变了（' + detail + '）。已阻断连接，新指纹**没有**写回账本。',
     nextActions: [

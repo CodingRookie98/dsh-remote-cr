@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { SshTarget } from './config.ts'
 import {
   assertTrustedHostKey,
@@ -42,7 +42,7 @@ const VERBOSE_STDERR = [
 ].join('\r\n')
 
 function tempHome(): { readonly home: string; readonly cleanup: () => void } {
-  const home = mkdtempSync(join(tmpdir(), 'teleport-hostkeys-'))
+  const home = mkdtempSync(join(tmpdir(), 'remote-cr-hostkeys-'))
   return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) }
 }
 
@@ -84,9 +84,9 @@ test('账本的键带端口：同主机的 22 与 2222 不能混成一台', () =
   assert.equal(hostKeyId({ ...TARGET, hostName: '198.51.100.55', port: 2222 }), '198.51.100.55:2222')
 })
 
-test('两个文件都落在 ~/.dsh-teleport 下，且互不覆盖', () => {
-  assert.equal(knownHostsPath('C:/Users/hui'), join('C:/Users/hui', '.dsh-teleport', 'known_hosts'))
-  assert.equal(hostKeysPath('C:/Users/hui'), join('C:/Users/hui', '.dsh-teleport', 'hostkeys.json'))
+test('两个文件都落在 ~/.dsh-remote-cr 下，且互不覆盖', () => {
+  assert.equal(knownHostsPath('C:/Users/hui'), join('C:/Users/hui', '.dsh-remote-cr', 'known_hosts'))
+  assert.equal(hostKeysPath('C:/Users/hui'), join('C:/Users/hui', '.dsh-remote-cr', 'hostkeys.json'))
   assert.notEqual(knownHostsPath('C:/Users/hui'), hostKeysPath('C:/Users/hui'))
 })
 
@@ -170,7 +170,7 @@ test('assertTrustedHostKey：变更时抛 host-key-changed，文案含两个指�
     await assert.rejects(
       assertTrustedHostKey({ homeDir: home, target: TARGET, observed: parseServerHostKeys(VERBOSE_STDERR) }),
       (error: unknown) => {
-        assert.ok(error instanceof TeleportError)
+        assert.ok(error instanceof RemoteCrError)
         assert.equal(error.code, 'remote/host-key-changed')
         assert.match(error.detail, /SHA256:OLD/)
         assert.match(error.detail, /SHA256:8gvH0mq2/)
@@ -204,7 +204,7 @@ test('一个指纹都没拿到：不写盘，也不谎报 known', async () => {
     const result = await rememberHostKeys({ homeDir: home, target: TARGET, observed: [] })
     assert.equal(result.written, false)
     assert.equal(result.check.state, 'new')
-    assert.equal(existsSync(join(home, '.dsh-teleport')), false, '连目录都不该建：没证据就别落盘')
+    assert.equal(existsSync(join(home, '.dsh-remote-cr')), false, '连目录都不该建：没证据就别落盘')
   } finally {
     cleanup()
   }
@@ -214,7 +214,7 @@ test('账本损坏：先备份原始字节，再当空账本继续（不静默�
   const { home, cleanup } = tempHome()
   try {
     const file = hostKeysPath(home)
-    mkdirSync(join(home, '.dsh-teleport'), { recursive: true })
+    mkdirSync(join(home, '.dsh-remote-cr'), { recursive: true })
     writeFileSync(file, '{ this is not json', 'utf8')
     const loaded = await loadHostKeys(file)
     assert.equal(loaded.corrupted, true)
@@ -251,7 +251,7 @@ test('原子写入：落盘是格式化 JSON，且不留下临时文件', async 
     const text = readFileSync(file, 'utf8')
     assert.match(text, /\n {2}"version": 1/)
     assert.ok(text.endsWith('\n'))
-    const names = readdirSync(join(home, '.dsh-teleport'))
+    const names = readdirSync(join(home, '.dsh-remote-cr'))
     assert.deepEqual(names, ['hostkeys.json'])
   } finally {
     cleanup()
@@ -304,7 +304,7 @@ test('信任新指纹：本来就没记录时不写盘、不报错（幂等）',
   try {
     const result = await forgetHostKeys({ homeDir: home, target: TARGET })
     assert.equal(result.removed, undefined)
-    assert.equal(existsSync(join(home, '.dsh-teleport')), false)
+    assert.equal(existsSync(join(home, '.dsh-remote-cr')), false)
   } finally {
     cleanup()
   }

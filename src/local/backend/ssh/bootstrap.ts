@@ -236,9 +236,9 @@ export function stagingDirFor(homeDir: string, target: SshTarget): string {
   // 传本地路径时远端会得到一个名为 C:/Users/... 的相对目录，每条 mkdir 都 exit 0，
   // 于是「引导成功」而 staging 里空无一物——2026-11-12 真机首跑就是这么假通过的。
   // 必须是 posix.join：这里的 homeDir 是**远端** home，Windows 上 win32 join 会产出
-  // `/home/hui\.dsh-teleport\staging\<id>`，远端 bash 把反斜杠当转义符，mkdir 于是
+  // `/home/hui\.dsh-remote-cr\staging\<id>`，远端 bash 把反斜杠当转义符，mkdir 于是
   // 建出一个名字诡异的目录而退出码仍是 0（2026-11-12 真机 S9 就是这么假通过的）。
-  return posix.join(homeDir, '.dsh-teleport', STAGING_DIR_NAME, anchorIdFor(anchorTargetOf(target)))
+  return posix.join(homeDir, '.dsh-remote-cr', STAGING_DIR_NAME, anchorIdFor(anchorTargetOf(target)))
 }
 
 export function bootstrapStatePathFor(homeDir: string, target: SshTarget): string {
@@ -299,15 +299,15 @@ export function summarizeMirrors(measurements: readonly MirrorMeasurement[]): re
 /** 私有 staging 目录：0700，绝不落 /tmp（/tmp 会被清理、也可能被同机他人读到）。 */
 export function buildStagingScript(stagingDir: string): string {
   const dir = shellQuote(stagingDir)
-  return ['mkdir -p ' + dir, 'chmod 700 ' + dir, 'echo TELEPORT_STAGING_OK'].join(String.fromCharCode(10))
+  return ['mkdir -p ' + dir, 'chmod 700 ' + dir, 'echo REMOTE_CR_STAGING_OK'].join(String.fromCharCode(10))
 }
 
 /** `tar` 预检：缺 tar 就当场失败并打标记，而不是等解包时给一条看不懂的报错。 */
 export function buildTarPrecheckScript(): string {
   return [
-    'command -v tar >/dev/null 2>&1 || { echo TELEPORT_MISSING_TAR; exit 3; }',
+    'command -v tar >/dev/null 2>&1 || { echo REMOTE_CR_MISSING_TAR; exit 3; }',
     'tar --version 2>/dev/null | head -n 1',
-    'echo TELEPORT_TAR_OK',
+    'echo REMOTE_CR_TAR_OK',
   ].join(String.fromCharCode(10))
 }
 
@@ -333,15 +333,15 @@ export function buildNodeRuntimeScript(request: NodeRuntimeRequest): string {
   return [
     'set -e',
     'mkdir -p ' + dir,
-    'command -v tar >/dev/null 2>&1 || { echo TELEPORT_MISSING_TAR; exit 3; }',
+    'command -v tar >/dev/null 2>&1 || { echo REMOTE_CR_MISSING_TAR; exit 3; }',
     'if [ ! -x ' + dir + '/bin/node ]; then',
     '  if command -v curl >/dev/null 2>&1; then curl -fsSL -o ' + file + ' ' + url + ';',
     '  elif command -v wget >/dev/null 2>&1; then wget -q -O ' + file + ' ' + url + ';',
-    '  else echo TELEPORT_NO_DOWNLOADER; exit 4; fi;',
+    '  else echo REMOTE_CR_NO_DOWNLOADER; exit 4; fi;',
     '  tar -xJf ' + file + ' -C ' + dir + ' --strip-components=1',
     'fi',
     dir + '/bin/node --version',
-    'echo TELEPORT_NODE_OK',
+    'echo REMOTE_CR_NODE_OK',
   ].join(String.fromCharCode(10))
 }
 
@@ -366,20 +366,16 @@ export function buildDshPackageScript(request: DshPackageRequest): string {
   // 目标机上未必有系统 npm（WSL 常见）：引导器把 node/npm 装进了 prefix，所以检查 npm 要看
   // prefix 里那份、安装也走它的**绝对路径**；而 PATH 仍然只在装完之后导出 —— 否则
   // `command -v dsh` 会撞上系统里已有的那份，校验就失去意义。
-  const hasPrefix = request.prefix !== undefined && request.prefix !== ''
   const nodeBin = request.nodeBin === undefined || request.nodeBin === '' ? undefined : request.nodeBin
-  // npm 随 node 落在 `nodeBin`，而 `prefix` 只是**安装**前缀（dsh 会进 prefix/bin）。
-  // 曾经用 prefix/bin/npm 去探测，结果在干净机器上必然 exit 5。
-  const npmCommand =
-    nodeBin !== undefined
-      ? shellQuote(nodeBin + '/npm')
-      : hasPrefix
-        ? shellQuote(request.prefix + '/bin/npm')
-        : 'npm'
+  // npm 只有两种来源：**我们自己装进 `nodeBin` 的那份**（node 步骤真的跑过时才有），
+  // 或者远端 PATH 上的系统 npm。`prefix` 只是 dsh 的安装前缀，它下面**没有** npm ——
+  // 曾经用它探测/调用，在干净机器上必然 127/5（真机回归：gcp 上系统 node 满足时
+  // node 步骤被跳过，却仍去调 `staging/bin/npm`，结果是 `remote/bootstrap-failed` 127）。
+  const npmCommand = nodeBin !== undefined ? shellQuote(nodeBin + '/npm') : 'npm'
   const npmCheck =
-    nodeBin !== undefined || hasPrefix
-      ? 'command -v npm >/dev/null 2>&1 || [ -x ' + npmCommand + ' ] || { echo TELEPORT_MISSING_NPM; exit 5; }'
-      : 'command -v npm >/dev/null 2>&1 || { echo TELEPORT_MISSING_NPM; exit 5; }'
+    nodeBin !== undefined
+      ? 'command -v npm >/dev/null 2>&1 || [ -x ' + npmCommand + ' ] || { echo REMOTE_CR_MISSING_NPM; exit 5; }'
+      : 'command -v npm >/dev/null 2>&1 || { echo REMOTE_CR_MISSING_NPM; exit 5; }'
   const lines: string[] = [
     'set -e',
     npmCheck,
@@ -399,8 +395,8 @@ export function buildDshPackageScript(request: DshPackageRequest): string {
     lines.push('export PATH=' + shellQuote(request.prefix + '/bin') + ':$PATH')
   }
   lines.push('export DSH_HOME=' + shellQuote(request.dshHome))
-  lines.push('command -v dsh >/dev/null 2>&1 && dsh --version || echo TELEPORT_DSH_NOT_ON_PATH')
-  lines.push('echo TELEPORT_DSH_OK')
+  lines.push('command -v dsh >/dev/null 2>&1 && dsh --version || echo REMOTE_CR_DSH_NOT_ON_PATH')
+  lines.push('echo REMOTE_CR_DSH_OK')
   return lines.join(String.fromCharCode(10))
 }
 
@@ -422,13 +418,19 @@ function nodeRequestOf(request: PlanBootstrapRequest, version: string): NodeRunt
   return built
 }
 
-function dshRequestOf(request: PlanBootstrapRequest): DshPackageRequest {
+/**
+ * dsh 安装请求。
+ *
+ * `nodeBin` **只在 node 步骤真的要把 node 装进 staging 时才给**：复用系统 node 时
+ * staging 里没有 `bin/npm`，给它就等于让安装脚本去调一个不存在的文件（真机 127）。
+ */
+function dshRequestOf(request: PlanBootstrapRequest, needNode: boolean): DshPackageRequest {
   const built: { registry: string; dshHome: string; version?: string; prefix?: string; nodeBin?: string } = {
     registry: request.mirror ?? DEFAULT_MIRRORS[0]?.registry ?? 'https://registry.npmjs.org/',
     dshHome: request.dshHome ?? '',
     prefix: request.stagingDir + '/npm',
-    nodeBin: request.stagingDir + '/bin',
   }
+  if (needNode) built.nodeBin = request.stagingDir + '/bin'
   if (request.dshVersion !== undefined) built.version = request.dshVersion
   return built
 }
@@ -477,13 +479,13 @@ export function planBootstrap(request: PlanBootstrapRequest): BootstrapPlan {
       steps.push({
         id: 'dsh',
         title: '安装 dsh 到 staging 前缀',
-        script: buildDshPackageScript(dshRequestOf(request)),
+        script: buildDshPackageScript(dshRequestOf(request, decision.needNode)),
       })
     } else {
       steps.push({
         id: 'dsh',
         title: '重装 dsh（账本记录过，但这次仍未探测到可用版本）',
-        script: buildDshPackageScript(dshRequestOf(request)),
+        script: buildDshPackageScript(dshRequestOf(request, decision.needNode)),
         reuseReason: '账本记着 ' + recorded.detail + '，但远端仍未探测到满足范围的 dsh',
       })
     }

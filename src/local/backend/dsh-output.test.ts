@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from './errors.ts'
+import { RemoteCrError } from './errors.ts'
 import { classifyStartFailure, parseDshEndpoint, readStartFailure, tailLines } from './dsh-output.ts'
 
 const SUCCESS_LOG = [
@@ -23,7 +23,7 @@ const NO_NODE_LOG = "nohup: failed to run command 'node': No such file or direct
 
 // 真机原文（P32-6 首跑失败时抓到的）：--exec 直派不走 nohup，文案完全不同。
 const NO_NODE_EXECVPE_LOG =
-  '<3>WSL (172982 - Relay) ERROR: CreateProcessCommon:875: execvpe(node-missing-teleport) failed: No such file or directory\n'
+  '<3>WSL (172982 - Relay) ERROR: CreateProcessCommon:875: execvpe(node-missing-remote-cr) failed: No such file or directory\n'
 
 test('从成功日志里认出 host/port/token', () => {
   const endpoint = parseDshEndpoint(SUCCESS_LOG)
@@ -41,7 +41,7 @@ test('URL 缺 token 视为还没起来（不能拿无 token 的地址去连）',
 
 test('端口占用被识别成 remote/port-in-use，且带上真实端口与三个可选项', () => {
   const error = classifyStartFailure(EADDRINUSE_LOG)
-  assert.ok(error instanceof TeleportError)
+  assert.ok(error instanceof RemoteCrError)
   assert.equal(error.code, 'remote/port-in-use')
   assert.equal(error.phase, 'launch')
   assert.match(error.detail, /8899/)
@@ -61,7 +61,7 @@ test('--exec 直派的 execvpe 文案同样被认成 remote/node-missing（两�
   const error = classifyStartFailure(NO_NODE_EXECVPE_LOG)
   assert.equal(error.code, 'remote/node-missing')
   assert.equal(error.phase, 'probe')
-  assert.match(error.detail, /node-missing-teleport/, '要把真实缺失的可执行文件名带给用户')
+  assert.match(error.detail, /node-missing-remote-cr/, '要把真实缺失的可执行文件名带给用户')
 })
 
 test('认不出的失败落到 remote/startup-failed，并保留日志尾', () => {

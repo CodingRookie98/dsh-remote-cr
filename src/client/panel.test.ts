@@ -56,7 +56,7 @@ test('不能接入的四种情况各给一句人话原因（灰按钮必须说�
     [wslRecord({ source: 'local', distro: null, posixPath: null }), DEFAULTS, '不是 WSL 来源'],
     [wslRecord({ distro: null }), DEFAULTS, '没有发行版信息'],
     [wslRecord({ posixPath: null }), DEFAULTS, '没有远端 POSIX 路径'],
-    [wslRecord(), { port: 8899, remoteRoot: '' }, 'DSH_TELEPORT_REMOTE_ROOT'],
+    [wslRecord(), { port: 8899, remoteRoot: '' }, 'DSH_REMOTE_CR_REMOTE_ROOT'],
   ]
   for (const [record, defaults, expected] of cases) {
     const plan = planAttach(record, defaults)
@@ -71,7 +71,7 @@ test('没有检出根就拒绝接入（NEGATIVE_CONTROL 下这条断言必红）
   // NEGATIVE_CONTROL: 把「拒绝」反成「接受」，上面那条四种情况断言与这条同时红。
   assert.equal(plan.ok, NEG)
   if (plan.ok) return
-  assert.ok(plan.reason.includes('DSH_TELEPORT_REMOTE_ROOT'))
+  assert.ok(plan.reason.includes('DSH_REMOTE_CR_REMOTE_ROOT'))
 })
 
 test('basenameOf 处理根路径与尾斜杠，不返回空串', () => {
@@ -83,12 +83,12 @@ test('basenameOf 处理根路径与尾斜杠，不返回空串', () => {
 
 const OUTCOME: ProbeOutcome = {
   sessionId: 'sess-1',
-  terminalId: 'teleport-probe',
+  terminalId: 'remote-cr-probe',
   cwd: '/home/dev/proj',
   uname: 'Linux host 6.18.0 x86_64 GNU/Linux',
   executedRemotely: true,
   remoteVerdict: null,
-  transcript: 'TELEPORT_PROBE_PWD=/home/dev/proj',
+  transcript: 'REMOTE_CR_PROBE_PWD=/home/dev/proj',
 }
 
 test('取证报告先结论再证据最后原始输出，且带上终端与会话标识', () => {
@@ -185,8 +185,8 @@ test('SSH 接入的四种拒绝各给一句人话原因', () => {
   const cases: readonly (readonly [{ alias: string; remotePath: string }, { port: number; remoteRoot: string }, string])[] = [
     [{ alias: '', remotePath: '/home/hui' }, DEFAULTS, '.ssh/config'],
     [{ alias: 'gcp', remotePath: 'home/hui' }, DEFAULTS, '以 / 开头'],
-    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: 'home' }, 'DSH_TELEPORT_REMOTE_ROOT'],
-    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: '' }, 'DSH_TELEPORT_REMOTE_ROOT'],
+    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: 'home' }, 'DSH_REMOTE_CR_REMOTE_ROOT'],
+    [{ alias: 'gcp', remotePath: '/' }, { port: 8899, remoteRoot: '' }, 'DSH_REMOTE_CR_REMOTE_ROOT'],
   ]
   for (const [draft, defaults, expected] of cases) {
     const plan = planSshAttach(draft, defaults)

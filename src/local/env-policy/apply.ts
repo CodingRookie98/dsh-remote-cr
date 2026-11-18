@@ -11,7 +11,7 @@
  * 3. `sync` 在 M3 才落地，**明确拒绝**而不是悄悄按 `isolated` 办。
  */
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { DSH_HOME_ENV, type EnvPolicy, planEnv } from './env-policy.ts'
 
 /** 一次连接要注入给远端 dsh 的环境。 */
@@ -35,7 +35,7 @@ export function planEnvInjection(
   extraEnv?: Readonly<Record<string, string>>,
 ): EnvInjection {
   if (policy === 'sync') {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/env-policy-unavailable',
       detail: '环境档位 sync（可选插件同步）属于 M3 的范围，当前版本只有 reuse 与 isolated 两档可用',
       nextActions: ['把环境档位改成 reuse 或 isolated', '查看 docs/project/plans 里的 M3 计划'],
@@ -49,7 +49,7 @@ export function planEnvInjection(
   const dshHome = plan.env[DSH_HOME_ENV]
   if (dshHome === undefined) {
     // 只有 planEnv 改契约才会到这里：宁可炸在测试里，也不要静默按 reuse 跑。
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/env-policy-unavailable',
       detail: 'isolation requested but planEnv returned no ' + DSH_HOME_ENV,
       nextActions: ['修 env-policy.ts 的 planEnv 与 planEnvInjection 的一致性'],
@@ -57,7 +57,7 @@ export function planEnvInjection(
   }
   const conflict = extraEnv?.[DSH_HOME_ENV]
   if (conflict !== undefined && conflict !== dshHome) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/env-policy-conflict',
       detail:
         '调用方在 extraEnv 里给了 ' + DSH_HOME_ENV + '=' + conflict +

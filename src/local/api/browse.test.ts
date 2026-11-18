@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import {
   type DistroListingRunner,
   listDistroDirectory,
@@ -88,7 +88,7 @@ test('发行版启动失败：错误码取 wsl/*，detail 带 E_INVALIDARG，而
   await assert.rejects(
     () => listDistroDirectory('wsl.exe', 'ubuntu_dev', '/', undefined, failing),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'wsl/disk-missing')
       assert.ok(error.detail.includes('E_INVALIDARG'), error.detail)
       assert.ok(error.detail.includes('ubuntu_dev'), error.detail)
@@ -113,7 +113,7 @@ test('ls 自己失败（路径不存在）仍按目录读不到报，不冒充�
   await assert.rejects(
     () => listDistroDirectory('wsl.exe', 'ubuntu_dev', '/nope', undefined, failing),
     (error: unknown) => {
-      assert.ok(error instanceof TeleportError)
+      assert.ok(error instanceof RemoteCrError)
       assert.equal(error.code, 'remote/path-unreadable', 'ls 跑得起来 = 发行版是起来的')
       assert.ok(error.detail.includes('No such file or directory'), error.detail)
       return true

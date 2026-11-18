@@ -1,7 +1,7 @@
 /**
- * 浏览器半挂到 `globalThis.__TELEPORT__` 上的**诊断面类型**。
+ * 浏览器半挂到 `globalThis.__REMOTE_CR__` 上的**诊断面类型**。
  *
- * 存在的理由和 M0 spike 的 `__TELEPORT_SPIKE__` 一样：让 CDP 断言能直接读到真实
+ * 存在的理由和 M0 spike 的 `__REMOTE_CR_SPIKE__` 一样：让 CDP 断言能直接读到真实
  * 注册结果（哪几个 slot 真挂上了、`priority: -1` 有没有赢），而不是靠截图猜。
  *
  * 只读、不含凭据、不参与业务逻辑。类型放在普通 `.ts` 里而不是 `.d.ts`：`.d.ts`
@@ -19,7 +19,7 @@ export interface SlotRecord {
   readonly id: string | null
 }
 
-export interface TeleportDiagnostics {
+export interface RemoteCrDiagnostics {
   /** 当前仍挂着的 slot 名，按注册顺序。 */
   readonly mounted: readonly string[]
   /** 读某个 slot 的条目表（含别人的），用于证明 `priority: -1` 真的赢了。 */

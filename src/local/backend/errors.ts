@@ -39,12 +39,13 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/ssh-target-unresolved': 'probe',
   'remote/workspace-unwritable': 'attach',
   'remote/path-unreadable': 'attach',
+  'remote/env-conflict': 'probe',
   'remote/cancelled': 'probe',
   'remote/disconnected': 'tunnel',
   'remote/unknown': 'probe',
 }
 
-export interface TeleportErrorInit {
+export interface RemoteCrErrorInit {
   code: string
   /** 面向人的一句话，含实测到的关键值（端口号、版本号、路径）。 */
   detail: string
@@ -55,16 +56,16 @@ export interface TeleportErrorInit {
   cause?: unknown
 }
 
-export class TeleportError extends Error {
+export class RemoteCrError extends Error {
   readonly code: string
   readonly phase: ConnectionPhase
   readonly detail: string
   readonly nextActions: readonly string[]
   readonly logTail: string
 
-  constructor(init: TeleportErrorInit) {
+  constructor(init: RemoteCrErrorInit) {
     super(`[${init.code}] ${init.detail}`)
-    this.name = 'TeleportError'
+    this.name = 'RemoteCrError'
     this.code = init.code
     this.phase = ERROR_PHASE[init.code] ?? 'probe'
     this.detail = init.detail
@@ -88,8 +89,8 @@ export class TeleportError extends Error {
 }
 
 /** 端口占用的专用错误——B3 的裁决落点：检测 + 三个可选项，不静默接管、不杀进程。 */
-export function portInUseError(port: number, logTail?: string): TeleportError {
-  return new TeleportError({
+export function portInUseError(port: number, logTail?: string): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/port-in-use',
     detail: `远端 127.0.0.1:${port} 已被占用，dsh 启动时 listen EADDRINUSE`,
     nextActions: [

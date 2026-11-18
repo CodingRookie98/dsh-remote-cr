@@ -28,7 +28,7 @@ export function uncOf(posixPath) {
   return UNC_PREFIX + posixPath.split('/').join(BACKSLASH);
 }
 
-export const DEFAULT_DEFAULTS = { port: 8899, remoteRoot: '/home/hui/.dsh-teleport' };
+export const DEFAULT_DEFAULTS = { port: 8899, remoteRoot: '/home/hui/.dsh-remote-cr' };
 
 /** 「一台主机都没有」的变体：让「SSH 点了没反应」这类死路也能在截图里看见（R2-D10）。 */
 const SSH_REPORT_EMPTY = {
@@ -111,7 +111,7 @@ function genericListing(path) {
 }
 
 /**
- * 页面里 `/teleport/api/list` 的应答。
+ * 页面里 `/remote-cr/api/list` 的应答。
  *
  * 入参是无 query 的普通对象：`{ distro, path }`。distro 空串表示本机。
  * 返回 api.ts 认识的**信封**：`{ ok: true, value }` 或 `{ ok: false, code, detail, nextActions }`。
@@ -144,9 +144,9 @@ export function resolveListing(listings, input) {
 // ── 场景 ────────────────────────────────────────────────────────────────
 
 const LOCAL_STEPS = [
-  { wait: '[data-teleport="sources"]' },
-  { click: '[data-teleport="source"][data-source="local"]' },
-  { wait: '[data-teleport="listing"]' },
+  { wait: '[data-remote-cr="sources"]' },
+  { click: '[data-remote-cr="source"][data-source="local"]' },
+  { wait: '[data-remote-cr="listing"]' },
 ];
 
 /**
@@ -159,26 +159,26 @@ export const PREVIEW_SCENES = [
     id: 'local',
     label: '本机：已选中并列出目录',
     theme: 'light',
-    targets: ['[data-teleport="listing"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="listing"]', '[data-remote-cr="wizard"]'],
     steps: LOCAL_STEPS,
   },
   {
     id: 'local-dark',
     label: '本机：深色主题',
     theme: 'dark',
-    targets: ['[data-teleport="listing"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="listing"]', '[data-remote-cr="wizard"]'],
     steps: LOCAL_STEPS,
   },
   {
     id: 'wsl-stopped',
     label: 'WSL：发行版已停止，等待唤醒',
     theme: 'light',
-    targets: ['[data-teleport="distros"]', '[data-teleport="listing"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="distros"]', '[data-remote-cr="listing"]', '[data-remote-cr="wizard"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="wsl"]' },
-      { wait: '[data-teleport="distros"], [data-teleport="listing"]', timeoutMs: 8000 },
-      { optionalClick: '[data-teleport="distro"]', timeoutMs: 1500 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="wsl"]' },
+      { wait: '[data-remote-cr="distros"], [data-remote-cr="listing"]', timeoutMs: 8000 },
+      { optionalClick: '[data-remote-cr="distro"]', timeoutMs: 1500 },
       { sleep: 250 },
     ],
   },
@@ -186,24 +186,24 @@ export const PREVIEW_SCENES = [
     id: 'wsl-failed',
     label: 'WSL：唤醒失败（诊断卡）',
     theme: 'light',
-    // 诊断卡的标记名来自组件现状（wake-error 一族）；wake-diagnosis 与 error 是给改版留的兜底。
+    // 诊断卡的标记名来自组件现状（wake-error 一族）；error 是给改版留的兜底。
+    // （`wake-diagnosis` 是历史死键——组件从不发它，留着只会让人以为诊断卡已被覆盖。）
     targets: [
-      '[data-teleport="wake-error"]',
-      '[data-teleport="wake-title"]',
-      '[data-teleport="error"]',
-      '[data-teleport="distros"]',
-      '[data-teleport="wake-diagnosis"]',
-      '[data-teleport="listing-error"]',
+      '[data-remote-cr="wake-error"]',
+      '[data-remote-cr="wake-title"]',
+      '[data-remote-cr="error"]',
+      '[data-remote-cr="distros"]',
+      '[data-remote-cr="listing-error"]',
     ],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="wsl"]' },
-      { wait: '[data-teleport="distros"], [data-teleport="listing"]', timeoutMs: 8000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="wsl"]' },
+      { wait: '[data-remote-cr="distros"], [data-remote-cr="listing"]', timeoutMs: 8000 },
       // 必须**必点**：optionalClick 点不到就静默跳过，诊断卡永远不出现、场景却「成功」，
       // 让这条失败路径偶发假红（R1 Delta-2 的 M-B）。
-      { wait: '[data-teleport="distro"]', timeoutMs: 8000 },
-      { click: '[data-teleport="distro"]' },
-      { wait: '[data-teleport="wake-error"], [data-teleport="wake-title"], [data-teleport="listing"]', timeoutMs: 6000 },
+      { wait: '[data-remote-cr="distro"]', timeoutMs: 8000 },
+      { click: '[data-remote-cr="distro"]' },
+      { wait: '[data-remote-cr="wake-error"], [data-remote-cr="wake-title"], [data-remote-cr="listing"]', timeoutMs: 6000 },
       { sleep: 200 },
     ],
   },
@@ -211,25 +211,25 @@ export const PREVIEW_SCENES = [
     id: 'no-distro',
     label: 'WSL：没有任何发行版（来源灰显）',
     theme: 'light',
-    targets: ['[data-teleport="sources"]', '[data-teleport="wizard"]'],
-    steps: [{ wait: '[data-teleport="sources"]' }],
+    targets: ['[data-remote-cr="sources"]', '[data-remote-cr="wizard"]'],
+    steps: [{ wait: '[data-remote-cr="sources"]' }],
   },
   {
     id: 'no-wsl',
     label: 'WSL：没有 wsl.exe（来源灰显 + 安装提示）',
     theme: 'light',
-    targets: ['[data-teleport="source-reason"]', '[data-teleport="sources"]', '[data-teleport="wizard"]'],
-    steps: [{ wait: '[data-teleport="sources"]' }, { sleep: 200 }],
+    targets: ['[data-remote-cr="source-reason"]', '[data-remote-cr="sources"]', '[data-remote-cr="wizard"]'],
+    steps: [{ wait: '[data-remote-cr="sources"]' }, { sleep: 200 }],
   },
   {
     id: 'slow-listing',
     label: '加载态：列目录慢（骨架行）',
     theme: 'light',
-    targets: ['[data-teleport="listing-loading"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="listing-loading"]', '[data-remote-cr="wizard"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="local"]' },
-      { wait: '[data-teleport="listing-loading"]', timeoutMs: 8000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="local"]' },
+      { wait: '[data-remote-cr="listing-loading"]', timeoutMs: 8000 },
       { sleep: 80 },
     ],
   },
@@ -237,13 +237,13 @@ export const PREVIEW_SCENES = [
     id: 'waking',
     label: 'WSL：发行版唤醒中（可取消）',
     theme: 'light',
-    targets: ['[data-teleport="wake-progress"]', '[data-teleport="wake-cancel"]', '[data-teleport="distros"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="wake-progress"]', '[data-remote-cr="wake-cancel"]', '[data-remote-cr="distros"]', '[data-remote-cr="wizard"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="wsl"]' },
-      { wait: '[data-teleport="distro"]', timeoutMs: 8000 },
-      { click: '[data-teleport="distro"]' },
-      { wait: '[data-teleport="wake-progress"]', timeoutMs: 8000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="wsl"]' },
+      { wait: '[data-remote-cr="distro"]', timeoutMs: 8000 },
+      { click: '[data-remote-cr="distro"]' },
+      { wait: '[data-remote-cr="wake-progress"]', timeoutMs: 8000 },
       { sleep: 150 },
     ],
   },
@@ -251,49 +251,88 @@ export const PREVIEW_SCENES = [
     id: 'listing-error',
     label: '目录不可读（失败要响）',
     theme: 'light',
-    targets: ['[data-teleport="listing-error"]', '[data-teleport="wizard"]'],
+    targets: ['[data-remote-cr="listing-error"]', '[data-remote-cr="wizard"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="local"]' },
-      { wait: '[data-teleport="entry"]' },
-      { clickText: { selector: '[data-teleport="entry"]', text: 'restricted' } },
-      { wait: '[data-teleport="listing-error"]', timeoutMs: 8000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="local"]' },
+      { wait: '[data-remote-cr="entry"]' },
+      { clickText: { selector: '[data-remote-cr="entry"]', text: 'restricted' } },
+      { wait: '[data-remote-cr="listing-error"]', timeoutMs: 8000 },
     ],
   },
   {
     id: 'done',
     label: '已添加（流程 done，onPicked 回传一次）',
     theme: 'light',
-    targets: ['[data-teleport="done-path"]', '[data-teleport="wizard"][data-step="done"]'],
+    targets: ['[data-remote-cr="done-path"]', '[data-remote-cr="wizard"][data-step="done"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="local"]' },
-      { wait: '[data-teleport="listing"]' },
-      { click: '[data-teleport="confirm"]' },
-      { wait: '[data-teleport="done-path"], [data-teleport="wizard"][data-step="done"]', timeoutMs: 15000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="local"]' },
+      { wait: '[data-remote-cr="listing"]' },
+      { click: '[data-remote-cr="confirm"]' },
+      { wait: '[data-remote-cr="done-path"], [data-remote-cr="wizard"][data-step="done"]', timeoutMs: 15000 },
     ],
   },
   {
     id: 'flow-failed',
     label: '流程失败（四段可复制报告）',
     theme: 'light',
-    targets: ['[data-teleport="error"]', '[data-teleport="wizard"][data-step="failed"]'],
+    targets: ['[data-remote-cr="error"]', '[data-remote-cr="wizard"][data-step="failed"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
-      { click: '[data-teleport="source"][data-source="local"]' },
-      { wait: '[data-teleport="listing"]' },
-      { click: '[data-teleport="confirm"]' },
-      { wait: '[data-teleport="error"], [data-teleport="wizard"][data-step="failed"]', timeoutMs: 15000 },
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="local"]' },
+      { wait: '[data-remote-cr="listing"]' },
+      { click: '[data-remote-cr="confirm"]' },
+      { wait: '[data-remote-cr="error"], [data-remote-cr="wizard"][data-step="failed"]', timeoutMs: 15000 },
     ],
   },
   {
     id: 'ssh-unavailable',
     label: 'SSH 没有可用主机（原因内联灰显）',
     theme: 'light',
-    targets: ['[data-teleport="source"][data-source="ssh"][data-availability="unavailable"]'],
+    targets: ['[data-remote-cr="source"][data-source="ssh"][data-availability="unavailable"]'],
     steps: [
-      { wait: '[data-teleport="sources"]' },
+      { wait: '[data-remote-cr="sources"]' },
       { sleep: 200 },
+    ],
+  },
+  {
+    // 探针原文分支：界面只显示「探测 WSL 失败（原文见复制日志）」，
+    // 原文进复制日志（Delta-6 N4″：这条分支此前 L3 零覆盖）。
+    id: 'wsl-probe-error',
+    label: 'WSL：探测失败（原文只进复制日志）',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="source"][data-source="wsl"][data-availability="unavailable"]',
+      '[data-remote-cr="source-reason-text"]',
+    ],
+    // targets 是 OR，复制出口必须单独钉住（Delta-8 N2）。
+    requireMarkers: ['sources-copy', 'sources-footer'],
+    steps: [
+      { wait: '[data-remote-cr="sources"]', timeoutMs: 10000 },
+      { sleep: 250 },
+    ],
+  },
+  {
+    // 面板是本次重设计的主战场：状态带 + 两级主从（主机 / 投影+会话）+ 错误块。
+    // 面板与向导在同一页面各自挂载，这里只要等两栏出现即可截图。
+    id: 'panel',
+    label: '远端工作台面板：状态带 + 两级主从（空态）',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="panel-body"]',
+      '[data-remote-cr="panel-hosts"]',
+      '[data-remote-cr="panel-detail"]',
+      '[data-remote-cr="panel-head"]',
+      '[data-remote-cr="panel"]',
+    ],
+    // 向导是模态：不挂它，面板才完整可见。
+    hideFlow: true,
+    // 结构门禁的期望值在 harness 代码里（REQUIRED_ORDER_SCENES），不写在这里 —— 避免两处真相。
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="panel-body"]', timeoutMs: 10000 },
+      { sleep: 400 },
     ],
   },
 ];
@@ -304,21 +343,23 @@ export function findScene(id) {
 
 // ── 每个场景的应答体 ────────────────────────────────────────────────────
 
-function sourceOptions(wslAvailable, wslReason, sshAvailable) {
+/**
+ * 四选一的应答体。**必须与线上形状一致**（ADR-0007：只有 id，没有 label/reason）。
+ * 这里曾手搓旧形状，导致 5/13 场景屏上印出 `sourceReason.undefined` 而 harness 仍判通过
+ * （Delta-5 N1′）——所以下面那行「屏上不许出现 undefined」是配套门禁。
+ */
+function sourceOptions(wslAvailable, wslReasonId, sshAvailable, wslProbeError) {
   return [
-    { id: 'local', label: '本机目录', availability: 'available', reason: '' },
+    { id: 'local', availability: 'available', reasonId: 'none' },
     wslAvailable
-      ? { id: 'wsl', label: 'WSL 发行版', availability: 'available', reason: '' }
-      : { id: 'wsl', label: 'WSL 发行版', availability: 'unavailable', reason: wslReason },
+      ? { id: 'wsl', availability: 'available', reasonId: 'none' }
+      : typeof wslProbeError === 'string' && wslProbeError !== ''
+        ? { id: 'wsl', availability: 'unavailable', reasonId: 'wsl-probe-error', reasonDetail: wslProbeError }
+        : { id: 'wsl', availability: 'unavailable', reasonId: wslReasonId ?? 'wsl-missing' },
     sshAvailable
-      ? { id: 'ssh', label: 'SSH 远端', availability: 'available', reason: '' }
-      : {
-          id: 'ssh',
-          label: 'SSH 远端',
-          availability: 'unavailable',
-          reason: '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）',
-        },
-    { id: 'docker', label: 'Docker 容器', availability: 'planned', reason: '计划在 M5' },
+      ? { id: 'ssh', availability: 'available', reasonId: 'none' }
+      : { id: 'ssh', availability: 'unavailable', reasonId: 'ssh-no-host' },
+    { id: 'docker', availability: 'planned', reasonId: 'docker-planned' },
   ];
 }
 
@@ -327,12 +368,14 @@ function distroList(state) {
 }
 
 function sourcesPayload(input) {
-  const sshAvailable = input.sshAvailable !== false;
-  const options = sourceOptions(input.wslAvailable, input.wslReason, sshAvailable);
+  // 与线上一致：缺省是「不可用」（`=== true` 才可用），不要写成 `!== false` ——
+  // 那会让夹具把「没探测到主机」画成可用（Delta-6 N4″）。
+  const sshAvailable = input.sshAvailable === true;
+  const options = sourceOptions(input.wslAvailable, input.wslReasonId, sshAvailable, input.wslProbeError);
   return {
     wslAvailable: input.wslAvailable,
     distros: input.distros,
-    probeError: input.probeError,
+    probeError: input.wslProbeError ?? input.probeError,
     options,
     selectable: options.filter((option) => option.availability === 'available').map((option) => option.id),
     defaults: DEFAULT_DEFAULTS,
@@ -510,15 +553,16 @@ export function sceneFixtures(sceneId) {
   const stopped = id === 'wsl-stopped' || id === 'wsl-failed' || id === 'waking';
   const noDistro = id === 'no-distro';
   const noWsl = id === 'no-wsl';
-  const wslReason = noWsl
-    ? '未检测到 WSL（在 PowerShell 里跑 wsl --install）'
-    : '没有已安装的发行版（在 PowerShell 里跑 wsl --install）';
+  // 原因也是 **id**（ADR-0007）：文案由客户端字典渲染。
+  const wslReasonId = noWsl ? 'wsl-missing' : 'wsl-no-distro';
   const sources = sourcesPayload({
-    wslAvailable: !noDistro && !noWsl,
-    wslReason,
+    // 探测失败场景里 WSL 必须是 unavailable，否则原因行根本不渲染（Delta-7 N4″ 的漏法）。
+    wslAvailable: !noDistro && !noWsl && id !== 'wsl-probe-error',
+    wslReasonId,
     distros: noDistro || noWsl ? [] : distroList(stopped ? 'Stopped' : 'Running'),
     probeError: null,
     sshAvailable: id !== 'ssh-unavailable',
+    wslProbeError: id === 'wsl-probe-error' ? 'wsl.exe --list --verbose 退出码 1' : null,
   });
   const terminal = id === 'done' ? doneSnapshot() : id === 'flow-failed' ? failedSnapshot() : doneSnapshot();
   return {

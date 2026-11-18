@@ -13,7 +13,7 @@
  * - **不管端口是否已释放**。那是 launch 的看门狗与 dispose 的职责，不是后端的。
  */
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { BackendProbe, LaunchRequest, RemoteBackend } from '../backend.ts'
 import type { RemoteDshHandle } from '../handle.ts'
 import {
@@ -79,7 +79,7 @@ export class WslRemoteBackend implements RemoteBackend {
       const reasons: string[] = []
       if (!parsed.complete) reasons.push('输出里没有结束标记（脚本没跑完或输出被截断）')
       if (parsed.conflicts.length > 0) reasons.push('同一字段给出两个不同的值：' + parsed.conflicts.join('、'))
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/probe-incomplete',
         detail: '探测 WSL 发行版 ' + this.target + ' 的结果不可用：' + reasons.join('；'),
         nextActions: [

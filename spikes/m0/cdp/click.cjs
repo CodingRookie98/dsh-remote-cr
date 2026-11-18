@@ -80,21 +80,21 @@ async function main() {
 
   const out = {}
   out.initial = await evaluate(`({
-    flowTexts: Array.from(document.querySelectorAll('[data-teleport-spike="directory-flow"]')).map(n => n.innerText),
-    panelPresent: !!document.querySelector('[data-teleport-spike="panel"]'),
+    flowTexts: Array.from(document.querySelectorAll('[data-remote-cr-spike="directory-flow"]')).map(n => n.innerText),
+    panelPresent: !!document.querySelector('[data-remote-cr-spike="panel"]'),
   })`)
 
   out.clickTeleport = await click('Teleport')
   await sleep(1500)
   out.afterTeleport = await evaluate(`({
-    panelText: (document.querySelector('[data-teleport-spike="panel"]') || {}).innerText || null,
+    panelText: (document.querySelector('[data-remote-cr-spike="panel"]') || {}).innerText || null,
     activePanelButtons: Array.from(document.querySelectorAll('button[aria-label]')).map(b => b.getAttribute('aria-label')).filter(l => ['Teleport','Plugins','Automation tasks'].includes(l)),
   })`)
 
   out.clickAdd = await click('Add workspace')
   await sleep(1500)
   out.afterAdd = await evaluate(`({
-    flowTexts: Array.from(document.querySelectorAll('[data-teleport-spike="directory-flow"]')).map(n => n.innerText),
+    flowTexts: Array.from(document.querySelectorAll('[data-remote-cr-spike="directory-flow"]')).map(n => n.innerText),
     dialogs: Array.from(document.querySelectorAll('[role="dialog"]')).map(d => d.innerText.slice(0, 200)),
     bodySnippet: document.body.innerText.slice(0, 300),
   })`)

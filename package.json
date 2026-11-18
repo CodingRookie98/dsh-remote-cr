@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-cr",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "dsh-remote-cr：DeepSeek Harness 的远端宿主远程开发插件（B 型：宿主远端、单一原生 GUI、凭据不出本机）",
   "type": "module",
@@ -58,6 +58,7 @@
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
+    "check:cjk": "node scripts/check-client-cjk.mjs",
     "e2e:preview": "node scripts/preview-wizard.mjs --no-build",
     "e2e:host": "node spikes/m4/add-workspace-ui/probe.cjs",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",

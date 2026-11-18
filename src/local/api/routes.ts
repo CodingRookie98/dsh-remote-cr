@@ -1,7 +1,7 @@
 /**
- * 宿主半的路由表：`/teleport/api/*`。
+ * 宿主半的路由表：`/remote-cr/api/*`。
  *
- * 全部 `kind: 'exact'`：前缀路由会把 `/teleport/api/anything` 也吃掉，
+ * 全部 `kind: 'exact'`：前缀路由会把 `/remote-cr/api/anything` 也吃掉，
  * 之后想加子路径就得先改别人的前缀语义。exact 让每条路由自己负责自己的路径。
  *
  * 每条路由的固定动作顺序：**先判回环 → 再判 method → 再读 body → 最后业务**。
@@ -36,10 +36,11 @@ import {
   type WslWakeResult,
 } from '../../shared/api.ts'
 import { selectableSources, sourceOptions, type WorkspaceSource } from '../../shared/choices.ts'
-import { TeleportError } from '../backend/errors.ts'
+import { RemoteCrError } from '../backend/errors.ts'
 import { parseWslVerboseList } from '../backend/wsl/distro.ts'
 import { runInDistro, runInDistroChecked, runWslManagement } from '../backend/wsl/exec.ts'
 import { describeAnchors, resolveAnchorPath as resolveAnchor } from '../backend/ssh/anchor-runtime.ts'
+import { envConflictHint, lookupEnv, warnLegacyOnce } from '../migration/legacy-names.ts'
 import { listSshSources, nodeSshSourcesOptions, resolveTargetByAlias } from '../backend/ssh/targets.ts'
 import { toUnc, uncCandidates } from '../backend/wsl/unc.ts'
 import { listDistroDirectory, listLocalDirectory } from './browse.ts'
@@ -52,7 +53,7 @@ import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
 import { WorkspaceFlows } from './workspace.ts'
 
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
-export interface TeleportWebServer {
+export interface RemoteCrWebServer {
   register(route: {
     kind: 'exact' | 'prefix'
     path: string
@@ -60,8 +61,8 @@ export interface TeleportWebServer {
   }): () => void
 }
 
-export interface TeleportHostContext {
-  readonly webServer: TeleportWebServer
+export interface RemoteCrHostContext {
+  readonly webServer: RemoteCrWebServer
   effect(execute: () => () => void, label: string): unknown
 }
 
@@ -212,7 +213,7 @@ export async function readRemoteFacts(
   })
   if (result.exitCode !== 0) {
     const detail = result.stderrText.trim() === '' ? `node 退出码 ${String(result.exitCode)}` : result.stderrText.trim()
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/node-missing',
       detail: `在 ${distro} 里跑 node 失败：${detail}`,
       nextActions: ['在发行版里安装 Node 22 或更新版本', '确认 node 在 PATH 里'],
@@ -222,7 +223,7 @@ export async function readRemoteFacts(
   try {
     return parseRemoteFacts(result.stdoutText)
   } catch (error) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/unknown',
       detail: error instanceof Error ? error.message : String(error),
       nextActions: ['重试', '手动在发行版里执行 node -v 检查输出'],
@@ -282,7 +283,7 @@ export function defaultAnchorResolver(
   return async (target, remotePath) => {
     const found = resolveTargetByAlias({ homeDir, alias: target.alias, ...nodeSshSourcesOptions() })
     if (found.target === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/ssh-target-unresolved',
         detail: `${target.alias} 无法接入：${found.reason ?? '~/.ssh/config 里没有这个别名'}`,
         nextActions: ['在 ~/.ssh/config 里补一个 Host 块', '刷新页面后重试'],
@@ -301,7 +302,7 @@ function queryValue(url: URL, name: string): string | undefined {
 
 function asSource(value: unknown): WorkspaceSource {
   if (value === 'local' || value === 'wsl' || value === 'ssh' || value === 'docker') return value
-  throw new TeleportError({
+  throw new RemoteCrError({
     code: 'remote/platform-unsupported',
     detail: `未知的工作区来源 ${JSON.stringify(value)}`,
     nextActions: ['刷新页面后重试'],
@@ -311,7 +312,7 @@ function asSource(value: unknown): WorkspaceSource {
 /** 把请求体解析成 `WorkspaceAddInput`。 */
 export function parseAddInput(body: unknown): WorkspaceAddInput {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new TeleportError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
+    throw new RemoteCrError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
   }
   const record = body as Record<string, unknown>
   const source = asSource(record['source'])
@@ -335,7 +336,7 @@ export interface MountedRoute {
  *
  * 返回值让测试与启动自检都能断言「该挂的都挂了」，而不是靠翻代码。
  */
-export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteOptions = {}): MountedRoute[] {
+export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteOptions = {}): MountedRoute[] {
   const executable = options.wslExecutable ?? defaultWslExecutable()
   const homeDir = options.homeDir ?? defaultHomeDir()
   const deps = options.deps ?? createHostDeps(executable, { homeDir })
@@ -350,7 +351,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   const guard = (req: IncomingMessage, res: ServerResponse): boolean => {
     const rejection = options.reject?.(req)
     if (rejection !== undefined) {
-      sendJson(res, rejection, errorEnvelope(new TeleportError({
+      sendJson(res, rejection, errorEnvelope(new RemoteCrError({
         code: 'remote/auth-failed',
         detail: '宿主拒绝了这次请求（Host/Origin 围栏或登录凭据不通过）',
         nextActions: ['从当前页面的同一个 origin 发起', '重新登录后刷新页面'],
@@ -358,7 +359,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       return true
     }
     if (isLoopbackRequest(req)) return false
-    sendJson(res, 403, errorEnvelope(new TeleportError({
+    sendJson(res, 403, errorEnvelope(new RemoteCrError({
       code: 'remote/unknown',
       detail: '这些路由只答本机回环请求',
       nextActions: ['从本机浏览器打开'],
@@ -383,7 +384,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
               sendMethodNotAllowed(res, allowed)
               return
             }
-            const url = new URL(req.url ?? '/', 'http://teleport.invalid')
+            const url = new URL(req.url ?? '/', 'http://remote-cr.invalid')
             try {
               await handler(req, res, url)
             } catch (error) {
@@ -432,7 +433,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     const record = asBody(await readJsonBody(req))
     const distro = record['distro']
     if (typeof distro !== 'string' || distro === '') {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: '缺少 distro',
         nextActions: ['刷新页面后重新选择一个发行版'],
@@ -443,7 +444,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     // 断开发生在校验期间：close 事件已经过去，而 spawn 还没发生——直接收手，别白跑满超时。
     if (signal.aborted) return
     if (!report.distros.some((item) => item.name === distro)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: `${distro} 不在当前发行版清单里`,
         nextActions: ['刷新页面后重新选择', '先装一个发行版：wsl --install'],
@@ -510,11 +511,11 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   mount('/flow', ['GET'], async (_req, res, url) => {
     const id = queryValue(url, 'id')
     if (id === undefined) {
-      throw new TeleportError({ code: 'remote/unknown', detail: '缺少 id', nextActions: ['带上流程 id 再查'] })
+      throw new RemoteCrError({ code: 'remote/unknown', detail: '缺少 id', nextActions: ['带上流程 id 再查'] })
     }
     const snapshot: FlowSnapshot | undefined = flows.get(id)
     if (snapshot === undefined) {
-      throw new TeleportError({ code: 'remote/unknown', detail: `没有流程 ${id}`, nextActions: ['重新发起一次添加'] })
+      throw new RemoteCrError({ code: 'remote/unknown', detail: `没有流程 ${id}`, nextActions: ['重新发起一次添加'] })
     }
     sendJson(res, 200, okEnvelope(snapshot))
   })
@@ -523,11 +524,11 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     const body = await readJsonBody(req)
     const id = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['id'] : undefined
     if (typeof id !== 'string' || id === '') {
-      throw new TeleportError({ code: 'remote/unknown', detail: '缺少 id', nextActions: ['带上流程 id 再取消'] })
+      throw new RemoteCrError({ code: 'remote/unknown', detail: '缺少 id', nextActions: ['带上流程 id 再取消'] })
     }
     const snapshot = flows.cancel(id)
     if (snapshot === undefined) {
-      throw new TeleportError({ code: 'remote/unknown', detail: `没有流程 ${id}`, nextActions: ['重新发起一次添加'] })
+      throw new RemoteCrError({ code: 'remote/unknown', detail: `没有流程 ${id}`, nextActions: ['重新发起一次添加'] })
     }
     sendJson(res, 200, okEnvelope(snapshot))
   })
@@ -553,7 +554,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
   const requireProjection = (): ProjectionService => {
     const service = options.projection
     if (service === undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: '投影服务没有接线：宿主半启动时未传入 projection',
         nextActions: ['确认插件版本与本地 DSH 一致', '重启 dsh 后重试'],
@@ -593,7 +594,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     // 检查与置位之间**不许有 await**：中间隔一个 `readJsonBody` 就是 TOCTOU —— 两个请求都能
     // 通过检查，第二个覆盖 controller，第一个从此不可取消（R1 #2 N1）。
     if (attaching !== undefined) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/attach-busy',
         detail: '已经有一次接入正在进行',
         nextActions: ['等它结束', '或先点面板上的「取消接入」'],
@@ -618,10 +619,10 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
       // 但取消瞬间同时发生的**真失败**（bootstrap-failed / forward-unavailable）必须原样
       // 上抛——否则用户拿到的永远是「已取消」，拿不到可操作的码（R1-m-3）。
       if (controller.signal.aborted) {
-        if (error instanceof TeleportError && error.code !== 'remote/cancelled' && error.code !== 'remote/tunnel-unavailable') {
+        if (error instanceof RemoteCrError && error.code !== 'remote/cancelled' && error.code !== 'remote/tunnel-unavailable') {
           throw error
         }
-        throw new TeleportError({
+        throw new RemoteCrError({
           code: 'remote/cancelled',
           detail: '已取消这次接入',
           nextActions: ['重新点一次「接入」', '换个目标再试'],
@@ -646,7 +647,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     const body = (await readJsonBody(req)) as { paths?: unknown } | null
     const raw = body?.paths
     if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string' || item.length === 0)) {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/workspace-invalid-path',
         detail: 'paths 必须是远端绝对路径的字符串数组',
         nextActions: ['刷新导入列表后重新勾选'],
@@ -672,7 +673,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     const record = asBody(await readJsonBody(req))
     const workspaceId = record['workspaceId']
     if (typeof workspaceId !== 'string' || workspaceId === '') {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: '缺少 workspaceId',
         nextActions: ['先接入远端工作区，再新建会话'],
@@ -691,7 +692,7 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
     const record = asBody(await readJsonBody(req))
     const sessionId = record['sessionId']
     if (typeof sessionId !== 'string' || sessionId === '') {
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/unknown',
         detail: '缺少 sessionId',
         nextActions: ['先建一个远端会话，再取证'],
@@ -745,11 +746,26 @@ export function registerTeleportRoutes(ctx: TeleportHostContext, options: RouteO
  * 比留空更糟——用户会以为那是探测出来的。端口有安全默认（8899），检出根没有。
  */
 function readDefaults(): SourceDefaults {
-  const rawPort = process.env['DSH_TELEPORT_PORT']
+  const portLookup = lookupEnv(process.env, 'DSH_REMOTE_CR_PORT')
+  const rootLookup = lookupEnv(process.env, 'DSH_REMOTE_CR_REMOTE_ROOT')
+  const pairs = [
+    ['DSH_REMOTE_CR_PORT', portLookup],
+    ['DSH_REMOTE_CR_REMOTE_ROOT', rootLookup],
+  ] as const
+  for (const [name, hit] of pairs) {
+    if (hit.conflict) {
+      throw new RemoteCrError({
+        code: 'remote/env-conflict',
+        detail: envConflictHint(name),
+        nextActions: ['删掉旧名变量后重启宿主', '或把新旧两个变量改成同一个值'],
+      })
+    }
+    if (hit.fromLegacy) warnLegacyOnce(name)
+  }
+  const rawPort = portLookup.value
   const parsed = rawPort === undefined ? Number.NaN : Number.parseInt(rawPort, 10)
   const port = Number.isInteger(parsed) && parsed > 0 && parsed < 65_536 ? parsed : 8899
-  const remoteRoot = process.env['DSH_TELEPORT_REMOTE_ROOT'] ?? ''
-  return { port, remoteRoot }
+  return { port, remoteRoot: rootLookup.value ?? '' }
 }
 
 /** 请求体窄化成普通对象；数组与 null 当空对象处理（缺字段会各自报错）。 */
@@ -815,13 +831,13 @@ export interface AttachDraft {
  */
 export function parseAttachDraft(body: unknown): AttachDraft {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new TeleportError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
+    throw new RemoteCrError({ code: 'remote/unknown', detail: '请求体必须是对象', nextActions: ['检查前端序列化'] })
   }
   const record = body as Record<string, unknown>
   const target = readTarget(record['target'])
   const remotePath = record['remotePath']
   if (typeof remotePath !== 'string' || !remotePath.startsWith('/')) {
-    throw new TeleportError({
+    throw new RemoteCrError({
       code: 'remote/path-unreadable',
       detail: 'remotePath 必须是 POSIX 绝对路径',
       nextActions: ['重新选择远端目录'],
@@ -840,8 +856,8 @@ export function parseAttachDraft(body: unknown): AttachDraft {
 }
 
 /** SSH 缺 `localPath` 且宿主没接锚点落实器时的固定说法（两条路径共用，避免文案分叉）。 */
-function anchorNotWired(target: SshConnectTarget): TeleportError {
-  return new TeleportError({
+function anchorNotWired(target: SshConnectTarget): RemoteCrError {
+  return new RemoteCrError({
     code: 'remote/workspace-unwritable',
     detail: `SSH 目标 ${target.alias} 的本地路径必须显式给出：宿主还没有为它建立锚点目录`,
     nextActions: ['先建立锚点目录再接入', '改用 WSL 目标'],

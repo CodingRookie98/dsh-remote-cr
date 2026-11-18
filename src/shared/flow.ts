@@ -14,7 +14,7 @@
  *    缺任何一段都算不完整。
  *
  * 与 `src/local/backend/errors.ts` 的关系：那边是**抛出的异常类**（带 `Error` 原型、
- * 栈、`cause`），这边是**跨线程/跨进程传输的普通对象**。`TeleportError` 结构上满足
+ * 栈、`cause`），这边是**跨线程/跨进程传输的普通对象**。`RemoteCrError` 结构上满足
  * `FlowError`（有单测盯着这条），所以宿主半可以直接把异常塞进状态。
  */
 
@@ -23,21 +23,13 @@ export const FLOW_PHASES = ['probe', 'bootstrap', 'verify', 'launch', 'tunnel', 
 
 export type FlowPhase = (typeof FLOW_PHASES)[number]
 
-/** 每个阶段给用户看的一句话。文案稳定便于断言与截图对比。 */
-export const FLOW_PHASE_LABELS: Readonly<Record<FlowPhase, string>> = {
-  probe: '探测远端环境',
-  bootstrap: '准备远端运行时',
-  verify: '校验版本兼容',
-  launch: '启动远端 dsh',
-  tunnel: '建立反向通路',
-  barrier: '同步凭据屏障',
-  attach: '接入工作区',
-}
+/** 阶段总数（进度条分母）。 */
+export const FLOW_PHASE_COUNT = FLOW_PHASES.length
 
 /** `running` 才可取消；`done`/`failed`/`cancelled` 都是终态。 */
 export type FlowStatus = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
 
-/** 跨进程传输的错误形态；`TeleportError` 结构上满足它。 */
+/** 跨进程传输的错误形态；`RemoteCrError` 结构上满足它。 */
 export interface FlowError {
   readonly code: string
   readonly phase: FlowPhase
@@ -116,14 +108,28 @@ export function canCancel(state: FlowState): boolean {
   return state.status === 'running'
 }
 
-/** 供 UI 的一行文案，稳定便于断言。 */
-export function describeFlow(state: FlowState): string {
-  const label = FLOW_PHASE_LABELS[state.phase]
-  if (state.status === 'failed') return `${label}失败：${state.error?.code ?? 'unknown'}`
-  if (state.status === 'cancelled') return `${label}已取消`
-  if (state.status === 'done') return '连接完成'
-  if (state.status === 'idle') return '尚未开始'
-  return `${label}…`
+/**
+ * 进度的**结构化**形态，供 UI 取字典渲染（双语要求：共享层不产出文案）。
+ *
+ * 曾经这里直接返回中文句子（`探测远端环境…`），英文界面下阶段名与进度一直是中文
+ * （Delta-4 U1）。现在只给 id / 计数 / 错误码，措辞交给 `src/client/locales.ts`。
+ */
+export interface FlowProgress {
+  readonly status: FlowStatus
+  readonly phase: FlowPhase
+  readonly completed: number
+  readonly total: number
+  readonly errorCode?: string
+}
+
+export function flowProgress(state: FlowState): FlowProgress {
+  return {
+    status: state.status,
+    phase: state.phase,
+    completed: state.completed.length,
+    total: FLOW_PHASE_COUNT,
+    ...(state.error === undefined ? {} : { errorCode: state.error.code }),
+  }
 }
 
 /**

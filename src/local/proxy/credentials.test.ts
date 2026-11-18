@@ -81,7 +81,7 @@ test('resolveDshHome：显式参数 > DSH_HOME > ~/.dsh', () => {
 })
 
 test('文件不存在就当只用环境变量；存在则读出来并记下来源路径', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'teleport-cred-'))
+  const dir = await mkdtemp(join(tmpdir(), 'remote-cr-cred-'))
   assert.equal((await LocalCredentials.load({ dshHome: dir, env: {} })).has('X'), false)
 
   const path = join(dir, CREDENTIALS_FILENAME)
@@ -99,7 +99,7 @@ test('权限判定本体：0600 放行，0644/0666 拒绝（Windows 的 mode 无
 })
 
 test('坏掉的凭据文件不会静默退化成空集合', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'teleport-cred-bad-'))
+  const dir = await mkdtemp(join(tmpdir(), 'remote-cr-cred-bad-'))
   const path = join(dir, CREDENTIALS_FILENAME)
   await writeFile(path, 'version: 1\nrefs:\n  A:\n', { mode: 0o600 })
   await assert.rejects(() => LocalCredentials.load({ dshHome: dir, env: {} }), CredentialsDocumentError)

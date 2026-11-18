@@ -144,7 +144,7 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
   }
   const k1 = add({
     id: 'K1',
-    op: '从 body 起 Tab 到 [data-teleport="browser-path"]',
+    op: '从 body 起 Tab 到 [data-remote-cr="browser-path"]',
     expected: '焦点落在路径输入框上',
     actual: reachedTab === null ? 'Tab 24 次仍未进入路径框' : '第 ' + String(reachedTab) + ' 次 Tab 进入路径框',
     pass: reachedTab !== null,
@@ -166,7 +166,7 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
   // ── K1b 聚焦即全选（R1 D-N1：Q3 之前没有任何断言守，K2 自己 Ctrl+A 把它掩盖了）──
   await delay(60);
   const selection1 = await cdp.evaluate(
-    '(() => { const el = document.querySelector("[data-teleport=\'browser-path\']"); if (el === null) return null; return { start: el.selectionStart, end: el.selectionEnd, length: String(el.value || "").length, focused: document.activeElement === el }; })()',
+    '(() => { const el = document.querySelector("[data-remote-cr=\'browser-path\']"); if (el === null) return null; return { start: el.selectionStart, end: el.selectionEnd, length: String(el.value || "").length, focused: document.activeElement === el }; })()',
   );
   const fullSelect =
     selection1 !== null && selection1 !== undefined && selection1.length > 0 &&
@@ -207,7 +207,7 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
   await delay(700);
   const after3 = await focus();
   const issued = await cdp.evaluate('window.__PREVIEW__ ? window.__PREVIEW__.requests.slice(' + String(requestsBefore) + ') : []');
-  const listCalls = (issued === null ? [] : issued).filter((entry) => String(entry.path).startsWith('/teleport/api/list'));
+  const listCalls = (issued === null ? [] : issued).filter((entry) => String(entry.path).startsWith('/remote-cr/api/list'));
   const decoded = listCalls.map((entry) => decodeURIComponent(String(entry.path)));
   const k3 = add({
     id: 'K3',
@@ -236,7 +236,7 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
   const k4 = add({
     id: 'K4',
     op: 'Tab 进入目录列表条目',
-    expected: '焦点落在 [data-teleport="entry"] 上',
+    expected: '焦点落在 [data-remote-cr="entry"] 上',
     actual: reachedEntry === null ? 'Tab 24 次未进入条目' : '第 ' + String(reachedEntry) + ' 次 Tab 进入条目',
     pass: reachedEntry !== null,
     detail: { visited: visited4 },
@@ -309,7 +309,7 @@ export async function runKeyboardSuite({ cdp, outDir, sceneId, viewportTag }) {
   await delay(700);
   const after8 = await focus();
   const issued8 = await cdp.evaluate('window.__PREVIEW__ ? window.__PREVIEW__.requests.slice(' + String(requests8) + ') : []');
-  const list8 = (issued8 === null ? [] : issued8).filter((entry) => String(entry.path).startsWith('/teleport/api/list'));
+  const list8 = (issued8 === null ? [] : issued8).filter((entry) => String(entry.path).startsWith('/remote-cr/api/list'));
   const k8 = add({
     id: 'K8',
     op: 'Enter 进入游标所在目录',

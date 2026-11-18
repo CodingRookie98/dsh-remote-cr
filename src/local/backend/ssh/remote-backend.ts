@@ -12,7 +12,7 @@
  * 条件纠缠（装了但没装对，究竟算探测失败还是启动失败说不清）。
  */
 
-import { TeleportError } from '../errors.ts'
+import { RemoteCrError } from '../errors.ts'
 import type { BackendProbe, LaunchRequest, RemoteBackend } from '../backend.ts'
 import type { RemoteDshHandle } from '../handle.ts'
 import type { SshTarget } from './config.ts'
@@ -86,11 +86,11 @@ export class SshRemoteBackend implements RemoteBackend {
       })
       return result.probe
     } catch (error) {
-      // 指纹不匹配、认证失败这类都是 TeleportError，原样上抛（phase 已由 errors.ts 分好）。
-      // 只有「不是 TeleportError」的意外才包一层，避免上层拿到裸 Error 无从展示。
-      if (isTeleportErrorLike(error)) throw error
+      // 指纹不匹配、认证失败这类都是 RemoteCrError，原样上抛（phase 已由 errors.ts 分好）。
+      // 只有「不是 RemoteCrError」的意外才包一层，避免上层拿到裸 Error 无从展示。
+      if (isRemoteCrErrorLike(error)) throw error
       const message = error instanceof Error ? error.message : String(error)
-      throw new TeleportError({
+      throw new RemoteCrError({
         code: 'remote/probe-incomplete',
         detail: '探测 SSH 目标 ' + this.target + ' 失败：' + message,
         nextActions: ['重试探测', '确认远端可达：ssh -v <目标>', '检查私钥权限与 known_hosts'],
@@ -130,8 +130,8 @@ export class SshRemoteBackend implements RemoteBackend {
   }
 }
 
-/** 只判形状：`errors.ts` 的 TeleportError 有 code/phase/nextActions 三件套。 */
-function isTeleportErrorLike(value: unknown): value is TeleportError {
+/** 只判形状：`errors.ts` 的 RemoteCrError 有 code/phase/nextActions 三件套。 */
+function isRemoteCrErrorLike(value: unknown): value is RemoteCrError {
   return (
     typeof value === 'object' &&
     value !== null &&

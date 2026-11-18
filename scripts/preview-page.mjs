@@ -7,7 +7,7 @@
  * 2. 拦截 'window.fetch'：按 URL 路径吐 scripts/preview-fixtures.mjs 的固定夹具，
  *    请求不出去 —— 既不碰真宿主，也不会因为网络抖动让截图变红；
  * 3. 造一个假的 ctx（slots.inject/register/entries + effect + layout），调用产物导出的
- *    apply(ctx)，然后**从注册结果里**取出 DirectoryFlow / TeleportPanel ——
+ *    apply(ctx)，然后**从注册结果里**取出 DirectoryFlow / RemoteCrPanel ——
  *    这样验的就是「注册对了没有」，而不是「入口有没有把组件再导出一次」；
  * 4. 按场景表点真实按钮（.click()，走组件自己的 onClick），把选择器/请求/错误留在
  *    window.__PREVIEW__ 里，交给 CDP 一侧取证。
@@ -111,18 +111,18 @@ function loadScript(url) {
 
 function respond(fixtures, method, url) {
   const path = url.pathname;
-  if (path === '/teleport/api/sources') return { ok: true, value: fixtures.sources };
-  if (path === '/teleport/api/list') {
+  if (path === '/remote-cr/api/sources') return { ok: true, value: fixtures.sources };
+  if (path === '/remote-cr/api/list') {
     return resolveListing(fixtures.listings, {
       distro: url.searchParams.get('distro') || '',
       path: url.searchParams.get('path') || '',
     });
   }
-  if (path === '/teleport/api/workspace' && method === 'POST') return { ok: true, value: fixtures.workspace };
-  if (path === '/teleport/api/flow' || path === '/teleport/api/flow/cancel') return { ok: true, value: fixtures.flow };
-  if (path === '/teleport/api/workspaces') return { ok: true, value: fixtures.workspaces };
-  if (path === '/teleport/api/projection') return { ok: true, value: fixtures.projection };
-  if (path === '/teleport/api/workspace/importable') return { ok: true, value: fixtures.importable };
+  if (path === '/remote-cr/api/workspace' && method === 'POST') return { ok: true, value: fixtures.workspace };
+  if (path === '/remote-cr/api/flow' || path === '/remote-cr/api/flow/cancel') return { ok: true, value: fixtures.flow };
+  if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
+  if (path === '/remote-cr/api/projection') return { ok: true, value: fixtures.projection };
+  if (path === '/remote-cr/api/workspace/importable') return { ok: true, value: fixtures.importable };
   if (path.endsWith('/wake')) return { ok: true, value: fixtures.wake };
   return {
     ok: false,
@@ -139,12 +139,12 @@ function installFetchInterceptor(fixtures) {
     const method = (init && init.method) || (input && input.method) || 'GET';
     const envelope = respond(fixtures, String(method).toUpperCase(), url);
     state.requests.push({ method: String(method).toUpperCase(), path: url.pathname + url.search, ok: envelope.ok !== false });
-    if (url.pathname === '/teleport/api/list') {
+    if (url.pathname === '/remote-cr/api/list') {
       state.timings.fetches.push({ path: url.pathname + url.search, at: Math.round(performance.now() * 10) / 10 });
     }
     // 延迟夹具：D-S 要拍「唤醒中」与「骨架行」，对应请求必须慢一点回（见 preview-fixtures 的 wakeDelayMs / listDelayMs）。
     const wakeDelayMs = url.pathname.endsWith('/wake') && typeof fixtures.wakeDelayMs === 'number' ? fixtures.wakeDelayMs : 0;
-    const listDelayMs = url.pathname === '/teleport/api/list' && typeof fixtures.listDelayMs === 'number' ? fixtures.listDelayMs : 0;
+    const listDelayMs = url.pathname === '/remote-cr/api/list' && typeof fixtures.listDelayMs === 'number' ? fixtures.listDelayMs : 0;
     if (wakeDelayMs > 0) await sleep(wakeDelayMs);
     if (listDelayMs > 0) await sleep(listDelayMs);
     return new Response(JSON.stringify(envelope), {
@@ -340,7 +340,7 @@ function firstMatch(selectors) {
 }
 
 function currentStep() {
-  const wizard = document.querySelector('[data-teleport="wizard"]');
+  const wizard = document.querySelector('[data-remote-cr="wizard"]');
   return wizard === null ? null : wizard.getAttribute('data-step');
 }
 
@@ -398,23 +398,23 @@ function installHostStyles() {
 }
 
 /**
- * 把页面上所有 [data-teleport] 元素抽成清单。
+ * 把页面上所有 [data-remote-cr] 元素抽成清单。
  *
- * 这是 harness 的**断言面**：marker 名字来自组件自己的 DOM 约定（'data-teleport' 是
+ * 这是 harness 的**断言面**：marker 名字来自组件自己的 DOM 约定（'data-remote-cr' 是
  * 运行时标识，AGENTS.md 里明令不许改），文本与矩形顺带给出「真的渲染出来了」的证据。
  */
 function collectMarkers() {
-  return Array.from(document.querySelectorAll('[data-teleport]')).map((node) => {
+  return Array.from(document.querySelectorAll('[data-remote-cr]')).map((node) => {
     const rect = node.getBoundingClientRect();
     const attrs = {};
     for (const attribute of node.attributes) {
       const name = attribute.name;
-      if (name === 'data-teleport' || name.startsWith('data-') || name === 'title' || name === 'disabled' || name === 'type' || name === 'value') {
+      if (name === 'data-remote-cr' || name.startsWith('data-') || name === 'title' || name === 'disabled' || name === 'type' || name === 'value') {
         attrs[name] = attribute.value;
       }
     }
     return {
-      marker: node.getAttribute('data-teleport'),
+      marker: node.getAttribute('data-remote-cr'),
       tag: node.tagName.toLowerCase(),
       text: (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200),
       attrs,
@@ -434,7 +434,7 @@ window.__PREVIEW_MARKERS__ = collectMarkers;
  */
 function installTimingProbe() {
   const observer = new MutationObserver(() => {
-    const node = document.querySelector('[data-teleport="listing-path"]');
+    const node = document.querySelector('[data-remote-cr="listing-path"]');
     if (node === null) return;
     const text = node.textContent;
     const renders = state.timings.renders;
@@ -470,7 +470,7 @@ window.__PREVIEW_LAYOUT__ = () => {
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const measured = [];
   for (const marker of LAYOUT_SELECTORS) {
-    const node = document.querySelector('[data-teleport="' + marker + '"]');
+    const node = document.querySelector('[data-remote-cr="' + marker + '"]');
     if (node === null) continue;
     const rect = rectOf(node);
     const style = getComputedStyle(node);
@@ -489,19 +489,19 @@ window.__PREVIEW_LAYOUT__ = () => {
     });
   }
   // 「在视口里」不等于「点得到」：元素被 overflow:hidden 的向导裁掉时仍然有矩形。
-  // 所以再补两条判据 —— 中心点命中测试，以及是否越过 [data-teleport='wizard'] 的下边界。
-  const wizardNode = document.querySelector('[data-teleport="wizard"]');
+  // 所以再补两条判据 —— 中心点命中测试，以及是否越过 [data-remote-cr='wizard'] 的下边界。
+  const wizardNode = document.querySelector('[data-remote-cr="wizard"]');
   const wizardRect = wizardNode === null ? null : rectOf(wizardNode);
   for (const item of measured) {
-    const node = document.querySelector('[data-teleport="' + item.marker + '"]');
+    const node = document.querySelector('[data-remote-cr="' + item.marker + '"]');
     if (node === null) continue;
     const centerX = Math.min(Math.max(item.rect.x + item.rect.width / 2, 0), viewport.width - 1);
     const centerY = Math.min(Math.max(item.rect.y + item.rect.height / 2, 0), viewport.height - 1);
     const hit = document.elementFromPoint(centerX, centerY);
-    const hitOwner = hit === null || typeof hit.closest !== 'function' ? null : hit.closest('[data-teleport]');
+    const hitOwner = hit === null || typeof hit.closest !== 'function' ? null : hit.closest('[data-remote-cr]');
     item.centerHittable = item.visible && hit !== null && (hit === node || node.contains(hit));
-    item.centerHitMarker = hitOwner === null ? null : hitOwner.getAttribute('data-teleport');
-    item.inWizard = typeof node.closest === 'function' && node.closest('[data-teleport="wizard"]') !== null;
+    item.centerHitMarker = hitOwner === null ? null : hitOwner.getAttribute('data-remote-cr');
+    item.inWizard = typeof node.closest === 'function' && node.closest('[data-remote-cr="wizard"]') !== null;
     item.clippedByWizard = wizardRect !== null && item.marker !== 'wizard' && item.inWizard === true && item.rect.bottom > wizardRect.bottom + 0.5;
   }
   return {
@@ -526,7 +526,7 @@ window.__PREVIEW_LAYOUT__ = () => {
 /**
  * 焦点取证（D-A 的断言面）。
  *
- * 键鼠断言最怕的就是「看起来变了」：所以这里把 activeElement 的 data-teleport、
+ * 键鼠断言最怕的就是「看起来变了」：所以这里把 activeElement 的 data-remote-cr、
  * 当前 data-active 条目、路径框的值、可 Tab 元素顺序一次性全给出来。
  */
 /** 把所有匹配到某个元素的 CSS 规则列出来（含 media 里的），用于回答「谁在覆盖谁」。 */
@@ -582,7 +582,7 @@ function matchedRulesOf(node) {
 window.__PREVIEW_STYLES__ = (markers) => {
   const list = Array.isArray(markers) ? markers : ['wizard-cancel', 'up', 'back', 'confirm', 'attach', 'new-session', 'browser-reload'];
   return list.map((marker) => {
-    const node = document.querySelector('[data-teleport="' + marker + '"]');
+    const node = document.querySelector('[data-remote-cr="' + marker + '"]');
     if (node === null) return { marker, found: false };
     const style = getComputedStyle(node);
     const matched = matchedRulesOf(node);
@@ -611,29 +611,29 @@ window.__PREVIEW_FOCUS__ = () => {
   const normalize = (value) => String(value === null || value === undefined ? '' : value).replace(/\s+/g, ' ').trim();
   const describe = (element) => {
     if (element === null || element === undefined) return null;
-    const owner = typeof element.closest === 'function' ? element.closest('[data-teleport]') : null;
+    const owner = typeof element.closest === 'function' ? element.closest('[data-remote-cr]') : null;
     return {
       tag: String(element.tagName || '').toLowerCase(),
-      marker: typeof element.getAttribute === 'function' ? element.getAttribute('data-teleport') : null,
-      owner: owner === null ? null : owner.getAttribute('data-teleport'),
+      marker: typeof element.getAttribute === 'function' ? element.getAttribute('data-remote-cr') : null,
+      owner: owner === null ? null : owner.getAttribute('data-remote-cr'),
       text: normalize(element.textContent).slice(0, 80),
       value: typeof element.value === 'string' ? element.value : null,
       disabled: element.disabled === true,
     };
   };
-  const wizard = document.querySelector('[data-teleport="wizard"]');
-  const cursor = document.querySelector('[data-teleport="entry"][data-active="true"]');
-  const pathInput = document.querySelector('[data-teleport="browser-path"]');
-  const listingPath = document.querySelector('[data-teleport="listing-path"]');
-  const tabbable = Array.from(document.querySelectorAll('[data-teleport="wizard"] button, [data-teleport="wizard"] input, [data-teleport="wizard"] [tabindex]'))
+  const wizard = document.querySelector('[data-remote-cr="wizard"]');
+  const cursor = document.querySelector('[data-remote-cr="entry"][data-active="true"]');
+  const pathInput = document.querySelector('[data-remote-cr="browser-path"]');
+  const listingPath = document.querySelector('[data-remote-cr="listing-path"]');
+  const tabbable = Array.from(document.querySelectorAll('[data-remote-cr="wizard"] button, [data-remote-cr="wizard"] input, [data-remote-cr="wizard"] [tabindex]'))
     .filter((element) => element.disabled !== true && (element.tabIndex === undefined || element.tabIndex >= 0))
-    .map((element) => ({ marker: element.getAttribute('data-teleport'), text: normalize(element.textContent).slice(0, 24), tabIndex: element.tabIndex }));
+    .map((element) => ({ marker: element.getAttribute('data-remote-cr'), text: normalize(element.textContent).slice(0, 24), tabIndex: element.tabIndex }));
   return {
     active: node === null || node === document.body ? null : describe(node),
     activeIsBody: node === document.body,
     cursor: cursor === null ? null : { name: normalize(cursor.textContent), rect: rectOf(cursor) },
-    directories: Array.from(document.querySelectorAll('[data-teleport="entry"][data-kind="directory"]')).map((element) => normalize(element.textContent)),
-    files: Array.from(document.querySelectorAll('[data-teleport="entry"][data-kind="file"]')).map((element) => normalize(element.textContent)),
+    directories: Array.from(document.querySelectorAll('[data-remote-cr="entry"][data-kind="directory"]')).map((element) => normalize(element.textContent)),
+    files: Array.from(document.querySelectorAll('[data-remote-cr="entry"][data-kind="file"]')).map((element) => normalize(element.textContent)),
     pathValue: pathInput === null ? null : pathInput.value,
     listingPath: listingPath === null ? null : listingPath.textContent,
     wizardStep: wizard === null ? null : wizard.getAttribute('data-step'),
@@ -693,20 +693,23 @@ async function boot() {
     state.registered = host.names();
 
     const flow = host.first('conversation.hero.workspace.directoryFlow') || entry.DirectoryFlow;
-    const panel = host.first('main') || entry.TeleportPanel;
+    const panel = host.first('main') || entry.RemoteCrPanel;
     if (typeof flow !== 'function') throw new Error('没有拿到 DirectoryFlow：两个 directoryFlow 洞都没注册出组件');
-    if (typeof panel !== 'function') throw new Error('没有拿到 TeleportPanel：main 洞没注册出组件');
+    if (typeof panel !== 'function') throw new Error('没有拿到 RemoteCrPanel：main 洞没注册出组件');
 
+    // 面板场景要看整块面板：向导是模态，挂上就必然遮住主区，所以允许场景显式不挂它。
     const flowRoot = createRoot(document.getElementById('flow-root'));
-    flowRoot.render(
-      React.createElement(flow, {
-        open: true,
-        busy: false,
-        onPicked: (path) => state.actions.push({ ok: true, detail: 'onPicked ' + path }),
-        onCancel: () => state.actions.push({ ok: true, detail: 'onCancel' }),
-        onError: (message) => state.actions.push({ ok: true, detail: 'onError ' + message }),
-      }),
-    );
+    if (scene.hideFlow !== true) {
+      flowRoot.render(
+        React.createElement(flow, {
+          open: true,
+          busy: false,
+          onPicked: (path) => state.actions.push({ ok: true, detail: 'onPicked ' + path }),
+          onCancel: () => state.actions.push({ ok: true, detail: 'onCancel' }),
+          onError: (message) => state.actions.push({ ok: true, detail: 'onError ' + message }),
+        }),
+      );
+    }
 
     const panelRoot = createRoot(document.getElementById('panel-root'));
     panelRoot.render(React.createElement(panel, {}));

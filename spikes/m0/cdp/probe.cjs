@@ -92,7 +92,7 @@ async function main() {
       bodyText: text.slice(0, 400),
       hasAddWorkspaceButton: !!document.querySelector('[aria-label]'),
       addWorkspaceLabels: Array.from(document.querySelectorAll('button[aria-label]')).map(b => b.getAttribute('aria-label')).slice(0, 40),
-      teleportNodes: Array.from(document.querySelectorAll('[data-teleport-spike]')).map(n => n.getAttribute('data-teleport-spike')),
+      teleportNodes: Array.from(document.querySelectorAll('[data-remote-cr-spike]')).map(n => n.getAttribute('data-remote-cr-spike')),
     }
   })()`)
 

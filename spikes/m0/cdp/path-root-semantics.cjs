@@ -6,7 +6,7 @@
 const p = require('node:path')
 
 const uncCwd = String.raw`\\wsl.localhost\ubuntu_dev\home\hui\workspace`
-const anchorCwd = String.raw`C:\Users\hui\.dsh-teleport\anchors\abc123`
+const anchorCwd = String.raw`C:\Users\hui\.dsh-remote-cr\anchors\abc123`
 const cases = ['/etc/hostname', '/home/hui/workspace/probe.txt', 'probe.txt']
 
 for (const input of cases) {

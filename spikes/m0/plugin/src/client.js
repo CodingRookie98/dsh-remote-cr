@@ -10,11 +10,11 @@ window.__ModuleLoader__.load({
     const inject = ["slots", "layout", "uiWorkspace"];
 
     function TeleportIcon() {
-      return h("span", { "data-teleport-spike": "panellist-icon" }, "TP");
+      return h("span", { "data-remote-cr-spike": "panellist-icon" }, "TP");
     }
 
-    function TeleportPanel() {
-      return h("div", { "data-teleport-spike": "panel" },
+    function RemoteCrPanel() {
+      return h("div", { "data-remote-cr-spike": "panel" },
         h("div", null, "TELEPORT-PANEL"),
         h("div", null, "spike: sidebar.panellist + main keyed pair"));
     }
@@ -60,18 +60,18 @@ window.__ModuleLoader__.load({
         .map((entry) => (entry && entry.name) || String(entry))
         .slice(0, 12)
         .join(",");
-      return h("div", { "data-teleport-spike": "local-browser" },
+      return h("div", { "data-remote-cr-spike": "local-browser" },
         h("div", null, "LOCAL-BROWSER status=" + state.status + " path=" + String(state.path)),
-        h("div", { "data-teleport-spike": "local-browser-entries" }, "entries=" + summary),
+        h("div", { "data-remote-cr-spike": "local-browser-entries" }, "entries=" + summary),
         h("div", null, "count=" + state.entries.length + (state.error === null ? "" : " error=" + state.error)),
         h("button", {
           type: "button",
-          "data-teleport-spike": "browse-cwd",
+          "data-remote-cr-spike": "browse-cwd",
           onClick: () => browse(props.cwd),
         }, "browse-cwd"),
         h("button", {
           type: "button",
-          "data-teleport-spike": "browse-own",
+          "data-remote-cr-spike": "browse-own",
           onClick: () => browseOwn(props.cwd),
         }, "browse-own"));
     }
@@ -83,12 +83,12 @@ window.__ModuleLoader__.load({
      * So owner props and injected members arrive as siblings on ONE argument.
      */
     function TeleportDirectoryFlow(props) {
-      return h("div", { "data-teleport-spike": "directory-flow" },
+      return h("div", { "data-remote-cr-spike": "directory-flow" },
         h("div", null, "TELEPORT-ADD-WORKSPACE"),
         h("div", null, "open=" + String(props.open) + " busy=" + String(props.busy)),
         h("button", {
           type: "button",
-          "data-teleport-spike": "pick-local",
+          "data-remote-cr-spike": "pick-local",
           onClick: () => props.onPicked(props.cwd),
         }, "pick-local"),
         h("button", { type: "button", onClick: () => props.onCancel() }, "cancel"),
@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
       });
       ctx.effect(() => track("main", ctx.slots.inject("main", () => ctx.slots.register({
         name: "main", key: PANEL_ID, inject: () => ({}),
-      }, TeleportPanel))), "teleport-spike: main panel");
+      }, RemoteCrPanel))), "teleport-spike: main panel");
       ctx.effect(() => track("sidebar.panellist", ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({
         name: "sidebar.panellist", id: PANEL_ID, order: 20, label: () => "Teleport",
       }, TeleportIcon))), "teleport-spike: panellist icon");

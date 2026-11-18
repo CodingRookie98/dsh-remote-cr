@@ -1,6 +1,6 @@
 # UI 设计（v0.1）
 
-> **结论先行**：左侧栏多一个「瞬移」图标 → 点开在 `main` 区显示「主机 → 工作区」统一视图；「添加工作区」的四选一入口**顶掉官方 `directoryFlow` hole**。官方侧栏工作区列表一个像素都不动。
+> **结论先行**：左侧栏多一个「远端工作台」图标 → 点开在 `main` 区显示「主机 → 工作区」统一视图；「添加工作区」的四选一入口**顶掉官方 `directoryFlow` hole**。官方侧栏工作区列表一个像素都不动。
 > 决策依据见 [`ADR-0005`](../decisions/ADR-0005-workspace-entry-ui.md)；插件同步面板见 [`ADR-0004`](../decisions/ADR-0004-plugin-sync.md)。
 
 ---
@@ -16,20 +16,20 @@
 
 | UI 元素 | 槽位 | kind | 已占位者 | 我们怎么进 |
 |---|---|---|---|---|
-| 左栏「瞬移」图标 | `sidebar.panellist` | list | 官方 Plugins（order 0）、Schedule（order 10） | 新增 `id: 'teleport'`、`order: 20` |
-| 瞬移主面板 | `main` | keyed | 各 panel 用自己的 key | `key: 'teleport'`，与上面同一个 id |
+| 左栏「远端工作台」图标 | `sidebar.panellist` | list | 官方 Plugins（order 0）、Schedule（order 10） | 新增 `id: 'dsh-remote-cr'`、`order: 20` |
+| 远端工作台主面板 | `main` | keyed | 各 panel 用自己的 key | `key: 'dsh-remote-cr'`，与上面同一个 id |
 | 添加工作区向导 | `sidebar.workspaces.directoryFlow` | single | `directory-picker-browse`、`directory-picker-native`（均 priority 0） | `priority: -1` 顶掉（lowest 渲染） |
 | 添加工作区向导（会话空态入口） | `conversation.hero.workspace.directoryFlow` | single | 同上 | 同上，两个 hole 必须同时占 |
 | 连接进度 / 错误 Toast | `shell.overlay` | list | 官方 plugin-manager refresh-toast 等 | 新增条目 |
-| 设置页「瞬移」分区 | `settings.section` | list | 官方多分区 | 新增条目 |
+| 设置页「远端工作台」分区 | `settings.section` | list | 官方多分区 | 新增条目 |
 
 **为什么图标与面板要同一个 id**：`packages/client/ui-sidebar/src/client/index.ts:51-55` 把 `sidebar.panellist` 的 `options.id` 当作 `MainPanelId` 存进 `panels`，`selectPanel(id)` 去 `main` 找同 key 的注册。官方 `ui-plugin-manager`（`src/client/index.ts:113-157`）与 `ui-schedule`（`:168-184`）都是这么配对的。
 
-## 3. 界面一：瞬移面板（`main` key `teleport`）
+## 3. 界面一：「远端工作台」面板（`main` key `dsh-remote-cr`）
 
 ```
-┌─ 侧栏 ─────────────┐┌─ main · 瞬移 ────────────────────────────────────────────────┐
-│  DSH               ││  瞬移                              [ 添加远程工作区 ] [ ⟳ ]  │
+┌─ 侧栏 ─────────────┐┌─ main · 远端工作台 ────────────────────────────────────────────────┐
+│  DSH               ││  远端工作台                              [ 添加远程工作区 ] [ ⟳ ]  │
 │                    ││                                                              │
 │  ✚ 新建会话        ││  本机                                                        │
 │                    ││  ┌────────────────────────────────────────────────────────┐  │
@@ -51,7 +51,7 @@
 │                    ││  Docker                                        ⊘ 计划中      │
 │                    ││                                                              │
 │  ⚙ 设置            ││                                                              │
-│  ◱ 瞬移      ←新   ││                                                              │
+│  ◱ 远端工作台      ←新   ││                                                              │
 └────────────────────┘└──────────────────────────────────────────────────────────────┘
 ```
 
@@ -59,7 +59,7 @@
 
 **混排的真实含义**：本地与远端工作区**在同一张列表里**、同一套视觉、同一套操作（打开 / 重命名 / 归档），但**数据源不同**——本地工作区来自 `ctx.workspaceRegistry`，远端工作区来自插件自己的投影存储。两者不合并成同一个注册表。
 
-> A1 原判据写的是「远端工作区出现在**本地侧栏**」，实际落地是「出现在**瞬移面板**，与本地工作区在同一视图里可比较、可切换」。**A1 已于 2026-10-26 按此改写**（见 §8 第 1 行）。
+> A1 原判据写的是「远端工作区出现在**本地侧栏**」，实际落地是「出现在**「远端工作台」面板**，与本地工作区在同一视图里可比较、可切换」。**A1 已于 2026-10-26 按此改写**（见 §8 第 1 行）。
 
 ## 4. 界面二：添加工作区四选一（顶掉 `directoryFlow`）
 
@@ -105,7 +105,7 @@ export interface DirectoryFlowOwnerProps {
             → 同时把 { backend:'wsl', distro, remotePath } 写进插件存储
 
   选「SSH」 → 主机（~/.ssh/config 别名优先）→ 认证 → 连接
-            → 远端路径浏览 → 本地建锚点 ~/.dsh-teleport/anchors/<hash>/
+            → 远端路径浏览 → 本地建锚点 ~/.dsh-remote-cr/anchors/<hash>/
             → onPicked(锚点路径)
             → 把真实远端路径写进插件存储
 ```
@@ -135,7 +135,7 @@ Windows-WSL 实测（ubuntu_dev，WSL2）：对 `\\wsl.localhost\ubuntu_dev\home
 
 ## 6. 插件同步面板（ADR-0004 的 UI 落点）
 
-只在 `online` 且档位为 `sync` 时从瞬移面板进入，或从向导的最后一步进入。
+只在 `online` 且档位为 `sync` 时从「远端工作台」面板进入，或从向导的最后一步进入。
 
 ```
 ┌─ 同步插件到 ubuntu_dev ─────────────────────────────────────────┐
@@ -176,7 +176,7 @@ Windows-WSL 实测（ubuntu_dev，WSL2）：对 `\\wsl.localhost\ubuntu_dev\home
 
 | # | 文档 | 改动 | 状态 |
 |---|---|---|---|
-| 1 | `requirements.md` A1 | 判据从「出现在本地侧栏」→「出现在**瞬移面板**，与本地工作区同视图可比较」 | ✅ |
+| 1 | `requirements.md` A1 | 判据从「出现在本地侧栏」→「出现在**「远端工作台」面板**，与本地工作区同视图可比较」 | ✅ |
 | 2 | `requirements.md` §5 非目标 | Docker 从「不做」→「**M5 做**」（用户改口） | ✅ |
 | 3 | `requirements.md` A9 + 新增 A11 | A9 改「后端矩阵」；新增 A11「Docker 接口位」 | ✅ |
 | 4 | `requirements.md` §6 | 兼容声明改 `engines.dsh` / `@deepseek-ai/dsh-*` peerDependencies | ✅ |
@@ -197,27 +197,27 @@ Windows-WSL 实测（ubuntu_dev，WSL2）：对 `\\wsl.localhost\ubuntu_dev\home
 
 ## 9. M0 spike 验证结果
 
-spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过，结论按「已验证 / 仍未验证」分列。**包与全部探针脚本在代码区**：[`spikes/m0/`](../../spikes/m0/README.md)（含重跑步骤与踩坑）。
+spike 包 `@dsh-remote-cr/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过，结论按「已验证 / 仍未验证」分列。**包与全部探针脚本在代码区**：[`spikes/m0/`](../../spikes/m0/README.md)（含重跑步骤与踩坑）。
 
 ### 9.1 已验证
 
 | # | 结论 | 证据 |
 |---|---|---|
 | V1 | **`priority: -1` 真能顶掉官方 `directoryFlow`** | 两个 hole 的 entry 表同时存在 priority -1（本插件）与 0（官方），注册不抛错；点「Add workspace」后官方 picker 未出现，渲染的是我们的组件 |
-| V2 | **`sidebar.panellist` + `main` 配对可用** | panellist 列表出现 `teleport`，`mainKeys` 含 `teleport`；点图标后 `[data-teleport-spike="panel"]` 出现 |
+| V2 | **`sidebar.panellist` + `main` 配对可用** | panellist 列表出现 `dsh-remote-cr`，`mainKeys` 含 `dsh-remote-cr`；点图标后 `[data-remote-cr-spike="panel"]` 出现 |
 | V3 | **UNC 路径可作工作区**：`fs.realpath` 恒等、`workspace.create` 成功、`attachSession` 通过、`session header.cwd` 原样落盘 | `workspace.json` 记录 `path: "\\wsl.localhost\ubuntu_dev\home\hui\workspace"`；会话首行 `"type":"session",...,"cwd":"\\wsl.localhost\ubuntu_dev\home\hui\workspace"`；会话目录名 `--wsl.localhost-ubuntu_dev-home-hui-workspace--` |
 | V4 | **cwd 投影层可行**：插件在 `system-prompt/assemble` 上改写 `working-directory:current` 的 text，模型看到的路径即变 | 改写前 `Current working directory: "\\wsl.localhost\ubuntu_dev\home\hui\workspace".`，改写后 `Current working directory: "/home/hui/workspace".`；同会话 `header.cwd` 与 `workingDirectory.get()` 仍是 UNC（真实身份未被污染） |
 | V5 | **投影监听必须 `{ prepend: true }`** | 不带 prepend 时投影不生效：`working-directory` 服务自己注册了 prepend 监听，它在 `await next()` 之后会**覆盖** `contribution.text`；我们的监听若排在它之后，改完就被它盖回 UNC |
 | V6 | **深引官方 picker 不可行，但不需要** | `@deepseek-ai/dsh-client-ui-directory-picker-browse` 的 `files` 只含 locale/lib/types，发布 tarball 里 `package/src/` 条目数 0，`./src/*` 导出是空指针；包入口只导出 `apply`/`inject`，组件未导出。**替代**：自写目录浏览器；但**不能**用 `ctx.uiWorkspace.listDirectory`（见 V8），必须走插件自己的路由（见 V9） |
 | V7 | **`sandbox:policy` 也必须同款投影，且已实现** | 只改 `working-directory:current` 时同会话 `sandbox:policy` 仍写 `the session workspace: "\\wsl.localhost\ubuntu_dev\home\hui\workspace"`。补一个监听同一 `system-prompt/assemble`（同样 `{ prepend: true }`）改写 policy 的 `the session workspace: <json>` 段后，两处同时变成 `/home/hui/workspace`；`projectionHits` 记录两条（`working-directory:current` + `sandbox:policy`），本地 Windows 工作区的 policy 文本不受影响 |
 | V8 | **本机 `directoryFlow` 不能靠 `ctx.uiWorkspace.listDirectory`** | 宿主 loopback + 非 SSH 启动时 `resolveDirectoryPickerBackend` 返回 `native`（`packages/host/directory-picker-auto/src/resolve.ts:55-61`），capability 只有 `pick`；调 `list` 抛 `directory-picker/unavailable: directoryPicker.list needs the browse capability; the composed picker serves "native"`（`packages/api/workspace-controller/src/directory-picker.ts:106-119`）。→ local 分支必须走插件自己的路由，不能复用官方 picker 的 wire 调用 |
-| V9 | **插件自有路由能读 UNC 目录** | `/teleport-spike/list?path=\\wsl.localhost\ubuntu_dev\home\hui` 返回 108 个条目；`\\wsl$\...` 同样 108 个；传 `/home/hui` 得到 `ENOENT: scandir 'D:\home\hui'`（Linux 路径不被 Windows 侧接受）→ **必须传 UNC，不能传 POSIX 路径** |
+| V9 | **插件自有路由能读 UNC 目录** | `/remote-cr-spike/list?path=\\wsl.localhost\ubuntu_dev\home\hui` 返回 108 个条目；`\\wsl$\...` 同样 108 个；传 `/home/hui` 得到 `ENOENT: scandir 'D:\home\hui'`（Linux 路径不被 Windows 侧接受）→ **必须传 UNC，不能传 POSIX 路径** |
 | V10 | **`ctx.fs` 接受 UNC 且相对路径能在 UNC cwd 下解析** | `ctx.fs.resolve(UNC)` → `processPath`/`displayPath` 都是同一 UNC 字符串、`stat().type === 'directory'`；`ctx.fs.resolve('docs', { cwd: UNC })` → `\\wsl.localhost\...\workspace\docs`。**⚠ 本条后半句（「`/home/hui/workspace` 会被解析成 `D:\home\hui\workspace`，所以实参必须是 UNC」）已被 V15 推翻**：那次调用没带会话的 UNC cwd，走的是 `fs-local` 的 `config.cwd`（盘符根），根因见 V15 |
 | V11 | **窄侧栏 rail 未触发** | 1440×900 下 `sidebar.panellist` 的按钮实测 252×36（整行），容器 256 宽；`Add workspace` 按钮 28×28 可见；`priority:-1` 与官方 0 并存时官方工作区列表照常渲染（"Default workspace" / "workspace" 两行都在）。**56px rail 形态未被这一轮覆盖** |
 | V12 | **slot 组件的 props 是一个扁平对象**，不是「owner props + inject 结果」两个参数 | `packages/client/ui-renderer/src/client/scoped-slots.tsx:639` 是 `<Comp {...kit} {...injected} {...slotInjected.props} {...ownerProps} />` —— standard kit、entry `inject` 返回值、slot inject、owner props 全部 spread 到同一个对象，**owner 同名 key 最后覆盖**。所以 `props.open` / `props.onPicked` / `props.listDirectory` 是兄弟字段；写成 `function Flow(owner, injected)` 会在运行时抛 `props.listDirectory is not a function` |
-| V13 | **窄侧栏 rail 形态已复现**：视口 ≤ 900px 时 `sidebar.panellist` 自动退化为 36×36 的纯图标按钮 | 逐步收窄视口实测：1440/1100 宽为整行 252×36（文本 `TPTeleport`），900/780/700/620/560/480 全部为 36×36、`textContent = "TP"`、`aria-label="Teleport"` 仍在（可访问名不丢）。→ **rail 形态下只剩图标本身**，图标必须是能在 36×36 里独立成立的图形；当前 spike 用文字 `"TP"` 占位，正式实现要换 SVG |
+| V13 | **窄侧栏 rail 形态已复现**：视口 ≤ 900px 时 `sidebar.panellist` 自动退化为 36×36 的纯图标按钮 | 逐步收窄视口实测：1440/1100 宽为整行 252×36（文本 `TPTeleport`），900/780/700/620/560/480 全部为 36×36、`textContent = "TP"`、`aria-label="dsh-remote-cr"` 仍在（可访问名不丢）。→ **rail 形态下只剩图标本身**，图标必须是能在 36×36 里独立成立的图形；当前 spike 用文字 `"TP"` 占位，正式实现要换 SVG |
 | V14 | **不存在第三处渲染 `session.cwd` 的 context**（静态取证，`0.2.1-rc.3`） | 枚举全部 `systemPrompt.section` / `systemPrompt.context` 注册点并逐条读文案：`tool-fs/{read,write,edit}` 的 section 只讲工具用法、`time-context` 只给时间、`harness-dev-context` / `user-approval` / `tool-agent-team` / subagent child context 都不引用 cwd。运行时只有 `working-directory:current`（`packages/session/working-directory/src/index.ts:99-110`）与 `sandbox:policy`（`packages/sandbox/sandbox-policy/src/index.ts:42-56`）两处。→ §9.2 原第 3 条消除 |
-| V15 | **UNC 工作区下 POSIX 绝对路径天然可用，不需要实参改写层**（真机，走真实工具派发） | 在挂载了 `cordis` preset 的 agent realm 内用 `ctx.tools.execute` 真实派发 `read`：`/etc/hostname` → `\\wsl.localhost\ubuntu_dev\etc\hostname` 读到；`/home/hui/workspace/.teleport-probe/probe.txt` → 读到 3 行；相对路径 `.teleport-probe/probe.txt` → 按 UNC cwd 解析读到；反证 `/Windows/System32/drivers/etc/hosts` → `\\wsl.localhost\ubuntu_dev\Windows\...` not found（**证明根是 share 根，不是 `C:\` 根**）。根因：`fs-local` 的 `localDisplayPath` 用 `path.resolve(cwd, path)`（`packages/fs/fs-local/src/fsio.ts:145-151`），而 `path.win32.resolve('\\\\server\\share\\dir', '/x')` 得到 `\\\\server\\share\\x` —— UNC cwd 的根就是 share，所以 POSIX 绝对路径与 `\\wsl.localhost\<distro>\...` 指同一个文件。→ §9.2 原第 1 条消除，**`tools/execute` 改写层不必实现** |
+| V15 | **UNC 工作区下 POSIX 绝对路径天然可用，不需要实参改写层**（真机，走真实工具派发） | 在挂载了 `cordis` preset 的 agent realm 内用 `ctx.tools.execute` 真实派发 `read`：`/etc/hostname` → `\\wsl.localhost\ubuntu_dev\etc\hostname` 读到；`/home/hui/workspace/.dsh-remote-cr-probe/probe.txt` → 读到 3 行；相对路径 `.dsh-remote-cr-probe/probe.txt` → 按 UNC cwd 解析读到；反证 `/Windows/System32/drivers/etc/hosts` → `\\wsl.localhost\ubuntu_dev\Windows\...` not found（**证明根是 share 根，不是 `C:\` 根**）。根因：`fs-local` 的 `localDisplayPath` 用 `path.resolve(cwd, path)`（`packages/fs/fs-local/src/fsio.ts:145-151`），而 `path.win32.resolve('\\\\server\\share\\dir', '/x')` 得到 `\\\\server\\share\\x` —— UNC cwd 的根就是 share，所以 POSIX 绝对路径与 `\\wsl.localhost\<distro>\...` 指同一个文件。→ §9.2 原第 1 条消除，**`tools/execute` 改写层不必实现** |
 | V16 | **web 面上 `tool-fs` 在宿主平面被显式禁用，工具只在 preset realm 里可见** | `packages/bundle/web-app/cordis.patch.yml:504-508` 对 `tool-fs` / `tool-fs-search` 设 `disabled: true`，改由每个会话挂 preset（`packages/bundle/web-app/presets/cordis.patch.yml:30-31`）提供。实测：无 agent 时 `ctx.tools.schemas()` 只有 `working_directory` 一个；`ctx.agents.create` + `agentPresets.mount(agentCtx, 'cordis')` 之后同一 scope 可见 33 个工具（`read`/`write`/`edit`/`glob`/`grep`/`pwsh`…）。→ **任何工具层验证必须在 preset realm 内做**，宿主平面派发只会得到 `UNKNOWN_TOOL` |
 
 **投影层结论（已定）**：模型侧要投影的 context 至少两处——`working-directory:current` 与 `sandbox:policy`；两处都改完之后，同一会话里模型看到的 cwd 与写权限边界都是 POSIX 路径，而 `session.header.cwd`、`ctx.fs` 的真实目标、`workingDirectory.get()` 全部保持 UNC（真实身份不被污染）。**投影是纯提示词层，不是身份层**。
@@ -241,7 +241,7 @@ spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过�
 
 | 旧实现的事实 | 后果 |
 |---|---|
-| `DirectoryFlow` 的 10 个 `data-teleport` 容器在 `styles.ts` 里**零命中**（24 个样式区块全挂在 `[data-teleport='panel']` 下） | 弹窗是一排浏览器原生按钮，用户原话「太丑」 |
+| `DirectoryFlow` 的 10 个 `data-remote-cr` 容器在 `styles.ts` 里**零命中**（24 个样式区块全挂在 `[data-remote-cr='panel']` 下） | 弹窗是一排浏览器原生按钮，用户原话「太丑」 |
 | 目录列表**没有上一级**（只在错误分支才渲染） | 进了子目录只能退回来源屏重来 |
 | 点来源卡片立即跳转，没有确认步，`busy` 不作用于来源按钮 | 手滑即离开当前位置；任务进行中还能继续点 |
 | 失败时整块列表被红字替换 | 路径、面包屑、已选发行版全部消失，改一个字符也要从头点 |
@@ -267,7 +267,7 @@ spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过�
 
 ### 10.3 WSL：先唤醒再浏览
 
-`POST /teleport/api/wsl/wake`（body `{distro}`，60s 超时，成功结果缓存 60s）-> `WslWakeResult`。
+`POST /remote-cr/api/wsl/wake`（body `{distro}`，60s 超时，成功结果缓存 60s）-> `WslWakeResult`。
 
 | 结果 | 界面 |
 |---|---|
@@ -287,7 +287,7 @@ spike 包 `@dsh-teleport/spike` 在隔离 `DSH_HOME` + 真实浏览器里跑过�
 
 ### 10.5 面板重排（§3 的现行版）
 
-顶栏一条状态栏（`panel-head` = `panel-title` + `panel-head-main`（流程/相位/终态）+ `panel-status`（连接点 + 环境档）+ `panel-link-actions` 右对齐），主体两栏（`panel-body`：左 `panel-column` 放 `panel-workspaces` 与 `panel-projected`，右 `panel-side` 放 SSH 表单与导入折叠区），底部 `panel-sessions` 表格。全部既有 `data-teleport` 标记保留，只新增容器与 `panel-error-actions`。
+顶栏一条状态栏（`panel-head` = `panel-title` + `panel-head-main`（流程/相位/终态）+ `panel-status`（连接点 + 环境档）+ `panel-link-actions` 右对齐），主体两栏（`panel-body`：左 `panel-column` 放 `panel-workspaces` 与 `panel-projected`，右 `panel-side` 放 SSH 表单与导入折叠区），底部 `panel-sessions` 表格。全部既有 `data-remote-cr` 标记保留，只新增容器与 `panel-error-actions`。
 
 ### 10.6 未验证（交付时的诚实口径）
 

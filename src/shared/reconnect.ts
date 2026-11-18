@@ -167,16 +167,7 @@ export class ReconnectDriver {
  */
 export type LinkPhase = 'idle' | 'connected' | 'retrying' | 'offline'
 
-/** 相位的人话说明；宿主半写快照、面板写状态行，共用同一份措辞。 */
-export function describeLink(phase: LinkPhase): string {
-  switch (phase) {
-    case 'idle':
-      return '尚未连接远端'
-    case 'connected':
-      return '远端已连接'
-    case 'retrying':
-      return '连接已断开，正在按 2s / 4s / 8s 重试'
-    case 'offline':
-      return '远端暂时不可用，每 2 分钟重试一次'
-  }
+/** 相位 → 稳定英文描述（**只给日志**；界面文案由客户端字典渲染）。 */
+export function describeLinkPhase(phase: LinkPhase): string {
+  return 'link ' + phase
 }
