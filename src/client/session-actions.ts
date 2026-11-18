@@ -10,16 +10,23 @@ import { remoteSessionIndex } from './remote-sessions.ts'
  *   - 成功：清掉旧失败并刷新索引（徽标/菜单项立刻反映新状态）；
  *   - 失败：把结构化失败存到模块级，**面板一打开就会看到**（不会因为菜单已关闭而丢失）。
  */
+/**
+ * 会话动作失败的**结构化事实**：只存码与宿主原文。
+ *
+ * 文案不在这里生成——客户端不许自带中文（ADR-0007 + check:cjk），
+ * 由面板用字典把码翻成句子（`localizeFailure`）。
+ */
 export interface SessionActionFailure {
   readonly code: string
   readonly detail: string
-  readonly nextActions: readonly string[]
-  /** 面板错误块的「复制日志」用它（与 PanelFailure 同形）。 */
-  readonly report: string
 }
 
-function reportOf(code: string, detail: string, nextActions: readonly string[]): string {
-  return ['code: ' + code, 'detail: ' + detail, ...nextActions.map((action) => 'next: ' + action)].join('\n')
+/** 把任意异常收成 (code, detail)：认不出码时用 remote/unknown，detail 保留原文。 */
+function factOf(error: unknown): SessionActionFailure {
+  const failure = failureFromError(error)
+  return typeof failure === 'string'
+    ? { code: 'remote/unknown', detail: failure }
+    : { code: failure.code, detail: failure.detail }
 }
 
 let last: SessionActionFailure | null = null
@@ -59,22 +66,7 @@ export async function requestReconnect(
     notify()
     return true
   } catch (error) {
-    const failure = failureFromError(error)
-    last =
-      typeof failure === 'string'
-        ? {
-            code: 'remote/unknown',
-            detail: failure,
-            // 非结构化异常也要给下一步，否则面板的重试按钮会被禁用（审查 B4 副词条）
-            nextActions: ['重试', '复制日志后贴进 issue'],
-            report: reportOf('remote/unknown', failure, ['重试', '复制日志后贴进 issue']),
-          }
-        : {
-            code: failure.code,
-            detail: failure.detail,
-            nextActions: failure.nextActions,
-            report: reportOf(failure.code, failure.detail, failure.nextActions),
-          }
+    last = factOf(error)
     notify()
     return false
   }
