@@ -1,5 +1,6 @@
 import { RemoteCrError } from '../backend/errors.ts'
 import { applySync } from './apply.ts'
+import { acquireWrite, releaseWrite, resetWritesForTest } from './locks.ts'
 import { readRemoteProfile, type RemoteRuntimePaths, type SyncExec } from './read.ts'
 import { decideHostSync, diffBundles, planTotals, type HostPlan, type LocalBundle, type SyncEntry, type SyncResult } from '../../shared/plugin-sync.ts'
 
@@ -21,6 +22,8 @@ export interface SyncBackend {
   readonly homeDir: string
   /** 远端 dsh 检出根（WSL 必给）：同一次读取里顺带探明检出形态的运行时。 */
   readonly checkoutRoot?: string
+  /** staging 相对后缀（SSH 必给）：只认这台目标的目录，不扫别人的。 */
+  readonly stagingSuffix?: string
   /** 兜底解释器（检出形态）；真实值由读取脚本回报的 runtime 优先。 */
   readonly interpreter?: string | null
   /** 本地宿主版本（决定「远端该升到哪个版本」）；读不出为 null。 */
@@ -72,6 +75,7 @@ export async function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView>
     nodeCommand: request.backend.nodeCommand,
     homeDir: request.backend.homeDir,
     ...(request.backend.checkoutRoot === undefined ? {} : { checkoutRoot: request.backend.checkoutRoot }),
+    ...(request.backend.stagingSuffix === undefined ? {} : { stagingSuffix: request.backend.stagingSuffix }),
     profile,
     ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
   })
@@ -107,19 +111,19 @@ export interface ApplyRequest {
 /**
  * POST /plugin-sync 的内核：只接受 install 项；单条失败不影响其它条。
  *
- * 限流：同一 target 同时只允许一次执行 —— 并发执行会让 pnpm 在同一 profile 上互相踩。
+ * 限流：与宿主升级共用一把锁（`locks.ts`）——两者写的是同一份 `<staging>/npm`，
+ * 各管各的会让「升级中点同步」互相踩（R1-B1）。
  */
-const applying = new Set<string>()
 
 export async function applySyncPlan(request: ApplyRequest): Promise<readonly SyncResult[]> {
-  if (applying.has(request.targetId)) {
+  const lock = acquireWrite(request.targetId, 'apply')
+  if (!lock.ok) {
     throw new RemoteCrError({
-      code: 'remote/plugin-sync-unsupported',
-      detail: '这台远端已经在同步中',
-      nextActions: ['等当前同步结束', '或先关闭同步面板'],
+      code: 'remote/plugin-sync-busy',
+      detail: lock.holder === 'host' ? '这台远端正在升级宿主，等它结束再同步' : '这台远端已经在同步中',
+      nextActions: ['等当前动作结束', '或先关闭同步面板'],
     })
   }
-  applying.add(request.targetId)
   try {
     const runtime = request.runtime ?? null
     // 没有 runtime 时兜底命令按定义指向不存在的入口（检出不存在才判 null）——不能把它当出路。
@@ -141,11 +145,11 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
       ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
     })
   } finally {
-    applying.delete(request.targetId)
+    releaseWrite(request.targetId)
   }
 }
 
 /** 测试用：清掉并发锁（进程内状态在用例之间必须复位）。 */
 export function resetApplyingForTest(): void {
-  applying.clear()
+  resetWritesForTest()
 }

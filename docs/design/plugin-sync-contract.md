@@ -50,12 +50,14 @@ export interface SyncResult {
 
 | 方法 | 路径 | 入参 | 出参 | 远端副作用 |
 |---|---|---|---|---|
-| GET | `/remote-cr/api/plugin-sync` | query：`target`（同 attach 的 target 编码）、`profile`（默认 web） | `SyncPlan` | **无**（只读一次 profile 与 node_modules） |
-| POST | `/remote-cr/api/plugin-sync` | body：`{ target, profile, names: string[] }` | `{ results: SyncResult[] }` | 逐条执行 `dsh plugin --profile <p> add <name>@<version>` |
+| GET | `/remote-cr/api/plugin-sync` | query：`target`（同 attach 的 target 编码） | `SyncPlan` | **无**（只读一次 profile 与 node_modules） |
+| POST | `/remote-cr/api/plugin-sync` | body：`{ target, names: string[] }` | `{ results: SyncResult[] }` | 逐条执行 `dsh plugin --profile <p> add <name>@<version>` |
 | GET | `/remote-cr/api/plugin-sync/optout` | 无 | `{ targets: string[] }` | 无（读本地状态根） |
 | POST | `/remote-cr/api/plugin-sync/optout` | body：`{ target, muted: boolean }` | `{ targets: string[] }` | 无（写本地 `~/.dsh-remote-cr/sync-optout.json`） |
 
 约束：
+
+- **profile 由宿主配置决定**（v1 固定 `web`）。契约旧版写过 query/body 可带 `profile`，代码从未实现；已从契约删除（R2-S1），要支持多 profile 时另开。
 
 - 所有路由只答本机回环（与既有 `/remote-cr/api/*` 一致）；
 - 远端读取走「自包含脚本 + 远端 node」（见 spikes/m3-plugin-sync/README.md），**每次 GET 只允许 1 次远端 exec**；
@@ -72,6 +74,7 @@ export interface SyncResult {
 | `remote/plugin-sync-read-failed` | 远端 profile 读不出来（无 home / 无 profile / 脚本失败） | 重试 · 先确认能正常接入 · 复制日志 |
 | `remote/plugin-sync-apply-failed` | 单条安装失败（保留逐条结果） | 重试该条 · 查看远端 npm 网络 · 手动在远端执行命令 |
 | `remote/plugin-sync-unsupported` | 请求里包含不可同步项（official / path / blocked） | 取消勾选这些项后重试 |
+| `remote/plugin-sync-busy` | 同一 target 的另一条写路径正在进行（插件同步 ↔ 宿主升级互斥） | 等当前动作结束 · 或先关闭同步面板 |
 
 ## 4. UI 状态与文案键
 
@@ -80,7 +83,7 @@ export interface SyncResult {
 | closed | 面板只显示入口按钮「插件同步」 | `sync.open` |
 | loading | 列出前先显示「正在读取远端插件…」 | `sync.loading` |
 | ready | 三组列表：可同步（默认全选）/ 已是最新（灰）/ 不可同步（灰 + 原因）；底部「同步选中项（N）」 | `sync.group.install` `sync.group.uptodate` `sync.group.skipped` `sync.reason.*` `sync.apply` `sync.optout` |
-| applying | 逐条显示进行中与结果（成功/失败分开） | `sync.applying` `sync.result.ok` `sync.result.failed` |
+| applying | 显示「同步中…＋请勿关闭」；**结果在整单结束后一次给出**（v1 无流式进度，契约不再声称逐条实时） | `sync.applying` `sync.applyingHint` `sync.result.ok` `sync.result.failed` |
 | done | 汇总「成功 N / 失败 M」+ 复制日志 + 关闭 | `sync.done` |
 
 **「不再提醒」**：ready 状态底部勾选框，写 optout；下次自动打开条件 = 有 install 项 且 该 target 未被静音。
@@ -150,6 +153,11 @@ registry 探测与安装在真机上只有单元/路由级证据，没有一次�
 | node 发现 | 读取脚本自找（`auto`：PATH → staging） | 同左 |
 | dsh 来源 | staging（引导器）或检出 | **检出**：`<remoteRoot>/apps/cli/lib/bin.js`，用 `node` 跑 |
 | 长事务 | ssh channel 由宿主进程持有 | **`wsl.exe` 句柄即生命周期**：句柄活 → 安装活；句柄死 → distro 侧进程被回收 |
+
+**读侧与连接侧同序（R1/R2-B2）**：两边都是「检出优先 → 本目标 staging → 无」。staging 的相对后缀（`.dsh-remote-cr/staging/<anchorId>`）由后端按目标算出后作为 reader 的第 5 个参数传入；reader **不再 `readdirSync` 取第一个目录**（那会把别的目标的 staging 当成这台）。
+WSL 分支**不传** staging 后缀：WSL 的连接面只认检出（`launch.ts` 用 `remoteRoot`），检出被删时读侧就是 `runtime=null` + `requiresRuntime` 拒绝，而不是悄悄去用 staging。这是显式决定，不是遗漏。
+
+**兜底 nodeBin 用空串，不用 `'.'`**（R2-S4）：`PATH='.':$PATH` 会把远端 cwd 里的同名 `dsh` 排在真入口前面，静默跑错二进制还回报成功。
 
 方案 A 的三条落地：
 

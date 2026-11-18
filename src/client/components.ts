@@ -788,7 +788,8 @@ export function SyncDialog(props: {
         {
           type: 'button',
           'data-remote-cr': 'sync-apply',
-          disabled: state.selected.length === 0 || blocked !== null,
+          // 升级宿主期间不许同步：两边写同一份 staging（R1-B1）。
+          disabled: state.selected.length === 0 || blocked !== null || upgrade.phase === 'running',
           onClick: props.onApply,
         },
         t('sync.apply', { count: state.selected.length }),
@@ -834,7 +835,7 @@ export function SyncDialog(props: {
                   type: 'button',
                   'data-remote-cr': 'sync-host-align',
                   'data-confirming': String(props.hostConfirming === true),
-                  disabled: upgrade.phase === 'running',
+                  disabled: upgrade.phase === 'running' || state.phase === 'applying',
                   onClick: props.onAlignHost,
                 },
                 props.hostConfirming === true

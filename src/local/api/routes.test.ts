@@ -19,6 +19,7 @@ import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '..
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, RemoteCrHostContext } from './routes.ts'
 import { RemoteCrError } from '../backend/errors.ts'
+import { acquireWrite, releaseWrite } from '../plugin-sync/locks.ts'
 import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerRemoteCrRoutes, type SyncRoutesOptions } from './routes.ts'
 import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
 import type { SshTarget } from '../backend/ssh/config.ts'
@@ -434,10 +435,26 @@ test('/plugin-sync/host POST：同一 target 并发升级只放行一个（否�
   const envelope = second.json as { ok: boolean; detail?: string }
   assert.equal(envelope.ok, false)
   assert.match(String(envelope.detail), /已经在升级宿主/)
+  assert.equal((envelope as { code?: string }).code, 'remote/plugin-sync-busy')
   assert.equal(installs, 1, '第二个请求不许再发一次 registry 探测')
   release?.()
   const done = await first
   assert.equal((done.json as { ok: boolean }).ok, true)
+})
+
+test('/plugin-sync/host POST：插件同步占着锁时拒绝，且连 plan 都不读（R1-B1）', async () => {
+  const { rig: r, calls } = hostRig({})
+  acquireWrite('test-target-id', 'apply')
+  try {
+    const result = await r.call({ path: '/plugin-sync/host', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET }) })
+    const envelope = result.json as { ok: boolean; code?: string; detail?: string }
+    assert.equal(envelope.ok, false)
+    assert.equal(envelope.code, 'remote/plugin-sync-busy')
+    assert.match(String(envelope.detail), /正在同步插件/)
+    assert.equal(calls.length, 0, '拿不到锁时连 plan 都不该读')
+  } finally {
+    releaseWrite('test-target-id')
+  }
 })
 
 test('没有接入在进行时点取消：回 200 且 cancelled=false，不当成错误', async () => {

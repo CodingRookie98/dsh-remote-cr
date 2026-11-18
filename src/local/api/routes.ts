@@ -53,6 +53,7 @@ import type { SyncEntry } from '../../shared/plugin-sync.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
 import { readLocalBundles } from '../plugin-sync/local.ts'
 import { upgradeRemoteHost } from '../plugin-sync/host-upgrade.ts'
+import { acquireWrite, releaseWrite } from '../plugin-sync/locks.ts'
 import { DEFAULT_MIRRORS } from '../backend/ssh/bootstrap.ts'
 import type { ProjectedSession, ProjectedWorkspace } from '../projection/store.ts'
 import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
@@ -620,9 +621,6 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   // 四个端点都走「先判接线、再读 target」：没接线时明确报错，而不是返回空 plan
   // 让面板显示「已同步」——那会把「功能没上」伪装成「环境很干净」。
 
-  /** 正在升级宿主的 target（同一台并发两路 npm install 会互相踩）。 */
-  const upgradingHosts = new Set<string>()
-
   /** 同步用的稳定 target 标识（与 anchors / 隔离目录的 hostKey 同风格）。 */
   const requireSync = (): SyncRoutesOptions => {
     const sync = options.sync
@@ -714,19 +712,20 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     const body = (await readJsonBody(req)) as { target?: unknown } | null
     const target = readTarget(body?.target)
     // 同一 target 同时只允许一次升级：两路 npm install 会往同一个 prefix 里互相踩。
+    // 与插件同步共用一把锁：两边写的是同一份 `<staging>/npm`（R1-B1）。
     const lockId = await syncOptions.targetId(target)
-    if (upgradingHosts.has(lockId)) {
+    const lock = acquireWrite(lockId, 'host')
+    if (!lock.ok) {
       throw new RemoteCrError({
-        code: 'remote/plugin-sync-unsupported',
-        detail: '这台远端已经在升级宿主',
-        nextActions: ['等当前升级结束', '或先关闭同步面板'],
+        code: 'remote/plugin-sync-busy',
+        detail: lock.holder === 'apply' ? '这台远端正在同步插件，等它结束再升级宿主' : '这台远端已经在升级宿主',
+        nextActions: ['等当前动作结束', '或先关闭同步面板'],
       })
     }
-    upgradingHosts.add(lockId)
     try {
       return await runHostUpgrade(res, target, syncOptions)
     } finally {
-      upgradingHosts.delete(lockId)
+      releaseWrite(lockId)
     }
   })
 

@@ -54,7 +54,7 @@
 ## 错误码索引
 
 <!-- BEGIN GENERATED: error-codes -->
-<!-- 由 scripts/gen-error-index.mjs 生成，共 71 条；不要手改。 -->
+<!-- 由 scripts/gen-error-index.mjs 生成，共 72 条；不要手改。 -->
 
 | 错误码 | 中文文案 | English | 下一步 |
 |---|---|---|---|
@@ -101,6 +101,7 @@
 | `remote/path-unreadable` | 路径读不到 | The path cannot be read | 确认目录存在且本机可读 · 换一个目录 |
 | `remote/platform-unsupported` | 这个目标平台不受支持 | This target platform is not supported | 改用 Linux 远端 · 确认发行版可用 |
 | `remote/plugin-sync-apply-failed` | 远端安装插件失败 | Installing a plugin on the remote failed | 重试该条 · 检查远端 npm 网络 · 在远端手动执行命令 |
+| `remote/plugin-sync-busy` | 这台远端正忙：另一个同步/升级动作正在进行 | This remote is busy: another sync or upgrade is running | 等当前动作结束 · 或先关闭同步面板 |
 | `remote/plugin-sync-read-failed` | 读取远端插件清单失败 | Could not read the remote plugin list | 重试 · 先确认这台远端能正常接入 · 复制日志 |
 | `remote/plugin-sync-unsupported` | 请求里包含不可同步的插件 | The request contains plugins that cannot be synced | 只勾选「可同步」的项后重试 |
 | `remote/port-in-use` | 远端 127.0.0.1 上已有 dsh 在跑，端口被占用 | A dsh is already running on the remote 127.0.0.1; the port is taken | 复用已在运行的远端实例 · 换一个端口重试 · 关掉占用端口的进程 |

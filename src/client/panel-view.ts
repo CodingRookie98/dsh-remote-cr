@@ -53,6 +53,7 @@ import {
   openSync,
   receiveResult,
   receiveSyncPlan,
+  shouldAutoOpenSync,
   selectAllSync,
   toggleSyncEntry,
   type SyncDialogState,
@@ -260,7 +261,7 @@ export function RemoteCrPanel(): unknown {
     }
     try {
       const plan = await readSyncPlan(target)
-      if (auto && (plan.muted || plan.totals.install === 0)) {
+      if (auto && !shouldAutoOpenSync(plan)) {
         setSync(CLOSED)
         return
       }

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { syncBlockedReason } from '../../client/sync-state.ts'
+import { acquireWrite, releaseWrite } from './locks.ts'
 import { applySyncPlan, buildSyncPlan, resetApplyingForTest, type SyncBackend } from './service.ts'
 import { readOptout, setMuted, writeOptout } from './optout.ts'
 
@@ -73,6 +74,29 @@ test('buildSyncPlan：远端已装同版本 → up-to-date（不产生 install�
   assert.equal(plan.entries[0]?.action, 'up-to-date')
   assert.equal(plan.totals.install, 0)
   assert.equal(plan.muted, true)
+})
+
+test('applySyncPlan：宿主升级占着锁时拒绝，执行 0 次且说清在等谁（R1-B1）', async () => {
+  resetApplyingForTest()
+  const calls: string[] = []
+  const { backend: stub } = backend({ ok: true, bundles: [] })
+  const busy = { ...stub, exec: async (script: string) => { calls.push(script); return { code: 0, stdout: '', stderr: '' } } }
+  acquireWrite('t-shared', 'host')
+  try {
+    await assert.rejects(
+      () => applySyncPlan({ backend: busy, targetId: 't-shared', entries: [{ name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null }] }),
+      (error: unknown) => {
+        const typed = error as { code?: string; detail?: string }
+        assert.equal(typed.code, 'remote/plugin-sync-busy', '忙要用独立的码：unsupported 会被字典渲染成「请求里包含不可同步的插件」')
+        assert.match(String(typed.detail), /正在升级宿主/, '要说清在等谁，不能只说「忙」')
+        return true
+      },
+    )
+  } finally {
+    releaseWrite('t-shared')
+  }
+  assert.equal(calls.length, 0, '拿不到锁时不许执行任何命令')
+  resetApplyingForTest()
 })
 
 test('applySyncPlan：requiresRuntime 且没有 runtime → 结构化拒绝，执行 0 次（不拼必然 ENOENT 的命令）', async () => {
@@ -191,7 +215,7 @@ test('applySyncPlan：同一 target 并发执行直接拒绝（避免 pnpm 互�
   const first = applySyncPlan({ backend: stub, targetId: 't3', entries: [{ name: 'a', action: 'install', reasonId: 'missing-remote', localVersion: '1.0.0', remoteVersion: null }] })
   await assert.rejects(
     () => applySyncPlan({ backend: stub, targetId: 't3', entries: [] }),
-    (error: unknown) => (error as { code?: string }).code === 'remote/plugin-sync-unsupported',
+    (error: unknown) => (error as { code?: string }).code === 'remote/plugin-sync-busy',
   )
   release?.()
   await first

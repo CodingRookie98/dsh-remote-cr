@@ -16,6 +16,7 @@ import {
   syncTargetOf,
   hostFailureExtras,
   selectAllSync,
+  shouldAutoOpenSync,
   syncBlockedReason,
   syncGroups,
   toggleSyncEntry,
@@ -44,6 +45,12 @@ test('失败面的可照抄命令与远端原文：原样保留，空串折成 n
   assert.deepEqual(hostFailureExtras({}), { command: null, logTail: null })
   assert.deepEqual(hostFailureExtras({ command: '   ', logTail: '\n' }), { command: null, logTail: null }, '空白不该画出一个空框')
   assert.deepEqual(hostFailureExtras({ command: ' npm i ', logTail: ' x ' }), { command: 'npm i', logTail: 'x' })
+})
+
+test('自动弹窗：有可同步项且未静音才弹（R2-S12）', () => {
+  assert.equal(shouldAutoOpenSync({ muted: false, totals: { install: 2 } }), true)
+  assert.equal(shouldAutoOpenSync({ muted: true, totals: { install: 2 } }), false, '静音后不许再打扰')
+  assert.equal(shouldAutoOpenSync({ muted: false, totals: { install: 0 } }), false, '没差异不弹')
 })
 
 test('runtime=null 且该后端必须有 runtime → 拦下；SSH 的 PATH 形态与旧宿主不拦', () => {
