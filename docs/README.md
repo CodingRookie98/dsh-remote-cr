@@ -56,6 +56,8 @@
 
 ## project/ — 项目运行记录（非长期知识）
 
+> 交接文档：[`handoffs/2026-11-18-wsl-plugin-sync.md`](./project/handoffs/2026-11-18-wsl-plugin-sync.md) —— 给 WSL 目标补插件同步（含实现要点、验收、踩坑清单与可复用探针）。
+
 | 文件 | 内容 |
 |---|---|
 | [m0-spike/README.md](../spikes/m0/README.md) | **交接单**：项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 步骤与踩坑 |
