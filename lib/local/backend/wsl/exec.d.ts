@@ -54,5 +54,10 @@ export interface WslCheckedResult {
  * `describeWslFailure`（它在 UTF-16LE / UTF-8 之间择优），而不是让调用方拿
  * `stderrText`（几乎恒为空）去猜。spawn 逻辑仍然只有 `runWsl` 一份。
  */
-export declare function runInDistroChecked(executable: string, distro: string, command: readonly string[], options?: WslRunOptions): Promise<WslCheckedResult>;
+/** 可注入的执行面：默认就是 `runInDistro`。单测用它验证「诊断是不是真的被挂上」。 */
+export type DistroRunner = (executable: string, distro: string, command: readonly string[], options?: WslRunOptions) => Promise<WslRunResult & {
+    stdoutText: string;
+    stderrText: string;
+}>;
+export declare function runInDistroChecked(executable: string, distro: string, command: readonly string[], options?: WslRunOptions, run?: DistroRunner): Promise<WslCheckedResult>;
 //# sourceMappingURL=exec.d.ts.map

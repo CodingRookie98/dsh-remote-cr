@@ -1,5 +1,6 @@
 import { type SshTarget } from '../backend/ssh/config.ts';
 import { type SshRunOptions, type SshRunResult } from '../backend/ssh/transport.ts';
+import { runInDistroChecked } from '../backend/wsl/exec.ts';
 import type { SyncRoutesOptions } from '../api/routes.ts';
 /**
  * 把同步接到真实宿主（RFC-0003 P2-4c）。
@@ -62,5 +63,14 @@ export interface WslDiagnosisLike {
     readonly detail: string;
     readonly logTail?: string;
 }
+/**
+ * 默认执行面：`runInDistroChecked` 的结果摊平（诊断单独带上来）。
+ *
+ * 导出并留 `checked` 注入缝，是为了让「诊断真的被挂上」这件事**有执行级用例**——
+ * 否则把这里换回 `runInDistro`（修复前那一行）全量测试照样全绿（Delta 复审 BLK-1）。
+ */
+export declare function defaultWslRun(executable: string, distro: string, command: readonly string[], options?: {
+    readonly timeoutMs?: number;
+}, checked?: typeof runInDistroChecked): Promise<Awaited<ReturnType<WslSyncRun>>>;
 export declare function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesOptions;
 //# sourceMappingURL=wire.d.ts.map

@@ -30,6 +30,11 @@ export interface SyncPlanLike {
      * 字段缺省（旧宿主）时按「未知」放行，不拿一个不存在的门禁去拦老版本。
      */
     readonly runtime?: SyncRuntimeLike | null;
+    /**
+     * 服务端声明「这个后端必须有 runtime 才能执行」。与后端拒绝执行的条件**逐字一致**：
+     * SSH 远端要是把 dsh 装在 PATH 上，runtime 同样是 null，但那条兜底命令是可用的。
+     */
+    readonly requiresRuntime?: boolean;
 }
 export interface FailureLikeShape {
     readonly code: string;

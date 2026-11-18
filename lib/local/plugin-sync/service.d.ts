@@ -42,6 +42,12 @@ export interface SyncPlanView {
      * 「先接入一次」，后端（`requiresRuntime`）据此拒绝执行。
      */
     readonly runtime: RemoteRuntimePaths | null;
+    /**
+     * 这个后端是否**必须**有 runtime 才能执行（WSL 为 true：PATH 上没有 dsh）。
+     * 发给客户端是为了让 UI 与后端的判据**同一个条件**：SSH 远端若把 dsh 装在 PATH 上，
+     * runtime 也是 null，但兜底的 `PATH='.':$PATH dsh` 其实是可用的，不该被 UI 误拦。
+     */
+    readonly requiresRuntime: boolean;
 }
 export interface PlanRequest {
     readonly backend: SyncBackend;
