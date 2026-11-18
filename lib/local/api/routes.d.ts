@@ -13,6 +13,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput, type WslWakeResult } from '../../shared/api.ts';
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts';
+import { type SyncBackend } from '../plugin-sync/service.ts';
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
 export interface RemoteCrWebServer {
     register(route: {
@@ -40,6 +41,16 @@ export interface HostDeps {
      */
     wakeDistro(distro: string, signal?: AbortSignal): Promise<WslWakeResult>;
 }
+/** `/plugin-sync*` 所需的外部依赖（都可注入，路由单测不必起真远端）。 */
+export interface SyncRoutesOptions {
+    /** 按 target 解析出远端执行面（node / dsh / home）。 */
+    readonly resolve: (target: ConnectTarget) => Promise<SyncBackend>;
+    /** 本地 `sync-optout.json` 的绝对路径。 */
+    readonly optoutFile: string;
+    /** 本机 profile 目录（读本地已装清单）。 */
+    readonly localProfileDir: string;
+    readonly profile?: string;
+}
 export interface RouteOptions {
     /** `wsl.exe` 的可执行文件名或绝对路径；测试可换。 */
     readonly wslExecutable?: string;
@@ -60,6 +71,11 @@ export interface RouteOptions {
      * 四选一与目录浏览，不该被投影的依赖拖着走。
      */
     readonly projection?: ProjectionService;
+    /**
+     * 插件同步的接线（RFC-0003）。省略时四条 `/plugin-sync*` 路由明确报「未接线」，
+     * 而不是返回空 plan 让面板显示「已同步」。
+     */
+    readonly sync?: SyncRoutesOptions;
     /**
      * SSH 目标的「本地锚点路径」落实器（建目录 + 写 map.json，见 `ssh/anchor-runtime.ts`）。
      *
