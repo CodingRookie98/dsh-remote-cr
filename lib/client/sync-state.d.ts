@@ -1,4 +1,10 @@
-import type { SyncEntry, SyncResult } from '../shared/plugin-sync.ts';
+import type { SyncEntry, SyncResult, SyncReasonId } from '../shared/plugin-sync.ts';
+import type { RemoteCrKey } from './locales.ts';
+/**
+ * 原因 id → 字典键的**类型化映射**（ADR-0007）。
+ * 用 `as never` 拼键会让 tsc 失去保护，漏一个键只会在屏上印出 key。
+ */
+export declare const SYNC_REASON_KEYS: Readonly<Record<SyncReasonId, RemoteCrKey>>;
 /**
  * 同步对话框的**纯状态模型**（RFC-0003 需求① UI）。
  *

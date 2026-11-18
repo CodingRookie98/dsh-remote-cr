@@ -45,6 +45,21 @@ export declare function sessionBadge(props?: {
     readonly sessionId?: unknown;
 }): unknown;
 /**
+ * 同步对话框（RFC-0003 需求①）。
+ *
+ * 纯展示：状态由 `sync-state.ts` 的模型算好，这里只画与回调。五态都要能画出来——
+ * 尤其 `failed`：读远端失败时必须给码 + 下一步，而不是留一个转圈的对话框。
+ */
+export declare function SyncDialog(props: {
+    readonly state: import('./sync-state.ts').SyncDialogState;
+    readonly onToggle: (name: string) => void;
+    readonly onSelectAll: (select: boolean) => void;
+    readonly onApply: () => void;
+    readonly onClose: () => void;
+    readonly onRetry: () => void;
+    readonly onOptout: (muted: boolean) => void;
+}): unknown;
+/**
  * 「添加工作区」向导（RFC-0001 双栏工作台）。
  *
  * 挂在 conversation.hero.workspace.directoryFlow 与 sidebar.workspaces.directoryFlow
