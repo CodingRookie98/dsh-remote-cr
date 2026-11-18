@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
+// 旧名常量只有一处定义（ADR-0006）：体检要报「旧根还在」，也走同一个常量，
+// 免得把字面量又抄一份到迁移目录之外（check:boot 会红）。
+import { LEGACY_HOME_DIR_NAME } from './migration/legacy-names.ts'
+
 /**
  * 安装体检（doctor）。
  *
@@ -116,7 +120,7 @@ export function runDoctor(options: DoctorOptions): DoctorCheck[] {
       : { id: 'state-root', status: 'fail', detail: stateRoot + ' 不可写：迁移与锚点都会失败' },
   )
 
-  const legacyRoot = join(options.homeDir, '.dsh-teleport')
+  const legacyRoot = join(options.homeDir, LEGACY_HOME_DIR_NAME)
   checks.push(
     existsSync(legacyRoot)
       ? { id: 'legacy-root', status: 'warn', detail: '旧状态根仍在：' + legacyRoot + '（确认无回滚需求后可删）' }

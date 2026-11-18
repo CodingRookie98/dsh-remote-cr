@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { LEGACY_HOME_DIR_NAME } from './migration/legacy-names.ts'
 import { formatDoctorReport, runDoctor } from './doctor.ts'
 
 /**
@@ -75,7 +76,7 @@ test('缺浏览器半与补丁分别给出可操作的 fail', () => {
 test('旧状态根只 warn，不 fail（能用，只是没清）', () => {
   const root = makePackage()
   const home = mkdtempSync(join(tmpdir(), 'remote-cr-home-'))
-  mkdirSync(join(home, '.dsh-teleport'), { recursive: true })
+  mkdirSync(join(home, LEGACY_HOME_DIR_NAME), { recursive: true })
   try {
     const checks = runDoctor({ rootDir: root, homeDir: home })
     assert.equal(checks.find((check) => check.id === 'legacy-root')?.status, 'warn')
