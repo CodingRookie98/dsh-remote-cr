@@ -1,7 +1,7 @@
 /**
- * 宿主半的路由表：`/teleport/api/*`。
+ * 宿主半的路由表：`/remote-cr/api/*`。
  *
- * 全部 `kind: 'exact'`：前缀路由会把 `/teleport/api/anything` 也吃掉，
+ * 全部 `kind: 'exact'`：前缀路由会把 `/remote-cr/api/anything` 也吃掉，
  * 之后想加子路径就得先改别人的前缀语义。exact 让每条路由自己负责自己的路径。
  *
  * 每条路由的固定动作顺序：**先判回环 → 再判 method → 再读 body → 最后业务**。
@@ -14,15 +14,15 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput, type WslWakeResult } from '../../shared/api.ts';
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts';
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
-export interface TeleportWebServer {
+export interface RemoteCrWebServer {
     register(route: {
         kind: 'exact' | 'prefix';
         path: string;
         handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
     }): () => void;
 }
-export interface TeleportHostContext {
-    readonly webServer: TeleportWebServer;
+export interface RemoteCrHostContext {
+    readonly webServer: RemoteCrWebServer;
     effect(execute: () => () => void, label: string): unknown;
 }
 /** 路由层需要的全部外部能力；测试注入假实现即可全绿。 */
@@ -129,7 +129,7 @@ export interface MountedRoute {
  *
  * 返回值让测试与启动自检都能断言「该挂的都挂了」，而不是靠翻代码。
  */
-export declare function registerTeleportRoutes(ctx: TeleportHostContext, options?: RouteOptions): MountedRoute[];
+export declare function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options?: RouteOptions): MountedRoute[];
 /**
  * 解析 `/attach` 的请求体。
  *

@@ -1,9 +1,9 @@
 /**
- * dsh-teleport 的**宿主半入口**（\`dsh-teleport\`，node 侧，Loader 挂的就是这个文件）。
+ * dsh-remote-cr 的**宿主半入口**（\`dsh-remote-cr\`，node 侧，Loader 挂的就是这个文件）。
  *
  * 四件事：
  * 1. 以 cordis 插件身份暴露 \`name\` / \`inject\` / \`apply\`——官方 Loader 只认这三样；
- * 2. 把 \`/teleport/api/*\` 挂到宿主的 \`webServer\` 上（真正的路由表在
+ * 2. 把 \`/remote-cr/api/*\` 挂到宿主的 \`webServer\` 上（真正的路由表在
  *    \`local/api/routes.ts\`，那里可以在 node 里被完整单测）；
  * 3. 每条路由前先问官方 \`connection\` 服务要不要拒绝——它的 Host/Origin 围栏 +
  *    登录 token 认证是既有的越权防线，我们再叠一层「只答本机回环」；
@@ -15,7 +15,7 @@
  * \`systemPrompt\` 同理：没有它就注册不上投影，UNC 工作区会把 UNC 路径喂给模型。
  */
 import type { IncomingMessage } from 'node:http';
-import { type MountedRoute, type TeleportHostContext } from './local/api/routes.ts';
+import { type MountedRoute, type RemoteCrHostContext } from './local/api/routes.ts';
 import { type CredentialProxyRuntime } from './local/proxy/runtime.ts';
 import { type PromptProjectionLog } from './local/projection/prompt.ts';
 import { ProjectionService } from './local/projection/service.ts';
@@ -41,13 +41,13 @@ interface EventBus {
         prepend: boolean;
     }): () => void;
 }
-export interface TeleportPluginContext extends TeleportHostContext {
+export interface RemoteCrPluginContext extends RemoteCrHostContext {
     readonly connection?: ConnectionFence;
     readonly systemPrompt?: unknown;
     readonly on?: EventBus['on'];
 }
 /** 一次启动挂上的全部东西；测试与启动自检都能据此断言「该挂的都挂了」。 */
-export interface TeleportMount {
+export interface RemoteCrMount {
     readonly routes: readonly MountedRoute[];
     readonly projection: ProjectionService;
     readonly promptLog: PromptProjectionLog | undefined;
@@ -69,7 +69,7 @@ export interface TeleportMount {
  * 顺序刻意是**先投影、后路由**：投影监听必须在第一个会话被组装之前就位，
  * 否则用户点得比我们挂得快时，首个会话会拿到没投影的 UNC 路径。
  */
-export declare function apply(ctx: TeleportPluginContext): TeleportMount;
+export declare function apply(ctx: RemoteCrPluginContext): RemoteCrMount;
 export { SHARED_PROTOCOL_VERSION, describeShared } from './shared/index.ts';
 export { HALF as LOCAL_HALF, describeSelf as describeLocalHalf } from './local/index.ts';
 //# sourceMappingURL=index.d.ts.map

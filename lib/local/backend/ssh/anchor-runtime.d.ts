@@ -9,7 +9,7 @@
  * 换句话说「本地锚点目录」不是我们自己的约定，是**宿主的前置条件**；少一次 mkdir，接入就会
  * 在宿主那一侧以一句跟锚点毫无关系的错误挂掉。
  *
- * 失败一律抛 `TeleportError`：这条路上没有任何一步可以静默降级——建不出目录就没法接，
+ * 失败一律抛 `RemoteCrError`：这条路上没有任何一步可以静默降级——建不出目录就没法接，
  * 猜一个「差不多的路径」会让会话在本地创建一个指向不存在目录的工作区（铁律 4「失败要响」）。
  */
 import { type AnchorMap } from './anchors.ts';
@@ -25,7 +25,7 @@ export interface AnchorResolution {
     readonly created: boolean;
 }
 export interface AnchorResolveOptions {
-    /** **本地** home（`~/.dsh-teleport/anchors/...` 落在这里），不是远端 home。 */
+    /** **本地** home（`~/.dsh-remote-cr/anchors/...` 落在这里），不是远端 home。 */
     readonly homeDir: string;
     readonly target: SshTarget;
     /** 远端绝对路径，POSIX 形态。 */
@@ -59,7 +59,7 @@ export interface AnchorDirectoryOptions {
  * 列出本机全部锚点映射（doctor 的打印面）。
  *
  * 为什么需要它：锚点是「提示词与工具层共用」的那份真相，排障时用户问的第一句是
- * 「这台机器被映射到哪了」。没有这个入口，就只能让用户去翻 `~/.dsh-teleport/anchors/<id>/map.json`
+ * 「这台机器被映射到哪了」。没有这个入口，就只能让用户去翻 `~/.dsh-remote-cr/anchors/<id>/map.json`
  * ——而那正是我们不想让用户做的事。
  *
  * 读不出来的锚点**不吞**：照样列出来并在 `lines` 里写明坏在哪，否则用户会以为那份映射

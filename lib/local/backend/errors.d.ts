@@ -11,7 +11,7 @@ export declare const CONNECTION_PHASES: readonly ["probe", "bootstrap", "verify"
 export type ConnectionPhase = (typeof CONNECTION_PHASES)[number];
 /** 稳定错误码 → 阶段。码一旦发布就不能改名（UI 与日志都按它匹配）。 */
 export declare const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>>;
-export interface TeleportErrorInit {
+export interface RemoteCrErrorInit {
     code: string;
     /** 面向人的一句话，含实测到的关键值（端口号、版本号、路径）。 */
     detail: string;
@@ -21,16 +21,16 @@ export interface TeleportErrorInit {
     logTail?: string;
     cause?: unknown;
 }
-export declare class TeleportError extends Error {
+export declare class RemoteCrError extends Error {
     readonly code: string;
     readonly phase: ConnectionPhase;
     readonly detail: string;
     readonly nextActions: readonly string[];
     readonly logTail: string;
-    constructor(init: TeleportErrorInit);
+    constructor(init: RemoteCrErrorInit);
     /** 供「复制日志」按钮一次性拷走的文本。 */
     toReport(): string;
 }
 /** 端口占用的专用错误——B3 的裁决落点：检测 + 三个可选项，不静默接管、不杀进程。 */
-export declare function portInUseError(port: number, logTail?: string): TeleportError;
+export declare function portInUseError(port: number, logTail?: string): RemoteCrError;
 //# sourceMappingURL=errors.d.ts.map

@@ -6,7 +6,7 @@
  * **不放进接口的东西**：任何跟 WSL 有关的细节（UTF-16LE、UNC、`--cd`）。那些是实现
  * 内部的private，泄漏到接口里就等于把 M2 挡在门外。
  */
-import type { TeleportError } from './errors.ts';
+import type { RemoteCrError } from './errors.ts';
 import type { RemoteDshHandle } from './handle.ts';
 export type BackendKind = 'wsl' | 'ssh' | 'docker';
 /** 探测得到的事实。全部可断言、可展示给用户；拿不到的字段留空，不猜。 */
@@ -44,5 +44,5 @@ export interface RemoteBackend {
     }>;
 }
 /** 探测/启动可能失败的统一形态——上层只认这个，不用挨个 catch 杂七杂八。 */
-export declare function isTeleportFailure(value: unknown): value is TeleportError;
+export declare function isRemoteCrFailure(value: unknown): value is RemoteCrError;
 //# sourceMappingURL=backend.d.ts.map

@@ -4,7 +4,7 @@
  * 为什么需要这一层：DSH 的 workspaceRegistry 要求工作区是本机**真实存在的目录**
  * （create() 先 realpath 再 stat().isDirectory()，见 docs/design/architecture.md §4.1）。
  * 远端路径在本地文件系统里不存在，所以 SSH 后端必须在本地造一个**锚点目录**顶着工作区身份；
- * 但这样一来 session.header.cwd 就变成盘符路径（C:/Users/hui/.dsh-teleport/anchors/<id>/...），
+ * 但这样一来 session.header.cwd 就变成盘符路径（C:/Users/hui/.dsh-remote-cr/anchors/<id>/...），
  * 而模型要的是**远端**路径（/home/hui/workspace）。UNC 后端靠「share 根就是 POSIX 根」白拿了这个等价
  * （见 ui-design.md §9.1 V15），锚点后端没有这种运气（/etc/hostname 会被解析成 C:/etc/hostname），
  * 所以必须有一张显式的映射表，并且**提示词投影与工具层读同一张表**——两处各写一份就是两份真相。
@@ -18,10 +18,10 @@
  * 3. **上跳段（点点）一律拒绝越界**。锚点目录是模型可写的地方，跑出锚点就能顺着它摸到整块磁盘——
  *    这个方向必须堵死，代价是调用方拿到 undefined 而不是一个「差不多能读」的路径。
  *
- * 落盘位置：~/.dsh-teleport/anchors/<sha256("user@host:port") 前 16 位>/map.json。
+ * 落盘位置：~/.dsh-remote-cr/anchors/<sha256("user@host:port") 前 16 位>/map.json。
  * hash 里带端口：同一台机器的 2222 与 22 常常是两台不同的机器（本机 config 就有这种形态）。
  */
-import { TELEPORT_DIR_NAME } from './known-hosts.ts';
+import { REMOTE_CR_DIR_NAME } from './known-hosts.ts';
 import type { SshTarget } from './config.ts';
 export declare const ANCHORS_DIR_NAME = "anchors";
 export declare const ANCHOR_MAP_FILENAME = "map.json";
@@ -138,5 +138,5 @@ export declare function ensureAnchorDir(options: {
  * 排障时必须打印同一份数据，而不是另写一套解读。
  */
 export declare function describeAnchor(map: AnchorMap): readonly string[];
-export { TELEPORT_DIR_NAME };
+export { REMOTE_CR_DIR_NAME };
 //# sourceMappingURL=anchors.d.ts.map

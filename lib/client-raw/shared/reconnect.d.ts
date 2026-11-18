@@ -79,5 +79,5 @@ export declare class ReconnectDriver {
  * 一句话说清当前处境，而且四下分支穷尽，新增状态会被 `switch` 的返回类型挡住。
  */
 export type LinkPhase = 'idle' | 'connected' | 'retrying' | 'offline';
-/** 相位的人话说明；宿主半写快照、面板写状态行，共用同一份措辞。 */
-export declare function describeLink(phase: LinkPhase): string;
+/** 相位 → 稳定英文描述（**只给日志**；界面文案由客户端字典渲染）。 */
+export declare function describeLinkPhase(phase: LinkPhase): string;

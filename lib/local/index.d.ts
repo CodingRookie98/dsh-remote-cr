@@ -1,5 +1,5 @@
 /**
- * 本地宿主半（`dsh-teleport/local`，node 侧）。
+ * 本地宿主半（`dsh-remote-cr/local`，node 侧）。
  *
  * 把远端 harness 接成 DSH 可用的工作区与会话来源：Backend 抽象、反向通路、凭据代理、投影、断线重连。
  *

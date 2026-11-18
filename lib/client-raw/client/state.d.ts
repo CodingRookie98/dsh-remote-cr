@@ -20,6 +20,7 @@
 import type { DirListing, FlowSnapshot, SourceDefaults, WorkspaceAddInput, WslDiagnosis, WslWakeResult } from '../shared/api.ts';
 import type { SourceOption, WorkspaceSource } from '../shared/choices.ts';
 import { type FlowState } from '../shared/flow.ts';
+import { type FailureLike } from './panel.ts';
 /** 向导当前停在哪一屏。终态三选一（done / failed / cancelled）互斥。 */
 export type WizardStep = 'closed' | 'choose' | 'browse' | 'running' | 'done' | 'failed' | 'cancelled';
 /** WSL 发行版的唤醒状态。idle = 还没试；probing = 正在进行；ok/failed 是终态。 */
@@ -43,6 +44,14 @@ export interface WizardState {
     }[];
     /** 探测失败的原因（没有 wsl.exe 之类）；成功为 null。 */
     readonly sourcesError: string | null;
+    /**
+     * 各通道最近一次失败的**结构化原件**（code + 宿主原文）。
+     *
+     * 分通道而不是单槽（Delta-5 U2）：目录与四选一可以同时失败，单槽会被后者顶掉；
+     * 而且成功之后必须清掉，否则复制日志会一直打印已经解决的旧码。
+     * 界面只显示本地化后的句子；码与原文只进「复制日志」。
+     */
+    readonly failures: Readonly<Partial<Record<FailureChannel, FailureLike>>>;
     readonly source: WorkspaceSource | null;
     readonly distro: string | null;
     readonly wake: WakeState;
@@ -106,7 +115,7 @@ export declare function receiveSources(state: WizardState, payload: {
     readonly defaults: SourceDefaults;
 }): WizardState;
 /** 探测本身失败（路由 500、网络断）。与「探测成功但没装 WSL」是两件事，分开记。 */
-export declare function failSources(state: WizardState, message: string): WizardState;
+export declare function failSources(state: WizardState, failure: FailureLike | string): WizardState;
 /** 选一个来源。不可用的来源**不许选中**——灰显只是外观，这里是真正的门。 */
 export declare function selectSource(state: WizardState, id: WorkspaceSource): WizardState;
 /** 选一个发行版（只对 WSL 分支有意义）。换发行版必须把唤醒结论清掉。 */
@@ -157,7 +166,14 @@ export declare function backToChoose(state: WizardState): WizardState;
  * 正是 R1-B4 那条「旧响应覆盖错目录」。宁可让每个调用点多写三个字符。
  */
 export declare function receiveListing(state: WizardState, listing: DirListing, seq: number): WizardState;
-export declare function failListing(state: WizardState, message: string, seq: number): WizardState;
+/**
+ * 目录读取失败。
+ *
+ * `failure` 可以是**已经本地化过的字符串**（我们自己写的引导语），也可以是结构化失败
+ * ——后者在这里就换成当前语言的文案：宿主 `detail` 是中文明码，直接渲染会让英文界面
+ * 半中半英（Delta-2 ④-1/④-4）。
+ */
+export declare function failListing(state: WizardState, failure: FailureLike | string, seq: number): WizardState;
 /**
  * 导航到另一条路径（路径输入框 / 面包屑 / 上一级共用）。
  *
@@ -188,7 +204,7 @@ export declare function canConfirm(state: WizardState, busy: boolean): boolean;
  *
  * 不退回选择屏：用户可能只是想看进度，被一脚踢回去还要重新选目录。
  */
-export declare function failPoll(state: WizardState, message: string): WizardState;
+export declare function failPoll(state: WizardState, failure: FailureLike | string): WizardState;
 /** 把当前选择包成宿主半要的入参。 */
 export declare function addInputOf(state: WizardState): WorkspaceAddInput;
 /** 发起后台流程：立刻进 running 屏（宿主回的是 running 快照）。 */
@@ -206,15 +222,10 @@ export declare function stepOf(flow: FlowState): WizardStep;
 export declare function isTerminal(state: WizardState): boolean;
 /** 终态后仍要轮询吗：只有 running 需要。 */
 export declare function shouldPoll(state: WizardState): boolean;
+/** 失败通道：三类失败各有各的展示位置，日志里要分别保留。 */
+export type FailureChannel = 'listing' | 'sources' | 'poll';
 /** 进度百分比；没有流程时为 0。 */
 export declare function progressPercent(state: WizardState): number;
-/**
- * 「复制日志」的内容。
- *
- * 四段（码 / 阶段 / 说明 / 下一步）来自 shared/flow.ts#flowReport——两侧同一份，
- * 保证用户复制到的与宿主日志里记的是同一组事实。没失败时给一段人话，让按钮永远
- * 有内容可复制（空剪贴板是最让人困惑的一种「成功」）。
- */
 export declare function reportOf(state: WizardState): string;
 /** 把 flow 的成果转成给 owner 的路径；还没成功时为 null。 */
 export declare function pickedPathOf(state: WizardState): string | null;

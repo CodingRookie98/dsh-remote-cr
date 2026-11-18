@@ -15,11 +15,11 @@ import { LocalCredentials } from './credentials.ts';
 import { PlaceholderTable } from './placeholder.ts';
 import { CredentialProxy } from './proxy.ts';
 /** 默认 salt；改它等于让所有远端已写下的占位串作废。 */
-export declare const DEFAULT_PROXY_SALT = "dsh-teleport/proxy/v1";
+export declare const DEFAULT_PROXY_SALT = "dsh-remote-cr/proxy/v1";
 /** 内置上游地址：只放「官方端点」这种不会引起歧义的常量，其余一律由调用方给。 */
 export declare const DEFAULT_UPSTREAMS: Readonly<Record<string, string>>;
-/** 上游覆盖用的环境变量前缀：`TELEPORT_UPSTREAM_DEEPSEEK=https://…`。 */
-export declare const UPSTREAM_ENV_PREFIX = "TELEPORT_UPSTREAM_";
+/** 上游覆盖用的环境变量前缀：`REMOTE_CR_UPSTREAM_DEEPSEEK=https://…`。 */
+export declare const UPSTREAM_ENV_PREFIX = "REMOTE_CR_UPSTREAM_";
 /** 由环境变量 + 内置表解析上游；返回 `undefined` 表示没配，请求按 upstream-error 收口。 */
 export declare function resolveUpstreamFromEnv(provider: string, env?: NodeJS.ProcessEnv): string | undefined;
 export interface CredentialProxyRuntime {

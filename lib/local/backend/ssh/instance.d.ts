@@ -1,5 +1,5 @@
 export declare const INSTANCE_VERSION = 1;
-export declare const INSTANCE_DIR = ".dsh-teleport/instances";
+export declare const INSTANCE_DIR = ".dsh-remote-cr/instances";
 export declare const DEFAULT_INSTANCE_TTL_MS: number;
 export interface RemoteInstance {
     readonly version: number;

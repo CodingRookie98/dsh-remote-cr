@@ -29,13 +29,13 @@ export interface RegistrationContext {
     effect(execute: () => () => void, label: string): unknown;
 }
 /** 三个要被挂上去的组件。 */
-export interface TeleportComponents {
+export interface RemoteCrComponents {
     readonly panel: unknown;
     readonly icon: unknown;
     readonly flow: unknown;
 }
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
-export declare const PANEL_ID = "teleport";
+export declare const PANEL_ID = "remote-cr";
 /** 侧栏顺序：排在官方面板之后，但比其他插件靠前。 */
 export declare const PANEL_ORDER = 20;
 /** 我们抢占的两个 directoryFlow 洞（`ui-design.md` §4）。 */
@@ -49,5 +49,5 @@ export declare const DIRECTORY_FLOW_SLOTS: readonly ["conversation.hero.workspac
  * 三处注册都包在 `ctx.effect` 里：插件卸载时 slot 必须跟着摘掉，否则重新加载会撞
  * `duplicate`，或者留下一个点不动的按钮。
  */
-export declare function registerSlots(ctx: RegistrationContext, components: TeleportComponents): string[];
+export declare function registerSlots(ctx: RegistrationContext, components: RemoteCrComponents): string[];
 //# sourceMappingURL=registration.d.ts.map

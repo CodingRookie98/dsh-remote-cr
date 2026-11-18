@@ -16,7 +16,7 @@
  *    就失效了。
  */
 /** 占位串的统一前缀；日志与抓包都能一眼认出来。 */
-export declare const PLACEHOLDER_PREFIX = "dsh-teleport-";
+export declare const PLACEHOLDER_PREFIX = "dsh-remote-cr-";
 /** 由 `(salt, ref)` 确定性地算出占位串。 */
 export declare function mintPlaceholder(ref: string, salt: string): string;
 /** 形状判定：这是不是一个占位串（不看它是否已登记）。 */

@@ -3,7 +3,7 @@
  *
  * 三层分工必须分清，否则会写出「看起来在验证、实际没验证」的假安全：
  *
- * 1. **执行层是 OpenSSH**：私有 `known_hosts`（`~/.dsh-teleport/known_hosts`）+
+ * 1. **执行层是 OpenSSH**：私有 `known_hosts`（`~/.dsh-remote-cr/known_hosts`）+
  *    `StrictHostKeyChecking=accept-new`。首次自动接受，指纹变了 OpenSSH 自己会拒绝握手并打印
  *    `REMOTE HOST IDENTIFICATION HAS CHANGED`——拦截能力来自它，不是我们逐字节比对。
  * 2. **记账层是本文件**：把 `LogLevel=VERBOSE` 里的 `Server host key: <algo> SHA256:<fp>`
@@ -15,14 +15,14 @@
  */
 import type { SshTarget } from './config.ts';
 /** 插件自己的状态目录（与 `-o UserKnownHostsFile` 同一个目录，便于一起备份/清理）。 */
-export declare const TELEPORT_DIR_NAME = ".dsh-teleport";
+export declare const REMOTE_CR_DIR_NAME = ".dsh-remote-cr";
 export interface ObservedHostKey {
     /** `ssh-ed25519` / `ssh-rsa` / `ecdsa-sha2-nistp256` … */
     readonly algorithm: string;
     /** `SHA256:...`，原样保留 OpenSSH 的写法（含末尾可能的 `=` 填充）。 */
     readonly fingerprint: string;
 }
-export declare function teleportDir(homeDir: string): string;
+export declare function remoteCrDir(homeDir: string): string;
 /** 交给 OpenSSH 的私有 known_hosts（`-o UserKnownHostsFile=`）。 */
 export declare function knownHostsPath(homeDir: string): string;
 /** 我们自己记的指纹账本。 */

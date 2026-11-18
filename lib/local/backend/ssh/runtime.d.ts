@@ -9,7 +9,7 @@
  * 现在的顺序（每一步都记进 `log`，失败带码）：
  * 1. `remoteRoot/apps/cli/lib/bin.js` 存在 → 用检出（与 WSL 同语义）。
  * 2. 否则探测一次远端（平台/架构/home/node 版本），把 dsh 装进
- *    `<远端 home>/.dsh-teleport/staging/<目标 id>/`，用那里的 `npm/bin/dsh`。
+ *    `<远端 home>/.dsh-remote-cr/staging/<目标 id>/`，用那里的 `npm/bin/dsh`。
  *
  * 三条硬约束：
  *
@@ -35,13 +35,13 @@ export interface RemoteDshRuntime {
     /** 交给 `launchSshDsh` 的启动前缀（不含 `web --port …`）。 */
     readonly argvPrefix: readonly string[];
     readonly source: RemoteDshSource;
-    /** 检出模式下是 `remoteRoot`，staging 模式下是 `<远端 home>/.dsh-teleport/staging/<id>`。 */
+    /** 检出模式下是 `remoteRoot`，staging 模式下是 `<远端 home>/.dsh-remote-cr/staging/<id>`。 */
     readonly dshRoot: string;
     /**
-     * 远端 `$HOME`（同一条检查脚本里的 `TELEPORT_HOME`）。
+     * 远端 `$HOME`（同一条检查脚本里的 `REMOTE_CR_HOME`）。
      *
      * 环境策略要把隔离目录拼在它下面，而它**只有远端知道**：拿本地 home 拼出来的路径
-     * 正是 S9 真机踩过的那类错（`D:\\home\\hui/.dsh-teleport/...`）。
+     * 正是 S9 真机踩过的那类错（`D:\\home\\hui/.dsh-remote-cr/...`）。
      */
     readonly remoteHome: string;
     /** 每一步做了什么、跳过了什么。失败时这条也进 `logTail`。 */
@@ -55,7 +55,7 @@ export interface ResolveRemoteDshRequest {
     readonly remoteRoot: string;
     /** 检出模式下跑 `apps/cli/lib/bin.js` 的解释器；缺省 `node`。 */
     readonly nodeCommand?: string;
-    /** 账本目录；缺省 `<本地 home>/.dsh-teleport/bootstrap`。 */
+    /** 账本目录；缺省 `<本地 home>/.dsh-remote-cr/bootstrap`。 */
     readonly stateDir?: string;
     /** 装哪个版本的 dsh（staging 模式）；缺省由 `bootstrap.ts` 决定。 */
     readonly dshVersion?: string;
@@ -80,4 +80,22 @@ export interface ResolveRemoteDshRequest {
  * 才能在「装」失败与「起」失败之间给出不同的人话（一个是网络/磁盘，一个是端口/权限）。
  */
 export declare function resolveRemoteDsh(request: ResolveRemoteDshRequest): Promise<RemoteDshRuntime>;
+/**
+ * staging 里的启动前缀：**用 staging 的 node 直接跑 dsh 入口**。
+ *
+ * dsh 是 `#!/usr/bin/env node` 的脚本，而启动脚本（`launch.ts`）不会给远端 PATH ——
+ * 在干净机器上直接执行它会以 127 退出（`/usr/bin/env: node: No such file`），
+ * 还会被误分类成 `remote/auth-failed`。显式带 node 就不依赖任何 PATH 约定。
+ */
+/**
+ * staging 里的启动 argv。
+ *
+ * node 有两个可能来源：我们自己装进 staging 的那份（`bin/node`），或远端系统那份。
+ * 后者在 node 步骤被跳过时**不存在于 staging**，写死 `staging/bin/node` 会让远端以
+ * `sh: bin/node: not found` 起来就死（真机回归在 gcp 上抓到，且被误判成 auth-failed）。
+ * @param stagingDir - staging 根。
+ * @param stagingBin - `staging/npm/bin/dsh`。
+ * @param useStagingNode - true 表示 node 也是我们装的。
+ */
+export declare function stagingArgv(stagingDir: string, stagingBin: string, useStagingNode: boolean): readonly string[];
 //# sourceMappingURL=runtime.d.ts.map

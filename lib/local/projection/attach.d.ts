@@ -15,7 +15,7 @@
  * 3. **失败一律结构化**：远端返回的形状不对时抛 `remote/unknown` 并带上是哪个端点，
  *    绝不把 `undefined` 当空数组塞进投影表（那会显示成「远端什么都没有」）。
  */
-import { TeleportError } from '../backend/errors.ts';
+import { RemoteCrError } from '../backend/errors.ts';
 import type { ProjectionRpc } from './remote.ts';
 import type { ProjectedSession, ProjectedWorkspace, ProjectionStore } from './store.ts';
 /** 远端 `WorkspaceView` 的本地窄化声明（`workspace-controller/src/types.ts:18-30`）。 */
@@ -94,7 +94,7 @@ export interface CreatedSession {
      * 单独一个字段而不是抛异常：会话已经建成了，把它丢掉等于让用户白等一次
      * `session/create`；但也不能不说 —— 那会让「取证很慢」变成一个查不出来的谜。
      */
-    readonly preheatError?: TeleportError;
+    readonly preheatError?: RemoteCrError;
 }
 /**
  * 在已接入的远端工作区里建一个会话。

@@ -7,12 +7,12 @@
  *
  * 三条硬约束，每一条都有真机理由：
  *
- * 1. **机密只进环境变量**（`TELEPORT_SSH_SECRET`）→ askpass helper 从环境读。
+ * 1. **机密只进环境变量**（`REMOTE_CR_SSH_SECRET`）→ askpass helper 从环境读。
  *    argv 在 Windows 上能被其他进程看到（任务管理器、WMI），口令进 argv 等于公开。
  *    `buildSshInvocation` 的测试会断言 argv 里**没有**机密子串。
  * 2. **密码登录必须显式禁用公钥与 agent**（`PubkeyAuthentication=no` + `IdentitiesOnly=yes`）。
  *    否则 agent 里的钥匙会先被试一遍，把 `MaxAuthTries` 用光，密码还没轮到就被踢。
- * 3. **主机密钥走私有 known_hosts**（`~/.dsh-teleport/known_hosts`），不写用户的
+ * 3. **主机密钥走私有 known_hosts**（`~/.dsh-remote-cr/known_hosts`），不写用户的
  *    `~/.ssh/known_hosts`：插件无权替用户改全局信任库。
  */
 import type { SshTarget } from './config.ts';
@@ -25,7 +25,7 @@ export interface SshAuth {
     readonly passphrase?: string;
 }
 /** 机密环境变量名：askpass helper 只认这个。 */
-export declare const SECRET_ENV = "TELEPORT_SSH_SECRET";
+export declare const SECRET_ENV = "REMOTE_CR_SSH_SECRET";
 /** OpenSSH 8.4+：无 tty 时也强制走 askpass（9.5p2 支持）。 */
 export declare const ASKPASS_REQUIRE_ENV = "SSH_ASKPASS_REQUIRE";
 export interface SshConnectOptions {
@@ -84,8 +84,8 @@ export declare function buildSftpInvocation(options: SshConnectOptions, batch: s
 /**
  * askpass helper 的脚本正文。
  *
- * 它**不包含任何机密**：只把 `TELEPORT_SSH_SECRET` 打到 stdout。这样脚本可以落盘
- * （`~/.dsh-teleport/askpass.cjs`，权限 600），而机密始终只活在父进程的环境里。
+ * 它**不包含任何机密**：只把 `REMOTE_CR_SSH_SECRET` 打到 stdout。这样脚本可以落盘
+ * （`~/.dsh-remote-cr/askpass.cjs`，权限 600），而机密始终只活在父进程的环境里。
  * 用 CommonJS 后缀是刻意的：`node` 直接执行单文件时不必关心上层 `package.json` 的 `type`。
  */
 export declare function askpassScript(): string;
@@ -127,7 +127,7 @@ export interface SshRunResult {
     readonly stderr: string;
 }
 /**
- * 跑一条远端命令并收集输出；非零退出**必定**变成 `TeleportError`。
+ * 跑一条远端命令并收集输出；非零退出**必定**变成 `RemoteCrError`。
  *
  * 超时/取消的语义：立刻 reject 并 kill，之后的 `exit`/`error` 事件一律忽略
  * （`settled` 闸门）。这条不是洁癖——杀掉 `ssh` 之后它还会吐一个 `exit`，

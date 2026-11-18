@@ -14,7 +14,7 @@
  * 同样是 `Permission denied`，用私钥时是「这把钥匙不被接受」，用密码时是「密码不对」，
  * 用户要做的动作完全不同。文案表在 `SSH_FAILURE_TABLE`，测试逐条锁住。
  */
-import { TeleportError } from '../errors.ts';
+import { RemoteCrError } from '../errors.ts';
 import type { SshAuthKind } from './transport.ts';
 export interface SshFailureContext {
     /** 这次连接用的认证方式：决定「认证被拒」该怎么解释。 */
@@ -43,5 +43,5 @@ export declare const SSH_FAILURE_TABLE: readonly SshFailureRule[];
  * 判定一条 stderr，返回结构化错误。**永远返回错误**——没有「未知就放过」的分支，
  * 因为铁律 4 要求失败要响；认不出来时给 `remote/unknown` 并保留原文日志尾。
  */
-export declare function classifySshFailure(stderr: string, context: SshFailureContext): TeleportError;
+export declare function classifySshFailure(stderr: string, context: SshFailureContext): RemoteCrError;
 //# sourceMappingURL=errors.d.ts.map

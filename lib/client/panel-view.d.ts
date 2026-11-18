@@ -1,5 +1,5 @@
 /**
- * 「瞬移」面板（`main` 槽里的仪表盘）。
+ * 「远端工作台」面板（`main` 槽里的仪表盘）。
  *
  * 为什么从 components.ts 拆出来：那个文件已经 1800 行，而面板与向导是两个**独立的渲染根**
  * ——它们没有共享状态、没有互相引用，只共享「怎么把 store 里的状态读进组件」这几个小工具。
@@ -26,7 +26,7 @@ export interface PanelFailure {
     readonly intent?: RetryIntent;
 }
 /** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
-export declare function TeleportIcon(): unknown;
+export declare function RemoteCrIcon(): unknown;
 /**
  * 主面板：向导进度 + 已添加的目录 + 已投影的远端工作区与会话 + 会话取证。
  *
@@ -59,6 +59,6 @@ type RetryIntent = {
     readonly kind: 'probe';
     readonly sessionId: string;
 };
-export declare function TeleportPanel(): unknown;
+export declare function RemoteCrPanel(): unknown;
 export {};
 //# sourceMappingURL=panel-view.d.ts.map

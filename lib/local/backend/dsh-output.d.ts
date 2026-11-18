@@ -9,7 +9,7 @@
  *   （外层还有 `dsh: startup failed: 2 required plugins did not activate`）
  * - 无 node：`nohup: failed to run command 'node': No such file or directory`
  */
-import { TeleportError } from './errors.ts';
+import { RemoteCrError } from './errors.ts';
 import type { DshEndpoint } from './handle.ts';
 export type { DshEndpoint };
 /**
@@ -36,5 +36,5 @@ export declare function readStartFailure(logText: string): StartFailureFacts;
  * 否则所有失败都会被「2 required plugins did not activate」这层包装吞掉，用户拿不到
  * 「是端口被占了」这种能立刻动手的信息（铁律 4「失败要响」）。
  */
-export declare function classifyStartFailure(logText: string): TeleportError;
+export declare function classifyStartFailure(logText: string): RemoteCrError;
 //# sourceMappingURL=dsh-output.d.ts.map

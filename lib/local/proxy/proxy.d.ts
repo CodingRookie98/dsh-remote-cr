@@ -30,7 +30,7 @@ export interface SubstitutionRecord {
 /** 一条入站请求的完整记录。 */
 export interface ProxyRecord {
     readonly at: string;
-    /** 发起该请求的远端环境标识（远端 patch 注入的 `x-teleport-host`，缺省回落 socket 地址）。 */
+    /** 发起该请求的远端环境标识（远端 patch 注入的 `x-remote-cr-host`，缺省回落 socket 地址）。 */
     readonly remote: string;
     readonly method: string;
     readonly provider: string;

@@ -22,15 +22,15 @@
  * 绝不静默降级：转发建不起来时 `ExitOnForwardFailure=yes` 会让 ssh 直接失败，
  * 而不是打个 warning 继续跑——否则远端拿不到代理，第一次推理才会神秘失败。
  */
-import { TeleportError } from '../errors.ts';
+import { RemoteCrError } from '../errors.ts';
 import type { RemoteDshHandle } from '../handle.ts';
 import type { SshTarget } from './config.ts';
 import { type SshAuth } from './transport.ts';
 /** 远端 agent 读这个变量取凭据代理地址；名字写进远端脚本，改它就是改契约。 */
-export declare const PROXY_URL_ENV = "TELEPORT_PROXY_URL";
+export declare const PROXY_URL_ENV = "REMOTE_CR_PROXY_URL";
 /** 看门狗标记：回收是否干净靠它们从日志里判，不靠猜。 */
-export declare const WATCHDOG_PID_MARK = "TELEPORT_WATCHDOG_PID=";
-export declare const WATCHDOG_KILLED_MARK = "TELEPORT_WATCHDOG_KILLED";
+export declare const WATCHDOG_PID_MARK = "REMOTE_CR_WATCHDOG_PID=";
+export declare const WATCHDOG_KILLED_MARK = "REMOTE_CR_WATCHDOG_KILLED";
 /**
  * 显式回收行。
  *
@@ -39,7 +39,7 @@ export declare const WATCHDOG_KILLED_MARK = "TELEPORT_WATCHDOG_KILLED";
  * 本地 SIGTERM 才跑，回收判定因此晚 4s 以上、被误报成「远端子进程可能还活着」。
  * 改成写一行明确的控制行，回收就不再依赖 EOF 的语义。
  */
-export declare const WATCHDOG_EXIT_LINE = "TELEPORT_WATCHDOG_EXIT";
+export declare const WATCHDOG_EXIT_LINE = "REMOTE_CR_WATCHDOG_EXIT";
 /**
  * 驻留行：本地要走，但**别杀**远端 dsh。
  *
@@ -47,7 +47,7 @@ export declare const WATCHDOG_EXIT_LINE = "TELEPORT_WATCHDOG_EXIT";
  * KEEP = 放手（M3-2b 的「长任务」）。同一行控制字里做分支，而不是靠「关 stdin 还是发信号」
  * 区分 —— 后者在真机上已经证明不可靠（-R 连接不保证把 EOF 送到远端）。
  */
-export declare const WATCHDOG_KEEP_LINE = "TELEPORT_WATCHDOG_KEEP";
+export declare const WATCHDOG_KEEP_LINE = "REMOTE_CR_WATCHDOG_KEEP";
 export interface SshLaunchStream {
     on(event: 'data', listener: (chunk: {
         toString(encoding?: string): string;
@@ -95,7 +95,7 @@ export interface SshLaunchOptions {
     readonly cwd?: string | null;
     readonly extraArgs?: readonly string[];
     /**
-     * 追加给远端 dsh 进程的环境变量；值里可用 `$TELEPORT_PROXY_URL`（拿到 `-R` 端口后才展开）。
+     * 追加给远端 dsh 进程的环境变量；值里可用 `$REMOTE_CR_PROXY_URL`（拿到 `-R` 端口后才展开）。
      *
      * 用途：把远端 provider 的 baseURL / key 指到本机代理。没有它，「凭据不出本机」只能靠
      * 用户手工在远端写配置，而那一步没法验证。
@@ -159,15 +159,15 @@ export declare function buildRemoteLaunchScript(options: {
      *
      * 为什么需要它：凭据代理的**远端端口是转发建立之后才分配的**（`-R 127.0.0.1:0:…`），
      * 而「把模型请求指向本机代理」只能靠环境变量告诉远端（provider 的 baseURL 读
-     * `DEEPSEEK_BASE_URL`，key 读 `DEEPSEEK_API_KEY`）。值里可以写 `$TELEPORT_PROXY_URL`，
+     * `DEEPSEEK_BASE_URL`，key 读 `DEEPSEEK_API_KEY`）。值里可以写 `$REMOTE_CR_PROXY_URL`，
      * 由本脚本在拿到端口之后展开 —— 调用方在启动前并不知道端口，所以必须支持这个引用。
      */
     readonly extraEnv?: Readonly<Record<string, string>>;
 }): string;
 /**
- * 把 `extraEnv` 的一个值渲染成 shell 词：`$TELEPORT_PROXY_URL` 保持为引用，其余按单引号转义。
+ * 把 `extraEnv` 的一个值渲染成 shell 词：`$REMOTE_CR_PROXY_URL` 保持为引用，其余按单引号转义。
  *
- * 为什么不能整体 `shellQuote`：那会把引用变成字面量 `$TELEPORT_PROXY_URL`，远端拿到的
+ * 为什么不能整体 `shellQuote`：那会把引用变成字面量 `$REMOTE_CR_PROXY_URL`，远端拿到的
  * 就是一个不存在的地址 —— 而且是**看起来像成功**的那种失败（dsh 起来了、推理才连不上）。
  */
 export declare function shellWordWithProxyUrl(value: string): string;
@@ -188,7 +188,7 @@ export declare function parseAllocatedPort(logText: string): number | undefined;
  * 必须在 `classifyStartFailure` 之前判：那条分类器认的是 dsh 自己的启动话术，
  * 而转发失败发生在 dsh 还没被启动的时候（`ExitOnForwardFailure` 让 ssh 提前退出）。
  */
-export declare function classifyTunnelFailure(logText: string): TeleportError | undefined;
+export declare function classifyTunnelFailure(logText: string): RemoteCrError | undefined;
 /** 让内核挑一个空闲的本地端口；挑不到就报错，不退化成「用默认端口试试」。 */
 export declare function pickFreeLocalPort(): Promise<number>;
 /**

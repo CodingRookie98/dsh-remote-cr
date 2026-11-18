@@ -17,13 +17,20 @@ export type WorkspaceSource = (typeof WORKSPACE_SOURCES)[number];
  * `unavailable` = 本机能力不足（例如没有 `wsl.exe`），需要用户先装东西。
  */
 export type SourceAvailability = 'available' | 'planned' | 'unavailable';
+/**
+ * 不可用原因（**id，不是文案**）。
+ *
+ * 双语要求（ADR-0007 §1）：共享层只产出 id，文案由客户端字典渲染。
+ * 这里曾直接返回中文句子，导致英文界面下四个来源的标题与原因一直是中文（Delta-4 U1）。
+ */
+export type SourceReasonId = 'none' | 'wsl-missing' | 'wsl-no-distro' | 'wsl-probe-error' | 'ssh-no-host' | 'docker-planned';
 export interface SourceOption {
     readonly id: WorkspaceSource;
-    /** 面板上的短标签。 */
-    readonly label: string;
     readonly availability: SourceAvailability;
-    /** 灰显/禁用时的原因，同时作为 tooltip 与无障碍描述；可用时为空串。 */
-    readonly reason: string;
+    /** 灰显/禁用原因的 id；可用时为 `none`。 */
+    readonly reasonId: SourceReasonId;
+    /** 宿主探测到的**原文**（仅 `wsl-probe-error`）：只作为原因的补充说明，不参与翻译。 */
+    readonly reasonDetail?: string;
 }
 /**
  * 不可用时那一句话：区分「没装 WSL」「装了但没有发行版」「探测本身失败」。
@@ -34,7 +41,10 @@ export interface SourceOption {
 export declare function wslUnavailableReason(input: {
     readonly wslProbeError?: string | null;
     readonly wslDistroCount?: number;
-}): string;
+}): {
+    readonly reasonId: SourceReasonId;
+    readonly reasonDetail?: string;
+};
 /**
  * 由「本机能力」推导出四选一的展示状态。
  *

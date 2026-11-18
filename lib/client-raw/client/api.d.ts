@@ -1,5 +1,5 @@
 /**
- * 浏览器半调宿主半的唯一通道：`/teleport/api/*`。
+ * 浏览器半调宿主半的唯一通道：`/remote-cr/api/*`。
  *
  * 为什么不用 `ctx.uiWorkspace.listDirectory`：本机回环宿主的 directory-picker 能力是
  * `native`，只有 `pick` 没有 `list`，调用会抛 `directory-picker/unavailable`
@@ -8,16 +8,16 @@
  *
  * 三条纪律：
  * 1. **错误必须是结构化的**——宿主半返回 `{ ok: false, code, detail, nextActions }`，
- *    这里原样抛成 `TeleportApiError`，UI 才有「可复制的错误」而不是一个 `Failed to fetch`。
+ *    这里原样抛成 `RemoteCrApiError`，UI 才有「可复制的错误」而不是一个 `Failed to fetch`。
  * 2. **非 2xx 也要能读出错误体**：宿主用 4xx/5xx 表达拒绝时，body 里仍有可读原因。
  * 3. **线上形状只有一份**：所有类型都从 `src/shared/api.ts` 来，两侧改字段会在
  *    `tsc` 阶段炸，而不是在浏览器里变成 `undefined`。
  */
 import type { ImportableWorkspaceInfo } from '../shared/api.ts';
 /** 宿主半挂载的前缀；与 `src/local/api/routes.ts` 共用同一个常量。 */
-export declare const API_BASE = "/teleport/api";
+export declare const API_BASE = "/remote-cr/api";
 /** 结构化错误：与 `src/shared/flow.ts#FlowError` 的字段同名，便于直接塞进流程状态。 */
-export declare class TeleportApiError extends Error {
+export declare class RemoteCrApiError extends Error {
     readonly code: string;
     readonly detail: string;
     readonly nextActions: readonly string[];

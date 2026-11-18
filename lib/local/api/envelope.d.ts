@@ -3,7 +3,7 @@
  *
  * 三条纪律（都有单测）：
  * 1. **每条路由都只回 JSON**，成功 `{ ok: true, value }`，失败 `{ ok: false, code, detail, nextActions }`。
- *    浏览器半的 `TeleportApiError` 就是照这个形状抛的，形状变了错误就没法分阶段展示。
+ *    浏览器半的 `RemoteCrApiError` 就是照这个形状抛的，形状变了错误就没法分阶段展示。
  * 2. **只答本机回环**。这条隧道是给本地 GUI 用的，局域网里任何人能打它就是越权面
  *    （architecture §10「远端 host 只绑回环」同理）。
  * 3. **body 有上限**。这里所有请求都是小 JSON，超过 64 KiB 只可能是打错了地址。
@@ -26,7 +26,7 @@ export declare function okEnvelope<T>(value: T): OkEnvelope<T>;
 /**
  * 把任意抛出物转成信封。
  *
- * `TeleportError` 原样透出四个字段（码/说明/下一步都在里面）；其它异常统一归到
+ * `RemoteCrError` 原样透出四个字段（码/说明/下一步都在里面）；其它异常统一归到
  * `remote/unknown`——**不把内部栈或绝对路径回给浏览器**，但也不吞掉，detail 里
  * 至少有一句可读的原因。
  */

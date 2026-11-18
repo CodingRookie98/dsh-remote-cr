@@ -17,7 +17,7 @@ export declare const ENV_POLICIES: readonly ["reuse", "isolated", "sync"];
 /** 默认档位。改这里等于改产品行为，必须同步 `architecture.md` §6。 */
 export declare const DEFAULT_ENV_POLICY: EnvPolicy;
 /** 隔离档位的远端根目录名（相对远端 home）。 */
-export declare const ISOLATED_HOME_DIR = ".dsh-teleport";
+export declare const ISOLATED_HOME_DIR = ".dsh-remote-cr";
 /** 官方默认 home 目录名（相对远端 home），与 `home-paths` 的 `DSH_HOME_DIR_NAME` 同值。 */
 export declare const DEFAULT_HOME_DIR = ".dsh";
 /** 官方读取的覆盖变量名，与 `home-paths` 的 `DSH_HOME_ENV` 同值。 */
@@ -31,7 +31,7 @@ export declare function resolveEnvPolicy(value: string | undefined): EnvPolicy;
 export declare function assertRemoteHome(home: string): string;
 /**
  * host 标识（`wsl:ubuntu_dev` / `ssh:user@host`）会被拼进路径，
- * 所以要挡住 `/` 与 `..` —— 否则一个恶意发行版名就能让隔离目录跳出 `~/.dsh-teleport`。
+ * 所以要挡住 `/` 与 `..` —— 否则一个恶意发行版名就能让隔离目录跳出 `~/.dsh-remote-cr`。
  */
 export declare function assertHostKey(host: string): string;
 /** 一个档位落到远端的完整启动参数。 */
@@ -41,7 +41,7 @@ export interface EnvPlan {
     readonly dshHome: string;
     /** 要注入给远端 dsh 进程的环境变量；`reuse` 下为空（不覆盖任何东西）。 */
     readonly env: Readonly<Record<string, string>>;
-    /** 会不会写远端已有的 `~/.dsh`。`reuse` 允许 dsh 自己写会话数据，但 teleport 不写。 */
+    /** 会不会写远端已有的 `~/.dsh`。`reuse` 允许 dsh 自己写会话数据，但 remote-cr 不写。 */
     readonly touchesDefaultHome: boolean;
 }
 /**

@@ -1,5 +1,5 @@
 /**
- * 浏览器半（`dsh-teleport/client`，browser 侧）的**产物入口**。
+ * 浏览器半（`dsh-remote-cr/client`，browser 侧）的**产物入口**。
  *
  * 这个文件会被 `scripts/build-client.mjs` 编成 `lib/client-raw/client/index.js`，
  * 再被封进官方信封 `lib/client.js`。模块系统只从**入口模块的 exports** 上读
@@ -12,9 +12,9 @@ export { HALF, describeSelf, PLUGIN_HALVES, describeHalf, SHARED_PROTOCOL_VERSIO
 export type { PluginHalf } from './half.ts';
 export { apply, inject, PANEL_ID } from './plugin.ts';
 export { DIRECTORY_FLOW_SLOTS, PANEL_ORDER, registerSlots } from './registration.ts';
-export type { RegistrationContext, SlotRegistration, TeleportComponents } from './registration.ts';
+export type { RegistrationContext, SlotRegistration, RemoteCrComponents } from './registration.ts';
 export { DirectoryFlow, WIZARD_INITIAL } from './components.ts';
-export { TeleportIcon, TeleportPanel } from './panel-view.ts';
+export { RemoteCrIcon, RemoteCrPanel } from './panel-view.ts';
 export { wizardStore } from './wizard-store.ts';
-export type { TeleportDiagnostics, SlotRecord } from './diagnostics.ts';
+export type { RemoteCrDiagnostics, SlotRecord } from './diagnostics.ts';
 //# sourceMappingURL=index.d.ts.map

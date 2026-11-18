@@ -14,17 +14,17 @@
  *    缺任何一段都算不完整。
  *
  * 与 `src/local/backend/errors.ts` 的关系：那边是**抛出的异常类**（带 `Error` 原型、
- * 栈、`cause`），这边是**跨线程/跨进程传输的普通对象**。`TeleportError` 结构上满足
+ * 栈、`cause`），这边是**跨线程/跨进程传输的普通对象**。`RemoteCrError` 结构上满足
  * `FlowError`（有单测盯着这条），所以宿主半可以直接把异常塞进状态。
  */
 /** 连接要经过的阶段，顺序即进度条顺序（与 `errors.ts#CONNECTION_PHASES` 同源）。 */
 export declare const FLOW_PHASES: readonly ["probe", "bootstrap", "verify", "launch", "tunnel", "barrier", "attach"];
 export type FlowPhase = (typeof FLOW_PHASES)[number];
-/** 每个阶段给用户看的一句话。文案稳定便于断言与截图对比。 */
-export declare const FLOW_PHASE_LABELS: Readonly<Record<FlowPhase, string>>;
+/** 阶段总数（进度条分母）。 */
+export declare const FLOW_PHASE_COUNT: 7;
 /** `running` 才可取消；`done`/`failed`/`cancelled` 都是终态。 */
 export type FlowStatus = 'idle' | 'running' | 'done' | 'failed' | 'cancelled';
-/** 跨进程传输的错误形态；`TeleportError` 结构上满足它。 */
+/** 跨进程传输的错误形态；`RemoteCrError` 结构上满足它。 */
 export interface FlowError {
     readonly code: string;
     readonly phase: FlowPhase;
@@ -66,8 +66,20 @@ export declare function cancelFlow(state: FlowState): FlowState;
 export declare function progressOf(state: FlowState): number;
 /** 是否该显示取消按钮：只有进行中才有意义。 */
 export declare function canCancel(state: FlowState): boolean;
-/** 供 UI 的一行文案，稳定便于断言。 */
-export declare function describeFlow(state: FlowState): string;
+/**
+ * 进度的**结构化**形态，供 UI 取字典渲染（双语要求：共享层不产出文案）。
+ *
+ * 曾经这里直接返回中文句子（`探测远端环境…`），英文界面下阶段名与进度一直是中文
+ * （Delta-4 U1）。现在只给 id / 计数 / 错误码，措辞交给 `src/client/locales.ts`。
+ */
+export interface FlowProgress {
+    readonly status: FlowStatus;
+    readonly phase: FlowPhase;
+    readonly completed: number;
+    readonly total: number;
+    readonly errorCode?: string;
+}
+export declare function flowProgress(state: FlowState): FlowProgress;
 /**
  * 「复制日志」按钮的内容。
  *

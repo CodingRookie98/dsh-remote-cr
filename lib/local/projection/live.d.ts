@@ -24,14 +24,15 @@
  * 释放时**先放 RPC 再收进程**：反过来会让还活着的 WS 撞上一个已经消失的宿主，
  * 日志里出现一堆无意义的 ECONNRESET。
  */
-import { TeleportError } from '../backend/errors.ts';
+import { RemoteCrError } from '../backend/errors.ts';
 import { type SshTarget } from '../backend/ssh/config.ts';
 import { type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts';
 import { type SshAuth } from '../backend/ssh/transport.ts';
+import { type EnvPolicy } from '../env-policy/index.ts';
 import type { AttachControl, ConnectTarget, RemoteConnection } from './service.ts';
 /** SSH 后端需要的宿主侧材料；不给就明确报错，不猜默认值。 */
 export interface LiveSshOptions {
-    /** 本地 home：`~/.ssh/config` 与 `.dsh-teleport/`（known_hosts、anchors）都挂在这里。 */
+    /** 本地 home：`~/.ssh/config` 与 `.dsh-remote-cr/`（known_hosts、anchors）都挂在这里。 */
     readonly homeDir: string;
     /**
      * 按别名解析认证方式。
@@ -54,7 +55,7 @@ export interface LiveSshOptions {
      */
     readonly proxyPort?: number | (() => number | undefined);
     /**
-     * 追加给远端 dsh 进程的环境变量（值里可用 `$TELEPORT_PROXY_URL`）。
+     * 追加给远端 dsh 进程的环境变量（值里可用 `$REMOTE_CR_PROXY_URL`）。
      *
      * 为什么入口要能传：远端 provider 的 `baseURL`/key 只能靠环境变量在启动时指定，
      * 而代理的远端端口是转发建好之后才分配 —— 调用方在启动前不知道它，
@@ -94,6 +95,16 @@ export interface LiveConnectOptions {
  * 只有进程真的没了才会再进这里。
  */
 export declare function createLiveConnect(options?: LiveConnectOptions): (target: ConnectTarget, control?: AttachControl) => Promise<RemoteConnection>;
+/**
+ * 环境档位冲突哨兵：`REMOTE_CR_ENV_POLICY` 与旧名同时设置且值不同时由 `index.ts` 传入。
+ * 它**不是**合法档位，走到这里必然失败 —— 这就是「不替用户选」的落点。
+ *
+ * 前缀用 NUL 是有意的：环境变量的值**不可能**包含 NUL，所以用户永远无法手工构造出这个值，
+ * 也就不会出现「用户写了 conflict 却被当成冲突」的误报（Delta 复审的 nit）。
+ */
+export declare const ENV_POLICY_CONFLICT = "\0env-policy-conflict";
+/** 档位字符串 → 枚举；写错时给结构化错误，不静默回落到 `reuse`。导出供单测。 */
+export declare function resolvePolicy(raw: string | undefined): EnvPolicy;
 /** 只用于日志与错误说明的一行摘要；**不含**主机名与用户名。 */
 export declare function describeTarget(target: ConnectTarget): string;
 /**
@@ -104,5 +115,5 @@ export declare function describeTarget(target: ConnectTarget): string;
  */
 export declare function readTarget(body: unknown): ConnectTarget;
 /** 传输层已经没了、但连接对象仍被持有时，读写 `rpc` 的兜底错误。 */
-export declare function detachedError(): TeleportError;
+export declare function detachedError(): RemoteCrError;
 //# sourceMappingURL=live.d.ts.map

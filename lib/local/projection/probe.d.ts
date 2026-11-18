@@ -63,7 +63,7 @@ export declare function newDoneToken(): string;
 /** 终端尺寸给足，避免长命令行被折行拆成两行。 */
 export declare const PROBE_COLS = 200;
 export declare const PROBE_ROWS = 50;
-export declare const PROBE_TERMINAL_ID = "teleport-probe";
+export declare const PROBE_TERMINAL_ID = "remote-cr-probe";
 export declare const DEFAULT_PROBE_TIMEOUT_MS = 20000;
 /**
  * 取证终端优先用的 shell —— 按顺序取**远端真的装了的**第一个。
