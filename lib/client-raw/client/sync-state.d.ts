@@ -62,6 +62,30 @@ export declare function beginApply(state: SyncDialogState): SyncDialogState;
 export declare function receiveResult(state: SyncDialogState, result: SyncResult): SyncDialogState;
 /** 执行结束：进入 done（无论成败，逐条结果都在 results 里）。 */
 export declare function finishApply(state: SyncDialogState): SyncDialogState;
+/**
+ * 把「一次接入的目标」翻成同步用的 target（审查 N1）。
+ *
+ * 为什么必须从**接入入参**取而不是读 snapshot：`openSyncDialog` 在 attach 之后立刻调用，
+ * 此刻 `setSnapshot` 还没应用到本次渲染闭包 —— 读 snapshot 会拿到 null（首次接入）或
+ * **上一台主机**（切换目标）。这里做成纯函数，接入路径与面板路径共用。
+ */
+export declare function syncTargetOf(target: {
+    readonly backend: 'wsl' | 'ssh' | 'docker';
+    readonly distro?: string | null;
+    readonly alias?: string;
+    readonly port: number;
+    readonly remoteRoot: string;
+}): {
+    backend: 'ssh';
+    alias: string;
+    port: number;
+    remoteRoot: string;
+} | {
+    backend: 'wsl';
+    distro: string;
+    port: number;
+    remoteRoot: string;
+} | null;
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */
 export declare function syncGroups(plan: SyncPlanLike): {
     readonly installable: readonly SyncEntry[];
