@@ -71,6 +71,8 @@
 | WSL 真机接入（`ubuntu_dev`，`spikes/m1/p35-projection`） | **7/7**（launch → workspace/create → UNC stat → session/create 20.8 s → 会话内 `pwd`/`uname` 在 distro 执行 → 投影 online（512 会话）→ dispose 端口释放） |
 | SSH 真机接入（`syy_wsl_ubuntu_LAN`，全新引导） | **11/11**（reuse/isolated 两档、DSH_HOME 落点、隔离目录落地、端口释放、两个负控） |
 
+**负控（同一探针，`NEGATIVE_CONTROL=1`）**：`7/11`，失败集 `[A4-4, A4-5, A4-6, A4-7]` 与期望**逐项相等**，探针自报 `NEGATIVE CONTROL OK` —— 这 11 条不是「怎么跑都绿」。
+
 **判定要点**：宿主的兼容判定走 `semver.satisfies(..., { includePrerelease: true })`（`plugin-compatibility.ts:51-53`），所以 `0.2.2-rc.4` 满足 `>=0.2.1-rc.0 <0.3.0`；但**默认 semver 语义下不满足**（预发布 tuple 规则），其他工具报的「不兼容」属警告级，不影响加载。
 
 本轮真机回归顺带修掉两个缺陷：① 刚引导装好 node 后仍用 PATH 上的 `node` 启动（`sh: node: not found`，180 s 超时）；② `sh: 2: node: not found` 未被识别成 `remote/node-missing`，落到泛化的 `startup-failed`。

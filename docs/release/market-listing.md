@@ -58,7 +58,7 @@
 | PR | [#16551](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16551)（OPEN · MERGEABLE · 单文件） |
 | 分支 | `CodingRookie98:add-dsh-remote-cr`（fork：`CodingRookie98/awesome-dsh-plugin`） |
 | 落点 | `data/plugins/CodingRookie98__dsh-remote-cr.yml`（556 B） |
-| CI | 提交后 30 分钟仍为 `IN_PROGRESS`（对方仓库 11 919 个文件，校验较慢）—— **未验证** |
+| CI | ✅ **两个检查全绿**：`check` = SUCCESS、`Submission gate` = SUCCESS（2026-11-18）；PR 仍 OPEN / MERGEABLE，等维护者评审 |
 | 合并后验证 | `curl -sSL https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json` 里应能搜到 `dsh-remote-cr`；市场卡片随即显示简介 |
 
 维护者若反馈「需要 npm 版本才能收录」，按 §5 的方案 B 处理（`private: false` + 发 0.4.0）。
