@@ -41,6 +41,7 @@ import {
   type SyncTargetLike,
 } from './api.ts'
 import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
+import { lastSessionActionFailure, subscribeSessionActions } from './session-actions.ts'
 import {
   beginApply,
   CLOSED,
@@ -172,6 +173,17 @@ export function RemoteCrPanel(): unknown {
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
   const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
   const [sync, setSync] = useState<SyncDialogState>(CLOSED)
+
+  // 会话菜单动作的失败面是**粘性**的：面板打开时补看一次，之后订阅（审查 B4）
+  useEffect(() => {
+    const pending = lastSessionActionFailure()
+    if (pending !== null) setError(pending)
+    const off = subscribeSessionActions(() => {
+      const failure = lastSessionActionFailure()
+      if (failure !== null) setError(failure)
+    })
+    return off
+  }, [])
 
   /** `failureFromError` 可能给字符串（我们自己写的引导语）；同步对话框只要结构化形状。 */
   const syncFailureOf = (caught: unknown): { code: string; detail: string; nextActions: readonly string[] } => {
@@ -364,6 +376,8 @@ export function RemoteCrPanel(): unknown {
       setError(null)
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
+      // 首次接入后自动看一眼插件差异（有无差异/是否静音由 openSyncDialog 自己判定）
+      void openSyncDialog(true)
     } catch (caught) {
       setError(cancelledOrNull(caught, { kind: 'attach', record }))
     } finally {
@@ -386,6 +400,8 @@ export function RemoteCrPanel(): unknown {
       setError(null)
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
+      // 首次接入后自动看一眼插件差异（有无差异/是否静音由 openSyncDialog 自己判定）
+      void openSyncDialog(true)
     } catch (caught) {
       setError(cancelledOrNull(caught, { kind: 'ssh-attach' }))
     } finally {

@@ -52,6 +52,8 @@ export interface SyncResult {
   readonly ok: boolean
   readonly code?: string
   readonly detail?: string
+  /** 失败时至少一条下一步（铁律 4）；成功时为 undefined。 */
+  readonly nextActions?: readonly string[]
 }
 
 /** 官方包前缀：与远端 dsh 安装绑定，永不同步。 */

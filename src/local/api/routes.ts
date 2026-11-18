@@ -90,6 +90,11 @@ export interface HostDeps {
 export interface SyncRoutesOptions {
   /** 按 target 解析出远端执行面（node / dsh / home）。 */
   readonly resolve: (target: ConnectTarget) => Promise<SyncBackend>
+  /**
+   * target 的稳定标识（静音粒度）。SSH 用 `anchorIdFor(host+user+port)`——与 anchors / 隔离目录同源，
+   * 这样「同一台机器的不同用户」不会互相静音。WSL 用 `wsl:<distro>`。
+   */
+  readonly targetId: (target: ConnectTarget) => Promise<string>
   /** 本地 `sync-optout.json` 的绝对路径。 */
   readonly optoutFile: string
   /** 本机 profile 目录（读本地已装清单）。 */
@@ -614,9 +619,6 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   // 让面板显示「已同步」——那会把「功能没上」伪装成「环境很干净」。
 
   /** 同步用的稳定 target 标识（与 anchors / 隔离目录的 hostKey 同风格）。 */
-  const syncTargetId = (target: ConnectTarget): string =>
-    target.backend === 'ssh' ? 'ssh:' + target.alias + '@' + String(target.port) : 'wsl:' + target.distro
-
   const requireSync = (): SyncRoutesOptions => {
     const sync = options.sync
     if (sync === undefined) {
@@ -631,7 +633,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
 
   const syncPlanOf = async (target: ConnectTarget, syncOptions: SyncRoutesOptions): Promise<SyncPlanView> => {
     const backend = await syncOptions.resolve(target)
-    const targetId = syncTargetId(target)
+    const targetId = await syncOptions.targetId(target)
     return await buildSyncPlan({
       backend,
       targetId,
@@ -679,7 +681,17 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
     // 以服务端重算的 plan 为准：客户端送来的只是名字，动作与版本由这里决定。
     const plan = await syncPlanOf(target, syncOptions)
-    const selected = plan.entries.filter((entry: SyncEntry) => names.includes(entry.name) && entry.action === 'install')
+    // 契约 §5：混入不可同步项要**整单拒绝**，而不是静默过滤后回 200 + 空结果。
+    const byName = new Map(plan.entries.map((entry) => [entry.name, entry]))
+    const invalid = names.filter((name) => byName.get(name)?.action !== 'install')
+    if (invalid.length > 0) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-unsupported',
+        detail: '这些项不可同步：' + invalid.join(', '),
+        nextActions: ['只勾选「可同步」的项后重试', '已是最新或仅本机可用的项无需同步'],
+      })
+    }
+    const selected = names.map((name) => byName.get(name) as SyncEntry)
     const results = await applySyncPlan({
       backend: await syncOptions.resolve(target),
       targetId: plan.targetId,
@@ -697,7 +709,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
     const body = (await readJsonBody(req)) as { target?: unknown; muted?: unknown } | null
     const target = readTarget(body?.target)
-    const targets = setMuted(syncOptions.optoutFile, syncTargetId(target), body?.muted === true)
+    const targets = setMuted(syncOptions.optoutFile, await syncOptions.targetId(target), body?.muted === true)
     sendJson(res, 200, okEnvelope({ targets }))
   })
 

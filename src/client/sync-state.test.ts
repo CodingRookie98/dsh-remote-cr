@@ -12,6 +12,7 @@ import {
   receiveResult,
   receiveSyncPlan,
   resultTotals,
+  syncReport,
   selectAllSync,
   syncGroups,
   toggleSyncEntry,
@@ -78,4 +79,18 @@ test('失败与关闭：failed 带结构化原因；close 回 closed', () => {
   const failed = failSync({ code: 'remote/plugin-sync-read-failed', detail: 'x', nextActions: ['重试'] })
   assert.equal(failed.phase, 'failed')
   assert.deepEqual(closeSync(), CLOSED)
+})
+
+test('syncReport：只含事实与码，不含远端路径；成功与失败行可区分', () => {
+  let state = receiveSyncPlan(plan([entry('a'), entry('b')]))
+  state = beginApply(state)
+  state = receiveResult(state, { name: 'a', ok: true })
+  state = receiveResult(state, { name: 'b', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1', nextActions: ['重试'] })
+  state = finishApply(state)
+  const report = syncReport(state)
+  assert.match(report, /^dsh-remote-cr plugin sync/)
+  assert.match(report, /ok {3}a/)
+  assert.match(report, /FAIL b remote\/plugin-sync-apply-failed — 退出码 1/)
+  assert.ok(!report.includes('/home/'), '不把远端路径抄进报告')
+  assert.equal(syncReport(CLOSED), '')
 })

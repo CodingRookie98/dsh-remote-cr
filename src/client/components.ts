@@ -21,9 +21,10 @@ import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { DirListing } from '../shared/api.ts'
 import type { WorkspaceSource } from '../shared/choices.ts'
 import { canCancel, type FlowState } from '../shared/flow.ts'
-import { cancelFlow, listDirectory, loadSources, readFlow, reconnectRemote, startWorkspace, wakeDistro } from './api.ts'
+import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
-import { resultTotals, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
+import { requestReconnect } from './session-actions.ts'
+import { resultTotals, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
 import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
 import {
@@ -737,9 +738,24 @@ export function SyncDialog(props: {
       ? state.results.map((result) =>
           h(
             'div',
-            { key: result.name, 'data-remote-cr': 'sync-result', 'data-ok': String(result.ok) },
+            { key: result.name, 'data-remote-cr': 'sync-result', 'data-ok': String(result.ok), 'data-code': result.code ?? '' },
             h('span', { 'data-remote-cr': 'sync-result-name' }, result.name),
             h('span', { 'data-remote-cr': 'sync-result-state' }, result.ok ? t('sync.result.ok') : t('sync.result.failed')),
+            // 失败要给码与原文：只显示「失败」二字等于没响（审查 B3）。
+            result.ok
+              ? null
+              : h(
+                  'span',
+                  { 'data-remote-cr': 'sync-result-detail' },
+                  (result.code ?? '') + (result.detail === undefined ? '' : ' · ' + result.detail),
+                ),
+            result.ok
+              ? null
+              : h(
+                  'ul',
+                  { 'data-remote-cr': 'sync-result-next' },
+                  ...(result.nextActions ?? []).map((action, index) => h('li', { key: String(index) }, action)),
+                ),
           ),
         )
       : []
@@ -766,6 +782,12 @@ export function SyncDialog(props: {
   if (state.phase === 'done') {
     const totals = resultTotals(state.results)
     footer.push(h('div', { 'data-remote-cr': 'sync-done' }, t('sync.done', { ok: totals.ok, failed: totals.failed })))
+    // 失败时必须有可复制的日志（审查 B3）：面板其余错误面都有这个出口，这里不能缺。
+    if (totals.failed > 0) {
+      footer.push(
+        h('button', { type: 'button', 'data-remote-cr': 'sync-copy', onClick: () => void copyText(syncReport(state)) }, t('action.copyLog')),
+      )
+    }
   }
 
   return frame([
@@ -789,14 +811,23 @@ export function SyncDialog(props: {
 export function sessionReconnectItem(props?: { readonly sessionId?: unknown }): unknown {
   const raw = props !== null && typeof props === 'object' ? props.sessionId : undefined
   const id = typeof raw === 'string' ? raw : ''
-  if (id === '' || remoteSessionIndex.workspaceOf(id) === null) return null
+  const [isRemote, setIsRemote] = useState(() => id !== '' && remoteSessionIndex.workspaceOf(id) !== null)
+  useEffect(() => {
+    if (id === '') return () => undefined
+    setIsRemote(remoteSessionIndex.workspaceOf(id) !== null)
+    const off = remoteSessionIndex.subscribe(() => setIsRemote(remoteSessionIndex.workspaceOf(id) !== null))
+    void remoteSessionIndex.refresh()
+    return off
+  }, [id])
+  if (id === '' || !isRemote) return null
   return h(
     'button',
     {
       type: 'button',
       role: 'menuitem',
       'data-remote-cr': 'session-reconnect',
-      onClick: () => void reconnectRemote(),
+      // 走 session-actions：成功刷新索引，失败落到面板的错误块（不再裸调、不再无声）
+      onClick: () => void requestReconnect(),
     },
     t('panel.rowReconnect'),
   )

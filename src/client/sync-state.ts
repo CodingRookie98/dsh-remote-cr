@@ -110,6 +110,29 @@ export function syncGroups(plan: SyncPlanLike): {
   return { installable, upToDate, skipped }
 }
 
+/**
+ * 可复制的同步报告（done 态「复制日志」）。
+ *
+ * 只放**事实与码**：包名、动作、版本、结果、code/detail；不放远端路径（可能含用户名）。
+ */
+export function syncReport(state: SyncDialogState): string {
+  if (state.phase !== 'done' && state.phase !== 'applying') return ''
+  const lines = [
+    'dsh-remote-cr plugin sync',
+    'profile: ' + state.plan.profile,
+    'target: ' + state.plan.targetId,
+    'results: ' + String(state.results.length),
+  ]
+  for (const result of state.results) {
+    lines.push(
+      (result.ok ? 'ok   ' : 'FAIL ') +
+        result.name +
+        (result.ok ? '' : ' ' + (result.code ?? '') + (result.detail === undefined ? '' : ' — ' + result.detail)),
+    )
+  }
+  return lines.join('\n')
+}
+
 /** 成功/失败计数（done 态标题用）。 */
 export function resultTotals(results: readonly SyncResult[]): { readonly ok: number; readonly failed: number } {
   let ok = 0

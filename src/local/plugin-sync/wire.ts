@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 
 import { RemoteCrError } from '../backend/errors.ts'
+import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
 import { readSshConfig, resolveSshTarget, type SshTarget } from '../backend/ssh/config.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
 import { runSsh, type SshRunOptions, type SshRunResult } from '../backend/ssh/transport.ts'
@@ -47,6 +48,20 @@ export function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesO
     profile,
     optoutFile: join(options.homeDir, '.dsh-remote-cr', 'sync-optout.json'),
     localProfileDir: join(options.homeDir, '.dsh', 'profiles', profile),
+    async targetId(target): Promise<string> {
+      // SSH：与 anchors / 隔离目录同一个 id（host+user+port 的 hash），避免「同机不同用户」互相静音
+      if (target.backend !== 'ssh') return 'wsl:' + target.distro
+      const resolveTarget = options.resolveTarget ?? ((alias: string) => defaultResolveTarget(options.homeDir, alias))
+      const sshTarget = resolveTarget(target.alias)
+      if (sshTarget === undefined) {
+        throw new RemoteCrError({
+          code: 'remote/unknown',
+          detail: '~/.ssh/config 里找不到主机 ' + target.alias,
+          nextActions: ['在 ~/.ssh/config 里补一个 Host 块后重试'],
+        })
+      }
+      return anchorIdFor(anchorTargetOf(sshTarget))
+    },
     async resolve(target): Promise<SyncBackend> {
       if (target.backend !== 'ssh') {
         throw new RemoteCrError({

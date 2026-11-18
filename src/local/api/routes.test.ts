@@ -267,6 +267,7 @@ function syncRig(overrides: Partial<SyncRoutesOptions> = {}): { rig: ReturnType<
     sync: {
       optoutFile,
       localProfileDir: join(dir, 'profile'),
+      targetId: async () => 'test-target-id',
       resolve: async () => ({
         nodeCommand: '/s/bin/node',
         dshCommand: '/s/npm/bin/dsh',
@@ -308,9 +309,9 @@ test('/plugin-sync/optout：POST 静音后 GET 能读回，且按 target 粒度'
   const { rig: r } = syncRig()
   const posted = await r.call({ path: '/plugin-sync/optout', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET, muted: true }) })
   const postEnvelope = posted.json as { value: { targets: string[] } }
-  assert.deepEqual(postEnvelope.value.targets, ['ssh:demo@22'])
+  assert.deepEqual(postEnvelope.value.targets, ['test-target-id'], '静音粒度来自 targetId 注入（SSH 是 host+user+port 的 hash）')
   const got = await r.call({ path: '/plugin-sync/optout' })
-  assert.deepEqual((got.json as { value: { targets: string[] } }).value.targets, ['ssh:demo@22'])
+  assert.deepEqual((got.json as { value: { targets: string[] } }).value.targets, ['test-target-id'])
 })
 
 test('/plugin-sync POST：没选任何项时给 plugin-sync-unsupported，且不执行命令', async () => {

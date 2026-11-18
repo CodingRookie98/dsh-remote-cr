@@ -129,3 +129,9 @@ test("nodeCommand='auto'：脚本自己找 node（PATH → staging），找不�
   assert.match(script, /REMOTE_CR_NO_NODE >&2; exit 5/)
   assert.match(script, /PATH=\$\(dirname "\$N"\):\$PATH "\$N" "\$f"/)
 })
+
+test('注入面：homeDir / profile 里的单引号也必须转义（reader 脚本同一套 shellQuote）', () => {
+  const script = buildReadScript({ nodeCommand: 'auto', profile: "web'; touch /tmp/x; #", homeDir: "/home/o'brien" })
+  assert.ok(script.includes("'web'\\''; touch /tmp/x; #'"), script)
+  assert.ok(script.includes("'/home/o'\\''brien/.dsh/profiles/web'\\''; touch /tmp/x; #'"), script)
+})
