@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { syncBlockedReason } from '../../client/sync-state.ts'
 import { applySyncPlan, buildSyncPlan, resetApplyingForTest, type SyncBackend } from './service.ts'
 import { readOptout, setMuted, writeOptout } from './optout.ts'
 
@@ -61,6 +62,9 @@ test('buildSyncPlan：远端空 → 第三方全部 install，官方不出现，
   assert.equal(plan.requiresRuntime, false, '没声明的后端按 false')
   const wsl = await buildSyncPlan({ backend: { ...stub, requiresRuntime: true }, targetId: 'wsl:ubuntu_dev', muted: false, local: [] })
   assert.equal(wsl.requiresRuntime, true)
+  // 贯通：服务端下发的字段真的能让客户端的判据生效（两侧各自断言正确，不等于缝对上了）。
+  assert.equal(syncBlockedReason({ ...wsl, runtime: null }), 'no-runtime')
+  assert.equal(syncBlockedReason({ ...plan, runtime: null }), null, 'SSH 的 PATH 形态不该被拦')
 })
 
 test('buildSyncPlan：远端已装同版本 → up-to-date（不产生 install）', async () => {
