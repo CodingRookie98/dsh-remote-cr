@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +19,7 @@ import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '..
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, RemoteCrHostContext } from './routes.ts'
 import { RemoteCrError } from '../backend/errors.ts'
-import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerRemoteCrRoutes } from './routes.ts'
+import { defaultAnchorResolver, parseAddInput, parseAttachInput, registerRemoteCrRoutes, type SyncRoutesOptions } from './routes.ts'
 import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
 import type { SshTarget } from '../backend/ssh/config.ts'
 
@@ -155,6 +156,7 @@ function rig(
     projection?: ProjectionService
     resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
     homeDir?: string
+    sync?: SyncRoutesOptions
   } = {},
   makeRes: () => FakeRes = fakeRes,
 ): Rig {
@@ -198,6 +200,7 @@ function rig(
     ...(extra.homeDir === undefined ? {} : { homeDir: extra.homeDir }),
     ...(extra.projection === undefined ? {} : { projection: extra.projection }),
     ...(extra.resolveAnchorPath === undefined ? {} : { resolveAnchorPath: extra.resolveAnchorPath }),
+    ...(extra.sync === undefined ? {} : { sync: extra.sync }),
   })
   assert.deepEqual(effects.length, mounted.length, '每条路由恰好一个 effect')
 
@@ -236,6 +239,8 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
       '/remote-cr/api/flow GET',
       '/remote-cr/api/flow/cancel POST',
       '/remote-cr/api/list GET',
+      '/remote-cr/api/plugin-sync GET|POST',
+      '/remote-cr/api/plugin-sync/optout GET|POST',
       '/remote-cr/api/probe POST',
       '/remote-cr/api/projection GET',
       '/remote-cr/api/reconnect POST',
@@ -249,6 +254,72 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
       '/remote-cr/api/wsl/wake POST',
     ],
   )
+})
+
+
+// ── 插件同步路由（RFC-0003 / T4）────────────────────────────────────────────
+
+function syncRig(overrides: Partial<SyncRoutesOptions> = {}): { rig: ReturnType<typeof rig>; optoutFile: string; calls: string[] } {
+  const dir = mkdtempSync(join(tmpdir(), 'remote-cr-sync-'))
+  const optoutFile = join(dir, 'sync-optout.json')
+  const calls: string[] = []
+  const rigged = rig({}, {
+    sync: {
+      optoutFile,
+      localProfileDir: join(dir, 'profile'),
+      resolve: async () => ({
+        nodeCommand: '/s/bin/node',
+        dshCommand: '/s/npm/bin/dsh',
+        nodeBin: '/s/bin',
+        homeDir: '/home/hui',
+        exec: async (script: string) => {
+          calls.push(script)
+          return { code: 0, stdout: JSON.stringify({ ok: true, bundles: [] }), stderr: '' }
+        },
+      }),
+      ...overrides,
+    },
+  })
+  return { rig: rigged, optoutFile, calls }
+}
+
+const SYNC_TARGET = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/workspace' }
+
+test('未接线：/plugin-sync 明确报 plugin-sync-read-failed，而不是回空 plan', async () => {
+  const result = await rig().call({ path: '/plugin-sync', query: { target: JSON.stringify(SYNC_TARGET) } })
+  // 错误信封是**扁平的**：{ ok:false, code, detail, nextActions }（envelope.ts）
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.ok, false)
+  assert.equal(envelope.code, 'remote/plugin-sync-read-failed')
+})
+
+test('/plugin-sync GET：只打一次远端 exec，返回 plan 与 totals', async () => {
+  const { rig: r, calls } = syncRig()
+  const result = await r.call({ path: '/plugin-sync', query: { target: JSON.stringify(SYNC_TARGET) } })
+  const envelope = result.json as { ok: boolean; value?: { entries: unknown[]; totals: { install: number }; muted: boolean } }
+  assert.equal(result.status, 200)
+  assert.equal(envelope.ok, true)
+  assert.deepEqual(envelope.value?.totals, { install: 0, upToDate: 0, skipped: 0 })
+  assert.equal(envelope.value?.muted, false)
+  assert.equal(calls.length, 1, 'GET 只允许一次远端 exec')
+})
+
+test('/plugin-sync/optout：POST 静音后 GET 能读回，且按 target 粒度', async () => {
+  const { rig: r } = syncRig()
+  const posted = await r.call({ path: '/plugin-sync/optout', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET, muted: true }) })
+  const postEnvelope = posted.json as { value: { targets: string[] } }
+  assert.deepEqual(postEnvelope.value.targets, ['ssh:demo@22'])
+  const got = await r.call({ path: '/plugin-sync/optout' })
+  assert.deepEqual((got.json as { value: { targets: string[] } }).value.targets, ['ssh:demo@22'])
+})
+
+test('/plugin-sync POST：没选任何项时给 plugin-sync-unsupported，且不执行命令', async () => {
+  const { rig: r, calls } = syncRig()
+  const result = await r.call({ path: '/plugin-sync', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET, names: [] }) })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.ok, false, JSON.stringify(result.json))
+  assert.equal(envelope.code, 'remote/plugin-sync-unsupported', JSON.stringify(result.json))
+  assert.equal(calls.length, 0)
 })
 
 test('没有接入在进行时点取消：回 200 且 cancelled=false，不当成错误', async () => {

@@ -48,6 +48,10 @@ import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, s
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts'
+import { applySyncPlan, buildSyncPlan, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
+import type { SyncEntry } from '../../shared/plugin-sync.ts'
+import { readOptout, setMuted } from '../plugin-sync/optout.ts'
+import { readLocalBundles } from '../plugin-sync/local.ts'
 import type { ProjectedSession, ProjectedWorkspace } from '../projection/store.ts'
 import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
 import { WorkspaceFlows } from './workspace.ts'
@@ -82,6 +86,17 @@ export interface HostDeps {
   wakeDistro(distro: string, signal?: AbortSignal): Promise<WslWakeResult>
 }
 
+/** `/plugin-sync*` 所需的外部依赖（都可注入，路由单测不必起真远端）。 */
+export interface SyncRoutesOptions {
+  /** 按 target 解析出远端执行面（node / dsh / home）。 */
+  readonly resolve: (target: ConnectTarget) => Promise<SyncBackend>
+  /** 本地 `sync-optout.json` 的绝对路径。 */
+  readonly optoutFile: string
+  /** 本机 profile 目录（读本地已装清单）。 */
+  readonly localProfileDir: string
+  readonly profile?: string
+}
+
 export interface RouteOptions {
   /** `wsl.exe` 的可执行文件名或绝对路径；测试可换。 */
   readonly wslExecutable?: string
@@ -102,6 +117,11 @@ export interface RouteOptions {
    * 四选一与目录浏览，不该被投影的依赖拖着走。
    */
   readonly projection?: ProjectionService
+  /**
+   * 插件同步的接线（RFC-0003）。省略时四条 `/plugin-sync*` 路由明确报「未接线」，
+   * 而不是返回空 plan 让面板显示「已同步」。
+   */
+  readonly sync?: SyncRoutesOptions
   /**
    * SSH 目标的「本地锚点路径」落实器（建目录 + 写 map.json，见 `ssh/anchor-runtime.ts`）。
    *
@@ -586,6 +606,98 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
 
   mount('/projection', ['GET'], async (_req, res) => {
     sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(requireProjection())))
+  })
+
+  // ── 插件同步（RFC-0003）─────────────────────────────────────────────────
+  //
+  // 四个端点都走「先判接线、再读 target」：没接线时明确报错，而不是返回空 plan
+  // 让面板显示「已同步」——那会把「功能没上」伪装成「环境很干净」。
+
+  /** 同步用的稳定 target 标识（与 anchors / 隔离目录的 hostKey 同风格）。 */
+  const syncTargetId = (target: ConnectTarget): string =>
+    target.backend === 'ssh' ? 'ssh:' + target.alias + '@' + String(target.port) : 'wsl:' + target.distro
+
+  const requireSync = (): SyncRoutesOptions => {
+    const sync = options.sync
+    if (sync === undefined) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-read-failed',
+        detail: '插件同步没有接线：宿主半启动时未传入 sync',
+        nextActions: ['确认插件版本与本地 DSH 一致', '重启 dsh 后重试'],
+      })
+    }
+    return sync
+  }
+
+  const syncPlanOf = async (target: ConnectTarget, syncOptions: SyncRoutesOptions): Promise<SyncPlanView> => {
+    const backend = await syncOptions.resolve(target)
+    const targetId = syncTargetId(target)
+    return await buildSyncPlan({
+      backend,
+      targetId,
+      local: readLocalBundles({ profileDir: syncOptions.localProfileDir }),
+      muted: readOptout(syncOptions.optoutFile).includes(targetId),
+      ...(syncOptions.profile === undefined ? {} : {}),
+    })
+  }
+
+  // 同一个路径只能 register 一次（webServer 对重复注册直接抛），所以每个路径挂一次、
+  // 在 handler 里按 method 分支——与上面 /projection 等单 method 路由的写法有意不同。
+  mount('/plugin-sync', ['GET', 'POST'], async (req, res, url) => {
+    const syncOptions = requireSync()
+    if ((req.method ?? 'GET') === 'GET') {
+      const raw = url.searchParams.get('target')
+      if (raw === null) {
+        throw new RemoteCrError({
+          code: 'remote/plugin-sync-read-failed',
+          detail: '缺少 target 查询参数',
+          nextActions: ['从面板重新打开同步对话框'],
+        })
+      }
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        throw new RemoteCrError({
+          code: 'remote/plugin-sync-read-failed',
+          detail: 'target 不是合法 JSON',
+          nextActions: ['从面板重新打开同步对话框'],
+        })
+      }
+      sendJson(res, 200, okEnvelope(await syncPlanOf(readTarget(parsed), syncOptions)))
+      return
+    }
+    const body = (await readJsonBody(req)) as { target?: unknown; names?: unknown } | null
+    const target = readTarget(body?.target)
+    const names = Array.isArray(body?.names) ? body.names.filter((item): item is string => typeof item === 'string') : []
+    if (names.length === 0) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-unsupported',
+        detail: '没有选择要同步的插件',
+        nextActions: ['勾选至少一项后重试'],
+      })
+    }
+    // 以服务端重算的 plan 为准：客户端送来的只是名字，动作与版本由这里决定。
+    const plan = await syncPlanOf(target, syncOptions)
+    const selected = plan.entries.filter((entry: SyncEntry) => names.includes(entry.name) && entry.action === 'install')
+    const results = await applySyncPlan({
+      backend: await syncOptions.resolve(target),
+      targetId: plan.targetId,
+      entries: selected,
+    })
+    sendJson(res, 200, okEnvelope({ results }))
+  })
+
+  mount('/plugin-sync/optout', ['GET', 'POST'], async (req, res) => {
+    const syncOptions = requireSync()
+    if ((req.method ?? 'GET') === 'GET') {
+      sendJson(res, 200, okEnvelope({ targets: readOptout(syncOptions.optoutFile) }))
+      return
+    }
+    const body = (await readJsonBody(req)) as { target?: unknown; muted?: unknown } | null
+    const target = readTarget(body?.target)
+    const targets = setMuted(syncOptions.optoutFile, syncTargetId(target), body?.muted === true)
+    sendJson(res, 200, okEnvelope({ targets }))
   })
 
   mount('/attach', ['POST'], async (req, res) => {
