@@ -9,6 +9,7 @@ import type {
 } from '../shared/api.ts'
 import {
   attachPhaseText,
+  workspaceRowPlan,
   basenameOf,
   disconnectPlan,
   formatUpdatedAt,
@@ -228,4 +229,12 @@ test('接入阶段逐条给人话，且七个阶段各不相同（A5 的进度�
   assert.equal(new Set(texts).size, phases.length, '每个阶段都要有自己的话')
   assert.ok(attachPhaseText('tunnel').includes('隧道'))
   assert.ok(attachPhaseText('bootstrap').includes('引导'))
+})
+
+test('投影工作区行：离线给「重新连接」，在线给「新建会话」，忙时都禁用（RFC-0003 需求②）', () => {
+  assert.deepEqual(workspaceRowPlan({ availability: 'online' }, true, false), { kind: 'new-session', enabled: true })
+  assert.deepEqual(workspaceRowPlan({ availability: 'offline' }, true, false), { kind: 'reconnect', enabled: true })
+  // 投影说 online，但链路已经断了：也该给重连，而不是给一个点了必失败的「新建会话」
+  assert.deepEqual(workspaceRowPlan({ availability: 'online' }, false, false), { kind: 'reconnect', enabled: true })
+  assert.deepEqual(workspaceRowPlan({ availability: 'offline' }, true, true), { kind: 'reconnect', enabled: false })
 })

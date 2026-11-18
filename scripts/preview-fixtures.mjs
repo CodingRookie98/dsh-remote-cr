@@ -317,7 +317,7 @@ export const PREVIEW_SCENES = [
     // 面板是本次重设计的主战场：状态带 + 两级主从（主机 / 投影+会话）+ 错误块。
     // 面板与向导在同一页面各自挂载，这里只要等两栏出现即可截图。
     id: 'panel',
-    label: '远端工作台面板：状态带 + 两级主从（空态）',
+    label: '远端工作台面板：状态带 + 两级主从（含远端徽标与离线重连）',
     theme: 'light',
     targets: [
       '[data-remote-cr="panel-body"]',
@@ -326,6 +326,8 @@ export const PREVIEW_SCENES = [
       '[data-remote-cr="panel-head"]',
       '[data-remote-cr="panel"]',
     ],
+    // 需求② 的徽标/重连标记要等「选中主机」才出现，放在专门的 panel-remote 场景里断言
+    // （下一轮补；这轮先不把它挂到空态场景上，避免门禁假红）。
     // 向导是模态：不挂它，面板才完整可见。
     hideFlow: true,
     // 结构门禁的期望值在 harness 代码里（REQUIRED_ORDER_SCENES），不写在这里 —— 避免两处真相。

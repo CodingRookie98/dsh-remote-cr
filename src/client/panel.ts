@@ -288,6 +288,27 @@ export function linkLine(snapshot: ProjectionSnapshotInfo | null): string {
  * 三种不点的情况各有各的原因，含糊成一句「不可用」等于让用户猜：
  * 还没读到投影、压根没连过（没有目标可连回）、以及本来就连着（点了没意义）。
  */
+/**
+ * 投影工作区行该给什么动作（RFC-0003 需求②）。
+ *
+ * 规则只有一条：**能连才给「新建会话」，连不上就给「重新连接」**。离线行给一个
+ * 禁用按钮等于让用户对着灰按钮猜原因；给重连至少是能按的下一步。
+ */
+export type WorkspaceRowAction =
+  | { readonly kind: 'new-session'; readonly enabled: boolean }
+  | { readonly kind: 'reconnect'; readonly enabled: boolean }
+
+export function workspaceRowPlan(
+  workspace: { readonly availability: 'online' | 'offline' },
+  connected: boolean,
+  busy: boolean,
+): WorkspaceRowAction {
+  if (!connected || workspace.availability === 'offline') {
+    return { kind: 'reconnect', enabled: !busy }
+  }
+  return { kind: 'new-session', enabled: !busy }
+}
+
 export function reconnectPlan(snapshot: ProjectionSnapshotInfo | null): ButtonPlan {
   if (snapshot === null) return { ok: false, reason: t('projection.pendingRetry') }
   if (snapshot.link === 'connected') return { ok: false, reason: t('link.alreadyConnected') }

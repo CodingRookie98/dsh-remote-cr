@@ -51,6 +51,7 @@ import {
   probeReport,
   probeSummary,
   reconnectPlan,
+  workspaceRowPlan,
   sshAttachPlan,
 } from './panel.ts'
 import { isTerminal } from './state.ts'
@@ -575,25 +576,46 @@ export function RemoteCrPanel(): unknown {
     )
   })
 
-  const projectedRows = (snapshot?.workspaces ?? []).map((workspace: ProjectedWorkspaceInfo) =>
-    h(
+  const projectedRows = (snapshot?.workspaces ?? []).map((workspace: ProjectedWorkspaceInfo) => {
+    const action = workspaceRowPlan(workspace, snapshot?.connected === true, busy !== null)
+    const rowBusy = busy === 'session:' + workspace.id || busy === 'reconnect'
+    return h(
       'div',
-      { key: workspace.id, 'data-remote-cr': 'projected', 'data-availability': workspace.availability },
+      {
+        key: workspace.id,
+        'data-remote-cr': 'projected',
+        // 远端工作区与本地工作区的**视觉区分**靠这两个属性：图标/徽标 + 离线灰显（RFC-0003 需求②）
+        'data-kind': 'remote',
+        'data-availability': workspace.availability,
+      },
+      h('span', { 'data-remote-cr': 'projected-badge', title: t('panel.remoteBadgeHint') }, t('panel.remoteBadge')),
       h('span', { 'data-remote-cr': 'projected-title' }, workspace.title),
       h('span', { 'data-remote-cr': 'projected-path' }, workspace.remotePath ?? workspace.localPath),
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-remote-cr': 'new-session',
-          disabled: busy === 'session:' + workspace.id || snapshot?.connected !== true,
-          title: snapshot?.connected === true ? t('panel.newSessionHint') : t('panel.notConnectedAttach'),
-          onClick: () => void onCreateSession(workspace.id),
-        },
-        busy === 'session:' + workspace.id ? t('panel.creating') : t('panel.newSession'),
-      ),
-    ),
-  )
+      action.kind === 'new-session'
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'data-remote-cr': 'new-session',
+              disabled: !action.enabled || rowBusy,
+              title: t('panel.newSessionHint'),
+              onClick: () => void onCreateSession(workspace.id),
+            },
+            busy === 'session:' + workspace.id ? t('panel.creating') : t('panel.newSession'),
+          )
+        : h(
+            'button',
+            {
+              type: 'button',
+              'data-remote-cr': 'row-reconnect',
+              disabled: !action.enabled || rowBusy,
+              title: t('panel.rowReconnectHint'),
+              onClick: () => void onLink('reconnect'),
+            },
+            busy === 'reconnect' ? t('panel.reconnecting') : t('panel.rowReconnect'),
+          ),
+    )
+  })
 
   const sessionRows = (snapshot?.sessions ?? []).map((session: ProjectedSessionInfo) =>
     h(
