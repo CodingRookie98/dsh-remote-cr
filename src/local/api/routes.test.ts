@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -854,4 +854,27 @@ test('/wsl/wake 并发去重：同一发行版的并发请求只 spawn 一次', 
   ])
   assert.equal(spawned, 1, '并发点同一发行版不该 spawn 两次（缓存只在完成后写，靠在飞去重）')
   assert.deepEqual((first.json as { value: WslWakeResult }).value, (second.json as { value: WslWakeResult }).value)
+})
+
+test('/plugin-sync POST：混入不可同步项要整单拒绝（B2）', async () => {
+  const { rig: r, calls } = syncRig()
+  const result = await r.call({
+    path: '/plugin-sync',
+    method: 'POST',
+    body: JSON.stringify({ target: SYNC_TARGET, names: ['ghost-plugin'] }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.ok, false)
+  assert.equal(envelope.code, 'remote/plugin-sync-unsupported')
+  assert.equal(calls.length, 1, '只允许为算 plan 打一次远端；被拒绝后不再执行')
+})
+
+test('/plugin-sync GET：optout 里的 targetId 会让 plan.muted=true（B5）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'remote-cr-sync-muted-'))
+  const optoutFile = join(dir, 'sync-optout.json')
+  writeFileSync(optoutFile, JSON.stringify({ version: 1, targets: ['test-target-id'] }), 'utf8')
+  const { rig: r } = syncRig({ optoutFile })
+  const result = await r.call({ path: '/plugin-sync', query: { target: JSON.stringify(SYNC_TARGET) } })
+  const envelope = result.json as { value?: { muted: boolean } }
+  assert.equal(envelope.value?.muted, true, '静音要真的进 plan（否则自动提醒永远弹）')
 })

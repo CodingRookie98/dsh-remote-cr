@@ -9,7 +9,7 @@
  * 反过来不成立（`components.ts` 不 import 本文件）。宿主的注册在 `plugin.ts` 里各取所需。
  */
 
-import { createElement as h, useEffect, useMemo, useState } from 'react'
+import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   ImportableWorkspaceInfo,
@@ -47,6 +47,7 @@ import {
   CLOSED,
   closeSync,
   failSync,
+  syncTargetOf,
   finishApply,
   openSync,
   receiveResult,
@@ -175,12 +176,19 @@ export function RemoteCrPanel(): unknown {
   const [sync, setSync] = useState<SyncDialogState>(CLOSED)
 
   // 会话菜单动作的失败面是**粘性**的：面板打开时补看一次，之后订阅（审查 B4）
+  /** 会话动作留下的错误详情：成功时只撤这一条，不动面板自己的错误（审查 B4 副词条）。 */
+  const sessionErrorRef = useRef<string | null>(null)
   useEffect(() => {
     const pending = lastSessionActionFailure()
+    sessionErrorRef.current = pending?.detail ?? null
     if (pending !== null) setError(pending)
     const off = subscribeSessionActions(() => {
       const failure = lastSessionActionFailure()
-      if (failure !== null) setError(failure)
+      // 成功（failure 变 null）时要把**这条**错误撤掉，但别误清面板自己的错误（审查 B4 副词条）
+      setError((current) => {
+        if (failure !== null) return failure
+        return current !== null && current.detail === sessionErrorRef.current ? null : current
+      })
     })
     return off
   }, [])
@@ -191,13 +199,17 @@ export function RemoteCrPanel(): unknown {
     return typeof failure === 'string' ? { code: 'remote/unknown', detail: failure, nextActions: [] } : failure
   }
 
-  /** 同步只关心目标身份；投影里的 target 正好够用（WSL 用 distro，SSH 用 alias）。 */
-  const syncTarget = (): SyncTargetLike | null => {
+  /**
+   * 同步的目标身份。
+   *
+   * `explicit` 来自**本次接入入参**：attach 成功后立刻自动提醒时，`snapshot` 还是旧值
+   * （首次是 null、换目标时是上一台），读它会弹错框或读错主机（审查 N1）。
+   */
+  const syncTarget = (explicit?: SyncTargetLike | null): SyncTargetLike | null => {
+    if (explicit !== undefined) return explicit
     const target = snapshot?.target
     if (target === null || target === undefined) return null
-    return target.backend === 'ssh'
-      ? { backend: 'ssh', alias: target.alias, port: target.port, remoteRoot: target.remoteRoot }
-      : { backend: 'wsl', distro: target.distro, port: target.port, remoteRoot: target.remoteRoot }
+    return syncTargetOf(target)
   }
 
   /**
@@ -205,8 +217,8 @@ export function RemoteCrPanel(): unknown {
    * `auto`（首次接入後自動提醒）：沒有可同步項或這台已被靜音時**直接關掉**——
    * 需求是「有差異才打擾」，不是每次接入都彈一次。
    */
-  const openSyncDialog = async (auto: boolean): Promise<void> => {
-    const target = syncTarget()
+  const openSyncDialog = async (auto: boolean, explicit?: SyncTargetLike | null): Promise<void> => {
+    const target = syncTarget(explicit)
     setSync(openSync())
     if (target === null) {
       setSync(
@@ -376,8 +388,8 @@ export function RemoteCrPanel(): unknown {
       setError(null)
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
-      // 首次接入后自动看一眼插件差异（有无差异/是否静音由 openSyncDialog 自己判定）
-      void openSyncDialog(true)
+      // 首次接入后自动看一眼插件差异；**目标取自本次接入入参**，不读旧 snapshot（审查 N1）
+      void openSyncDialog(true, syncTargetOf(plan.input.target))
     } catch (caught) {
       setError(cancelledOrNull(caught, { kind: 'attach', record }))
     } finally {
@@ -400,8 +412,8 @@ export function RemoteCrPanel(): unknown {
       setError(null)
       await refresh()
       setActiveSession((outcome.sessions[0]?.sessionId ?? null) as string | null)
-      // 首次接入后自动看一眼插件差异（有无差异/是否静音由 openSyncDialog 自己判定）
-      void openSyncDialog(true)
+      // 首次接入后自动看一眼插件差异；**目标取自本次接入入参**，不读旧 snapshot（审查 N1）
+      void openSyncDialog(true, syncTargetOf(plan.input.target))
     } catch (caught) {
       setError(cancelledOrNull(caught, { kind: 'ssh-attach' }))
     } finally {

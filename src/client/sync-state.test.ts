@@ -13,6 +13,7 @@ import {
   receiveSyncPlan,
   resultTotals,
   syncReport,
+  syncTargetOf,
   selectAllSync,
   syncGroups,
   toggleSyncEntry,
@@ -93,4 +94,18 @@ test('syncReport：只含事实与码，不含远端路径；成功与失败行�
   assert.match(report, /FAIL b remote\/plugin-sync-apply-failed — 退出码 1/)
   assert.ok(!report.includes('/home/'), '不把远端路径抄进报告')
   assert.equal(syncReport(CLOSED), '')
+})
+
+test('syncTargetOf：接入入参 → 同步目标（N1 的根因修复点）', () => {
+  assert.deepEqual(
+    syncTargetOf({ backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui' }),
+    { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui' },
+  )
+  assert.deepEqual(
+    syncTargetOf({ backend: 'wsl', distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/hui' }),
+    { backend: 'wsl', distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/hui' },
+  )
+  assert.equal(syncTargetOf({ backend: 'docker', port: 1, remoteRoot: '/x' }), null, 'docker 暂不支持')
+  assert.equal(syncTargetOf({ backend: 'ssh', alias: '', port: 22, remoteRoot: '/x' }), null)
+  assert.equal(syncTargetOf({ backend: 'wsl', distro: '', port: 22, remoteRoot: '/x' }), null)
 })
