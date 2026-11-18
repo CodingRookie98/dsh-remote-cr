@@ -7,11 +7,13 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](./package.json)
 [![DSH](https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.0%20%3C0.3.0-6f42c1.svg)](./package.json)
 
+由 [@CodingRookie98](https://github.com/CodingRookie98) 维护 · [更新日志](./CHANGELOG.md) · [排查手册](./docs/troubleshooting.md) · [决策记录](./docs/decisions/) · [审查归档](./docs/project/reviews/) · [Issue](https://github.com/CodingRookie98/dsh-remote-cr/issues)
+
 > DeepSeek Harness（DSH）的远程开发插件：**把整个宿主搬到远端（WSL2 / SSH），本地只留一个原生 GUI 和钥匙。**
 >
 > 形态对标 VS Code Remote-SSH / Zed Remote —— 但搬过去的不是「命令」，是 agent 运行时本身。
 
-![「远端工作台」面板：状态带 + 两级主从（主机 → 投影工作区 / 会话）](./docs/assets/panel-remote-cr.png)
+<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/main/docs/assets/panel-remote-cr.png" alt="「远端工作台」面板：状态带 + 两级主从（主机 → 投影工作区 / 会话）" width="1200"/>
 
 *截图来自真机 CDP 探针（1280×900），不是示意图。窄屏单列见 [panel-narrow.png](./docs/assets/panel-narrow.png)，添加工作区向导见 [host-wizard.png](./docs/assets/host-wizard.png)。*
 

@@ -30,6 +30,7 @@ jobs:
       - run: pnpm check:cjk
       # 错误码索引与字典一致性：码表过期会让用户拿着错误码搜不到东西
       - run: pnpm check:errors
+      - run: pnpm check:docs
       - run: pnpm test
       - run: pnpm build
       - run: pnpm build:client

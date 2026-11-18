@@ -7,11 +7,13 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](./package.json)
 [![DSH](https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.0%20%3C0.3.0-6f42c1.svg)](./package.json)
 
+Maintained by [@CodingRookie98](https://github.com/CodingRookie98) · [Changelog](./CHANGELOG.md) · [Troubleshooting](./docs/troubleshooting.md) · [ADRs](./docs/decisions/) · [Review archive](./docs/project/reviews/) · [Issues](https://github.com/CodingRookie98/dsh-remote-cr/issues)
+
 > A remote-development plugin for DeepSeek Harness (DSH): **move the whole host to the remote (WSL2 / SSH) and keep only a native GUI plus the credentials on the local machine.**
 >
 > Shaped like VS Code Remote-SSH / Zed Remote — but what moves is not "commands", it is the agent runtime itself.
 
-!["Remote Workbench" panel: status strip plus two-level master/detail (hosts → projected workspaces / sessions)](./docs/assets/panel-remote-cr.png)
+<img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/main/docs/assets/panel-remote-cr.png" alt="Remote Workbench panel: status strip plus two-level master/detail (hosts → projected workspaces / sessions)" width="1200"/>
 
 *Screenshots come from real CDP probes (1280×900), not mockups. Narrow layout: [panel-narrow.png](./docs/assets/panel-narrow.png); workspace wizard: [host-wizard.png](./docs/assets/host-wizard.png).*
 
