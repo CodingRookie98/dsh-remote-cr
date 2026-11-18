@@ -179,7 +179,7 @@ export function RemoteCrPanel(): unknown {
   const [hostUpgrade, setHostUpgrade] = useState<{
     phase: 'idle' | 'running' | 'done' | 'failed'
     version?: string
-    failure?: { code: string; detail: string; nextActions: readonly string[] }
+    failure?: { code: string; detail: string; nextActions: readonly string[]; command?: string; logTail?: string }
   }>({ phase: 'idle' })
 
   // 会话菜单动作的失败面是**粘性**的：面板打开时补看一次，之后订阅（审查 B4）
@@ -219,7 +219,7 @@ export function RemoteCrPanel(): unknown {
   }, [])
 
   /** `failureFromError` 可能给字符串（我们自己写的引导语）；同步对话框只要结构化形状。 */
-  const syncFailureOf = (caught: unknown): { code: string; detail: string; nextActions: readonly string[] } => {
+  const syncFailureOf = (caught: unknown): { code: string; detail: string; nextActions: readonly string[]; command?: string; logTail?: string } => {
     const failure = failureFromError(caught)
     return typeof failure === 'string' ? { code: 'remote/unknown', detail: failure, nextActions: [] } : failure
   }

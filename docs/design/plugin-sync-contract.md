@@ -130,6 +130,9 @@ interface HostPlan { localVersion: string | null; remoteVersion: string | null; 
 
 判定为 `reject` 时 POST 回 `remote/plugin-sync-unsupported`，detail 里带原因码——**不是**「先装上再说」。
 
+**失败面**：错误信封除 `code/detail/nextActions` 外还带可选 `command`（可照抄的安装命令）与 `logTail`（npm/远端原文）。
+为什么必须分开：客户端 `localizeFailure` 会把 `nextActions` 换成字典通用文案，精确命令会被吃掉——`command`/`logTail` 不经本地化。
+
 **UI**：`sync-host`（含 `data-action` / `data-reason`）、`sync-host-align`（两段式确认，第一段 `data-confirming="true"`）、
 `sync-host-reason`、`sync-host-applying`、`sync-host-installed`、`sync-host-failed`。
 装完**不自动重启**：提示「断开并重新连接后生效」，复用面板已有的「重新连接」（真机 13.7–16.8 s）。

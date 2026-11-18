@@ -14,6 +14,7 @@ import {
   resultTotals,
   syncReport,
   syncTargetOf,
+  hostFailureExtras,
   selectAllSync,
   syncBlockedReason,
   syncGroups,
@@ -35,6 +36,15 @@ function plan(entries: readonly SyncEntry[]): SyncPlanLike {
     muted: false,
   }
 }
+
+test('失败面的可照抄命令与远端原文：原样保留，空串折成 null（R1 BLK-4）', () => {
+  const keep = hostFailureExtras({ command: 'npm install --global --prefix /s/npm @deepseek-ai/dsh@0.2.2-rc.4', logTail: 'npm ERR! EACCES' })
+  assert.match(String(keep.command), /npm install --global --prefix \/s\/npm/)
+  assert.match(String(keep.logTail), /EACCES/)
+  assert.deepEqual(hostFailureExtras({}), { command: null, logTail: null })
+  assert.deepEqual(hostFailureExtras({ command: '   ', logTail: '\n' }), { command: null, logTail: null }, '空白不该画出一个空框')
+  assert.deepEqual(hostFailureExtras({ command: ' npm i ', logTail: ' x ' }), { command: 'npm i', logTail: 'x' })
+})
 
 test('runtime=null 且该后端必须有 runtime → 拦下；SSH 的 PATH 形态与旧宿主不拦', () => {
   const base = plan([entry('a')])

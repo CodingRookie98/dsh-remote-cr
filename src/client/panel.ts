@@ -330,6 +330,10 @@ export interface FailureLike {
   readonly code: string
   readonly detail: string
   readonly nextActions: readonly string[]
+  /** 服务端给的可照抄命令（如远端安装命令）；本地化不会覆盖它。 */
+  readonly command?: string
+  /** 服务端留的远端原文；用于「复制日志」。 */
+  readonly logTail?: string
 }
 
 /** 本地化后的失败面：可见文案；宿主原文只进「复制日志」。 */
@@ -394,7 +398,7 @@ export function failureFromError(
   describe: (value: unknown) => string = describeError,
 ): FailureLike | string {
   if (typeof error === 'object' && error !== null && 'code' in error) {
-    const shape = error as { code: unknown; detail?: unknown; nextActions?: unknown }
+    const shape = error as { code: unknown; detail?: unknown; nextActions?: unknown; command?: unknown; logTail?: unknown }
     if (typeof shape.code === 'string' && shape.code !== '') {
       return {
         code: shape.code,
@@ -402,6 +406,8 @@ export function failureFromError(
         nextActions: Array.isArray(shape.nextActions)
           ? shape.nextActions.filter((item): item is string => typeof item === 'string')
           : [],
+        ...(typeof shape.command === 'string' && shape.command !== '' ? { command: shape.command } : {}),
+        ...(typeof shape.logTail === 'string' && shape.logTail !== '' ? { logTail: shape.logTail } : {}),
       }
     }
   }

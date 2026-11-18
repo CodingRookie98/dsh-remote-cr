@@ -27,6 +27,12 @@ export interface ErrEnvelope {
   readonly code: string
   readonly detail: string
   readonly nextActions: readonly string[]
+  /**
+   * 可照抄的命令与远端原文。**不能只放 nextActions**：客户端会把 nextActions 换成本地化字典文案，
+   * 精确命令（含 staging 路径）与 npm 原文只有这两个字段能原样带到浏览器（R1 BLK-4）。
+   */
+  readonly command?: string
+  readonly logTail?: string
 }
 
 export type Envelope<T> = OkEnvelope<T> | ErrEnvelope
@@ -44,7 +50,14 @@ export function okEnvelope<T>(value: T): OkEnvelope<T> {
  */
 export function errorEnvelope(error: unknown): ErrEnvelope {
   if (isRemoteCrFailure(error)) {
-    return { ok: false, code: error.code, detail: error.detail, nextActions: [...error.nextActions] }
+    return {
+      ok: false,
+      code: error.code,
+      detail: error.detail,
+      nextActions: [...error.nextActions],
+      ...(error.command === null || error.command === '' ? {} : { command: error.command }),
+      ...(error.logTail === '' ? {} : { logTail: error.logTail }),
+    }
   }
   const detail = error instanceof Error ? error.message : String(error)
   return { ok: false, code: 'remote/unknown', detail, nextActions: ['重试', '查看宿主日志'] }

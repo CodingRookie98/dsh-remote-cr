@@ -55,6 +55,22 @@ test('RemoteCrError 四字段原样透出，不被折叠成 unknown', () => {
   assert.deepEqual(envelope.nextActions, ['换一个目录'])
 })
 
+test('可照抄命令与远端原文随信封出去（客户端会覆盖 nextActions，这两项不能丢）', () => {
+  const envelope = errorEnvelope(new RemoteCrError({
+    code: 'remote/host-upgrade-failed',
+    detail: '安装失败',
+    nextActions: ['重试'],
+    command: "npm install --global --prefix '/s/npm' '@deepseek-ai/dsh@0.2.2-rc.4'",
+    logTail: 'npm ERR! code EACCES',
+  }))
+  assert.match(String(envelope.command), /--prefix '\/s\/npm'/)
+  assert.match(String(envelope.logTail), /EACCES/)
+  // 没有命令时不要凭空造一个空字符串字段（客户端据此判 null）。
+  const plain = errorEnvelope(new RemoteCrError({ code: 'remote/unknown', detail: 'x', nextActions: ['重试'] }))
+  assert.equal(plain.command, undefined)
+  assert.equal(plain.logTail, undefined)
+})
+
 test('普通异常归到 remote/unknown，但仍有一句可读原因与下一步', () => {
   const envelope = errorEnvelope(new Error('boom'))
   assert.equal(envelope.code, 'remote/unknown')

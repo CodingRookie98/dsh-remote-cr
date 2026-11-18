@@ -56,6 +56,8 @@ export interface RemoteCrErrorInit {
   nextActions: readonly string[]
   /** 已捕获的日志尾（最多几十行），供「复制日志」按钮使用。 */
   logTail?: string
+  /** 可照抄的命令（安装/修复用）；与 nextActions 分开，避免被本地化字典覆盖掉。 */
+  command?: string
   cause?: unknown
 }
 
@@ -65,6 +67,7 @@ export class RemoteCrError extends Error {
   readonly detail: string
   readonly nextActions: readonly string[]
   readonly logTail: string
+  readonly command: string | null
 
   constructor(init: RemoteCrErrorInit) {
     super(`[${init.code}] ${init.detail}`)
@@ -74,6 +77,7 @@ export class RemoteCrError extends Error {
     this.detail = init.detail
     this.nextActions = init.nextActions.length > 0 ? init.nextActions : ['重试']
     this.logTail = init.logTail ?? ''
+    this.command = init.command ?? null
     if (init.cause !== undefined) this.cause = init.cause
   }
 

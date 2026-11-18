@@ -102,6 +102,9 @@ export async function upgradeRemoteHost(request: HostUpgradeRequest): Promise<{ 
   }
 
   const install = await request.exec(buildHostInstallScript(request), request.deadlineMs ?? 300_000)
+  const manualCommand =
+    'NPM_CONFIG_PREFIX=' + shellQuote(request.stagingDir + '/npm') + ' ' + npmCommandFor(request.nodeBin) +
+    ' install --global --no-audit --no-fund ' + shellQuote(DSH_PACKAGE_NAME + '@' + request.version)
   if (install.code !== 0) {
     throw new RemoteCrError({
       code: 'remote/host-upgrade-failed',
@@ -109,8 +112,9 @@ export async function upgradeRemoteHost(request: HostUpgradeRequest): Promise<{ 
       nextActions: [
         '重试',
         '检查远端 npm 网络与磁盘空间',
-        '在远端手动执行：' + npmCommandFor(request.nodeBin) + ' install --global --prefix ' + shellQuote(request.stagingDir + '/npm') + ' ' + shellQuote(DSH_PACKAGE_NAME + '@' + request.version),
+        '在远端手动执行下面给出的命令',
       ],
+      command: manualCommand,
       logTail: install.stderr.trim().slice(-400),
     })
   }

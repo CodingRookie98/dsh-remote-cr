@@ -394,9 +394,9 @@ export const PREVIEW_SCENES = [
     id: 'sync-host-failed',
     label: '宿主对齐失败：码 + 下一步可复制',
     theme: 'light',
-    targets: ['[data-remote-cr="sync-host-failed"]', '[data-remote-cr="sync-host-failed-next"]'],
+    targets: ['[data-remote-cr="sync-host-command"]', '[data-remote-cr="sync-host-failed"]'],
     hideFlow: true,
-    requireMarkers: ['sync-host-failed', 'sync-host-failed-code', 'sync-host-failed-next'],
+    requireMarkers: ['sync-host-failed', 'sync-host-failed-code', 'sync-host-failed-next', 'sync-host-command', 'sync-host-log'],
     steps: [
       { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
       { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
@@ -794,7 +794,10 @@ export function sceneFixtures(sceneId) {
         ? {
             code: 'remote/host-upgrade-failed',
             detail: '远端安装 @deepseek-ai/dsh@0.2.2-rc.4 失败（退出码 1）',
-            nextActions: ['重试', '在远端手动执行 npm install --global --prefix /s/npm @deepseek-ai/dsh@0.2.2-rc.4'],
+            nextActions: ['重试', '在远端手动执行下面给出的命令'],
+            // 精确命令与远端原文走独立字段：字典会把 nextActions 覆盖成通用文案。
+            command: "NPM_CONFIG_PREFIX='/home/hui/.dsh-remote-cr/staging/abc/npm' '/usr/bin/npm' install --global --no-audit --no-fund '@deepseek-ai/dsh@0.2.2-rc.4'",
+            logTail: 'npm ERR! code EACCES\nnpm ERR! syscall mkdir',
           }
         : null,
     // 「同步中」要拍得到：apply 的 POST 慢一点回（0 = 立刻回，其余场景行为不变）。

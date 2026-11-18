@@ -92,11 +92,14 @@ test('安装非零 → host-upgrade-failed，带退出码与可照抄命令', as
   await assert.rejects(
     () => upgradeRemoteHost({ exec: fake.exec, ...REQUEST }),
     (error: unknown) => {
-      const typed = error as { code?: string; detail?: string; nextActions?: readonly string[]; logTail?: string }
+      const typed = error as { code?: string; detail?: string; nextActions?: readonly string[]; logTail?: string; command?: string | null }
       assert.equal(typed.code, 'remote/host-upgrade-failed')
       assert.match(String(typed.detail), /退出码 1/)
       assert.match(String(typed.logTail), /EACCES/)
-      assert.ok((typed.nextActions ?? []).some((action) => action.includes('install --global')), '要给出可照抄的安装命令')
+      assert.ok((typed.nextActions ?? []).length > 0, '下一步不能空')
+      // 精确命令走独立字段：nextActions 会被客户端本地化字典覆盖（R1 BLK-4）。
+      assert.match(String(typed.command), /install --global --no-audit --no-fund '@deepseek-ai\/dsh@0\.2\.2-rc\.4'/)
+      assert.match(String(typed.command), /NPM_CONFIG_PREFIX='\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/npm'/)
       return true
     },
   )

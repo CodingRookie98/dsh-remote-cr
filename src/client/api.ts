@@ -26,13 +26,19 @@ export class RemoteCrApiError extends Error {
   readonly code: string
   readonly detail: string
   readonly nextActions: readonly string[]
+  /** 服务端给的可照抄命令（没有就是 null）。 */
+  readonly command: string | null
+  /** 服务端留的远端原文（npm/WSL 输出），没有就是 null。 */
+  readonly logTail: string | null
 
-  constructor(init: { code: string; detail: string; nextActions?: readonly string[] }) {
+  constructor(init: { code: string; detail: string; nextActions?: readonly string[]; command?: string; logTail?: string }) {
     super(`[${init.code}] ${init.detail}`)
     this.name = 'RemoteCrApiError'
     this.code = init.code
     this.detail = init.detail
     this.nextActions = init.nextActions !== undefined && init.nextActions.length > 0 ? init.nextActions : [t('action.retry')]
+    this.command = init.command !== undefined && init.command !== '' ? init.command : null
+    this.logTail = init.logTail !== undefined && init.logTail !== '' ? init.logTail : null
   }
 }
 
@@ -41,6 +47,8 @@ interface Envelope<T> {
   readonly code?: string
   readonly detail?: string
   readonly nextActions?: readonly string[]
+  readonly command?: string
+  readonly logTail?: string
   readonly value?: T
 }
 
@@ -87,6 +95,8 @@ export async function callApi<T>(
       code: envelope.code ?? 'remote-cr/unknown',
       detail: envelope.detail ?? t('api.rejected', { path, status: response.status }),
       ...(envelope.nextActions === undefined ? {} : { nextActions: envelope.nextActions }),
+      ...(envelope.command === undefined ? {} : { command: envelope.command }),
+      ...(envelope.logTail === undefined ? {} : { logTail: envelope.logTail }),
     })
   }
   if (!response.ok) {

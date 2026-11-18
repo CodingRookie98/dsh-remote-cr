@@ -24,7 +24,7 @@ import { canCancel, type FlowState } from '../shared/flow.ts'
 import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
 import { requestReconnect } from './session-actions.ts'
-import { HOST_REASON_KEYS, hostPanelOf, resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
+import { HOST_REASON_KEYS, hostFailureExtras, hostPanelOf, resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
 import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
 import {
@@ -651,8 +651,14 @@ export function SyncDialog(props: {
   readonly hostUpgrade?: {
     readonly phase: 'idle' | 'running' | 'done' | 'failed'
     readonly version?: string
-    /** 失败要带码 + 下一步（铁律 4）：只显示 detail 等于把可照抄的出路吞掉。 */
-    readonly failure?: { readonly code: string; readonly detail: string; readonly nextActions: readonly string[] }
+    /** 失败要带码 + 下一步 + 可照抄命令与远端原文（铁律 4）。 */
+    readonly failure?: {
+      readonly code: string
+      readonly detail: string
+      readonly nextActions: readonly string[]
+      readonly command?: string
+      readonly logTail?: string
+    }
   }
 }): unknown {
   const { state } = props
@@ -845,6 +851,8 @@ export function SyncDialog(props: {
           upgrade.phase === 'failed' && upgrade.failure !== undefined
             ? (() => {
                 const text = localizeFailure(upgrade.failure as { code: string; detail: string; nextActions: readonly string[] })
+                // 字典会把 nextActions 换成通用文案，所以精确命令与远端原文单独渲染（否则「可照抄」是空话）。
+                const extras = hostFailureExtras(upgrade.failure)
                 return h(
                   'div',
                   { 'data-remote-cr': 'sync-host-failed', 'data-error-code': upgrade.failure?.code ?? '', role: 'alert' },
@@ -855,6 +863,22 @@ export function SyncDialog(props: {
                     { 'data-remote-cr': 'sync-host-failed-next' },
                     ...text.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
                   ),
+                  extras.command === null
+                    ? null
+                    : h(
+                        'div',
+                        { 'data-remote-cr': 'sync-host-command' },
+                        h('code', null, extras.command),
+                        h('button', { type: 'button', 'data-remote-cr': 'sync-host-copy-command', onClick: () => void copyText(String(extras.command)) }, t('action.copyLog')),
+                      ),
+                  extras.logTail === null
+                    ? null
+                    : h(
+                        'div',
+                        { 'data-remote-cr': 'sync-host-log' },
+                        h('code', null, extras.logTail),
+                        h('button', { type: 'button', 'data-remote-cr': 'sync-host-copy-log', onClick: () => void copyText(String(extras.logTail)) }, t('action.copyLog')),
+                      ),
                 )
               })()
             : null,

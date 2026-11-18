@@ -82,6 +82,9 @@ interface HostPlan {
   B2 registry 探测把所有失败都说成「版本不存在」→ npm 原文保留、404 与网络/权限分因（EAI_AGAIN → `host-upgrade-failed`）；
   B3 runtime 读不出时谎称「远端是检出」→ 新增 `source-unknown` 原因码，文案指出「重连会重跑引导器」；
   B4 失败面丢 nextActions/logTail → host 失败块渲染码 + 原文 + 下一步，新增 L4 `sync-host-failed`。
+  **Delta 复审指出 B4 只修了一半**：`localizeFailure` 会用字典通用文案覆盖 nextActions，精确命令被吃掉；`logTail` 压根没进信封。
+  已补链路：`RemoteCrError.command` → 信封 `command`/`logTail` → `RemoteCrApiError` → `FailureLike` → `hostFailureExtras`（纯函数，空串折 null）
+  → 对话框 `sync-host-command` / `sync-host-log` 两块 + 复制按钮；L4 的 requireMarkers 加上这两块（实测缺任一块 e2e 直接红）。
 - 采纳的非阻断：`realpathSync(argv[1])`（npm 全局 bin 是 symlink）；reader 的 `--version` 加 8s 内层超时；
   service 层补 `out-of-range` 用例（注入的 supported 不能被默认值吞掉）；新增 `sync-host-synced` 场景；按钮文案改成「换成」。
 - 门禁：`pnpm typecheck` 0、783 tests / 0 fail（新增 22 条）、`check:cjk` / `check:errors`（71 条）OK、`build:client` 27 模块 257 398 B、`e2e:preview` **21/21** 场景 + 键盘 10/0
