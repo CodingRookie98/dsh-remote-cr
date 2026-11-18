@@ -142,6 +142,12 @@ export declare const zh: {
     readonly 'errNext.remote/forward-unavailable': "服务端需允许 AllowTcpForwarding · 或改用 stdio 桥";
     readonly 'err.remote/upload-failed': "往远端写文件失败";
     readonly 'errNext.remote/upload-failed': "确认目录可写 · 检查磁盘剩余空间 · 用 cat 管道重试";
+    readonly 'err.remote/plugin-sync-read-failed': "读取远端插件清单失败";
+    readonly 'errNext.remote/plugin-sync-read-failed': "重试 · 先确认这台远端能正常接入 · 复制日志";
+    readonly 'err.remote/plugin-sync-apply-failed': "远端安装插件失败";
+    readonly 'errNext.remote/plugin-sync-apply-failed': "重试该条 · 检查远端 npm 网络 · 在远端手动执行命令";
+    readonly 'err.remote/plugin-sync-unsupported': "请求里包含不可同步的插件";
+    readonly 'errNext.remote/plugin-sync-unsupported': "只勾选「可同步」的项后重试";
     readonly 'err.remote/bootstrap-failed': "远端引导失败";
     readonly 'errNext.remote/bootstrap-failed': "看引导日志 · 手工装好 node 与 dsh 后重试";
     readonly 'err.remote/host-key-changed': "主机密钥变了（可能是中间人）";

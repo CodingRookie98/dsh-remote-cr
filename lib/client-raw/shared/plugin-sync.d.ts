@@ -34,6 +34,13 @@ export interface SyncEntry {
     readonly localVersion: string | null;
     readonly remoteVersion: string | null;
 }
+/** 单条安装结果（契约 §1）。 */
+export interface SyncResult {
+    readonly name: string;
+    readonly ok: boolean;
+    readonly code?: string;
+    readonly detail?: string;
+}
 /** 官方包前缀：与远端 dsh 安装绑定，永不同步。 */
 export declare const OFFICIAL_SCOPE = "@deepseek-ai/";
 /**
