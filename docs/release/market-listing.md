@@ -34,7 +34,7 @@
 ## 4. 待办清单（0.4.0 前）
 
 - [x] `dsh-plugin` topic —— **已加**（2026-11-14，见 `plugin-listing.md` §8）；无需重做
-- [ ] 用 `docs/release/catalog-entry.yml` 提 PR 到 `awesome-dsh-plugin/awesome-dsh-plugin`，落点 `data/plugins/CodingRookie98__dsh-remote-cr.yml`
+- [x] 用 `docs/release/catalog-entry.yml` 提 PR 到 `awesome-dsh-plugin/awesome-dsh-plugin` —— **已提交：[#16551](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16551)**（分支 `CodingRookie98:add-dsh-remote-cr`，单文件，2026-11-18）
 - [ ]（可选）补 `assets/icon-180.png` 并在 YAML 打开 `icon:`；不补则回退作者头像
 - [ ] **决定是否发 npm** —— 见 §5
 
@@ -51,7 +51,19 @@
 
 > **决定（2026-11-18）**：走 **A** —— 只提 GitHub 投稿，保持 `private: true`，不发 npm。若维护者因「目录无法解析版本」而暂缓，再回到 B。
 
-## 6. 说明
+## 6. 投稿进展（2026-11-18）
+
+| 项 | 值 |
+|---|---|
+| PR | [#16551](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16551)（OPEN · MERGEABLE · 单文件） |
+| 分支 | `CodingRookie98:add-dsh-remote-cr`（fork：`CodingRookie98/awesome-dsh-plugin`） |
+| 落点 | `data/plugins/CodingRookie98__dsh-remote-cr.yml`（556 B） |
+| CI | 提交后 30 分钟仍为 `IN_PROGRESS`（对方仓库 11 919 个文件，校验较慢）—— **未验证** |
+| 合并后验证 | `curl -sSL https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json` 里应能搜到 `dsh-remote-cr`；市场卡片随即显示简介 |
+
+维护者若反馈「需要 npm 版本才能收录」，按 §5 的方案 B 处理（`private: false` + 发 0.4.0）。
+
+## 7. 说明
 
 - 本文与 `catalog-entry.yml` 都是**投稿材料**，不影响插件运行时；
 - `dsh-plugin-catalog` 是频繁重建的（本次抓取最新版 `2026.1118.23310`，2026-11-18 05:28 UTC 修改），PR 合并后当天即可生效。
