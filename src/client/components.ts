@@ -21,7 +21,7 @@ import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { DirListing } from '../shared/api.ts'
 import type { WorkspaceSource } from '../shared/choices.ts'
 import { canCancel, type FlowState } from '../shared/flow.ts'
-import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
+import { cancelFlow, listDirectory, loadSources, readFlow, reconnectRemote, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
 import { resultTotals, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
@@ -775,6 +775,31 @@ export function SyncDialog(props: {
     ...(results.length === 0 ? [] : [h('div', { 'data-remote-cr': 'sync-results' }, ...results)]),
     h('div', { 'data-remote-cr': 'sync-actions' }, ...footer),
   ])
+}
+
+
+/**
+ * 会话行 `⋯` 菜单里的「重新连接」（RFC-0003 R2-4）。
+ *
+ * 只对**远端会话**出现（查 remoteSessionIndex）；DSH 会把这个洞渲染成 `role="menuitem"`。
+ * 说明：DSH 建议通过 `useMenuOpenState` 主动关菜单；那是个 hook，而我们的「是不是远端会话」
+ * 判断必须在 hook 之前完成（否则违反 hook 调用规则），所以这里不注入 hook ——
+ * 点击后菜单由宿主自己的点击外部/焦点逻辑收起，功能不受影响。
+ */
+export function sessionReconnectItem(props?: { readonly sessionId?: unknown }): unknown {
+  const raw = props !== null && typeof props === 'object' ? props.sessionId : undefined
+  const id = typeof raw === 'string' ? raw : ''
+  if (id === '' || remoteSessionIndex.workspaceOf(id) === null) return null
+  return h(
+    'button',
+    {
+      type: 'button',
+      role: 'menuitem',
+      'data-remote-cr': 'session-reconnect',
+      onClick: () => void reconnectRemote(),
+    },
+    t('panel.rowReconnect'),
+  )
 }
 
 /** 左栏：位置 + 发行版。不可用的来源**原因内联在行下**，不再塞进按钮文字。 */

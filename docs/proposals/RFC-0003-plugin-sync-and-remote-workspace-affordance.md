@@ -101,6 +101,9 @@ PATH=<staging>/bin:$PATH <staging>/npm/bin/dsh plugin --profile web add <name>@<
 - R2-2 断连后该行 `data-availability="offline"`，整行灰显且「重新连接」按钮可点；重连成功后回到 `online`。
 - R2-3 侧栏会话行对远端会话渲染徽标（`data-remote-cr="session-badge"`），本地会话无此标记。
 - R2-4 会话行 `⋯` 菜单出现「重新连接」项，点击后走同一条重连路径（失败给错误码）。
+  **状态：代码已落地**（`sidebar.workspaces.session.menu.item`，id `remote-cr-reconnect`，order 500）。
+  已知取舍：没有注入 `useMenuOpenState`（hook 必须在「是否远端会话」判断之前调用，两者冲突），
+  点击后菜单由宿主自己的外部点击/焦点逻辑收起 —— 功能不受影响，**外观未在真机确认**。
 - R2-5 本地工作区行为**零变化**（快照/DOM 断言：无新增标记、无新增菜单项）。
 
 ## 7. 未决项（交给 P1 前回答）

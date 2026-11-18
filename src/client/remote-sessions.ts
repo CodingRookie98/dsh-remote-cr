@@ -12,6 +12,8 @@ import { readProjection } from './api.ts'
  */
 export interface RemoteSessionIndex {
   has(sessionId: string): boolean
+  /** 该会话属于哪个远端工作区（菜单项要用它判断「是不是远端会话」）。 */
+  workspaceOf(sessionId: string): string | null
   hasWorkspace(workspaceId: string): boolean
   readonly size: number
   subscribe(listener: () => void): () => void
@@ -19,6 +21,7 @@ export interface RemoteSessionIndex {
 }
 
 export function createRemoteSessionIndex(load: () => Promise<ProjectionSnapshotInfo>): RemoteSessionIndex {
+  const sessionWorkspace = new Map<string, string>()
   let sessions = new Set<string>()
   let workspaces = new Set<string>()
   const listeners = new Set<() => void>()
@@ -35,6 +38,9 @@ export function createRemoteSessionIndex(load: () => Promise<ProjectionSnapshotI
     has(sessionId: string) {
       return sessions.has(sessionId)
     },
+    workspaceOf(sessionId: string) {
+      return sessionWorkspace.get(sessionId) ?? null
+    },
     hasWorkspace(workspaceId: string) {
       return workspaces.has(workspaceId)
     },
@@ -47,6 +53,8 @@ export function createRemoteSessionIndex(load: () => Promise<ProjectionSnapshotI
       inFlight = (async () => {
         try {
           const snapshot = await load()
+          sessionWorkspace.clear()
+          for (const session of snapshot.sessions) sessionWorkspace.set(session.sessionId, session.workspaceId)
           sessions = new Set(snapshot.sessions.map((session) => session.sessionId))
           workspaces = new Set(snapshot.workspaces.map((workspace) => workspace.id))
           notify()

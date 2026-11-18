@@ -41,6 +41,8 @@ export interface RemoteCrComponents {
   readonly flow: unknown
   /** 会话行「远端」徽标（RFC-0003 R2-3）。 */
   readonly sessionBadge: unknown
+  /** 会话行 ⋯ 菜单里的「重新连接」（RFC-0003 R2-4）。 */
+  readonly sessionReconnectItem: unknown
 }
 
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
@@ -126,6 +128,23 @@ export function registerSlots(ctx: RegistrationContext, components: RemoteCrComp
         ),
       ),
     'dsh-remote-cr: session row badge',
+  )
+
+  // 会话行 ⋯ 菜单里的「重新连接」：只对远端会话渲染（RFC-0003 R2-4）
+  ctx.effect(
+    () =>
+      track(
+        'sessionReconnect',
+        own(() =>
+          ctx.slots.inject('sidebar.workspaces.session.menu.item', () =>
+            ctx.slots.register(
+              { name: 'sidebar.workspaces.session.menu.item', id: 'remote-cr-reconnect', order: 500 },
+              components.sessionReconnectItem,
+            ),
+          ),
+        ),
+      ),
+    'dsh-remote-cr: session menu reconnect',
   )
 
   const [hero, sidebar] = DIRECTORY_FLOW_SLOTS

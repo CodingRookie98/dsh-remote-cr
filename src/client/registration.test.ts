@@ -109,7 +109,13 @@ function fakeSlots(): {
   }
 }
 
-const components = { panel: 'PANEL', icon: 'ICON', flow: 'FLOW', sessionBadge: 'BADGE' }
+const components = {
+  panel: 'PANEL',
+  icon: 'ICON',
+  flow: 'FLOW',
+  sessionBadge: 'BADGE',
+  sessionReconnectItem: 'RECONNECT',
+}
 
 test('五处注册全部落位：main / sidebar.panellist / 会话行徽标 / 两个 directoryFlow', () => {
   const fake = fakeSlots()
@@ -123,9 +129,16 @@ test('五处注册全部落位：main / sidebar.panellist / 会话行徽标 / �
       'sidebar.panellist',
       'sidebar.session.row.leading',
       'sidebar.workspaces.directoryFlow',
+      'sidebar.workspaces.session.menu.item',
     ],
   )
-  assert.deepEqual(mounted.slice().sort(), ['directoryFlow', 'main', 'sessionBadge', 'sidebar.panellist'])
+  assert.deepEqual(mounted.slice().sort(), [
+    'directoryFlow',
+    'main',
+    'sessionBadge',
+    'sessionReconnect',
+    'sidebar.panellist',
+  ])
   const badge = fake.recorded.find((entry) => entry.name === 'sidebar.session.row.leading')
   assert.equal(badge?.component, 'BADGE', '徽标组件必须真的挂上去，而不是只登记了个空位')
 })
@@ -165,11 +178,11 @@ test('两个 directoryFlow 注册在同一个 inject 作用域里（不是两个
   assert.equal(hero?.scope, sidebar?.scope)
 })
 
-test('四次 ctx.effect：卸载时五个洞都要摘掉，mounted 也要清空', () => {
+test('五次 ctx.effect：卸载时六个洞都要摘掉，mounted 也要清空', () => {
   const fake = fakeSlots()
   const mounted = registerSlots(fake.ctx, components)
-  assert.equal(fake.effects.length, 4)
-  assert.equal(fake.recorded.length, 5)
+  assert.equal(fake.effects.length, 5)
+  assert.equal(fake.recorded.length, 6)
 
   for (const dispose of fake.disposers) dispose()
 

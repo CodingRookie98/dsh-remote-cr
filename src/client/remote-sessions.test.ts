@@ -30,6 +30,8 @@ test('索引：刷新后能查到远端会话，订阅者被通知一次', async
   assert.equal(index.has('s1'), true)
   assert.equal(index.has('nope'), false)
   assert.equal(index.hasWorkspace('w1'), true)
+  assert.equal(index.workspaceOf('s1'), 'w', '会话要能反查所属远端工作区（菜单项用它判断是否远端会话）')
+  assert.equal(index.workspaceOf('nope'), null)
   assert.equal(index.size, 2)
   off()
 })
