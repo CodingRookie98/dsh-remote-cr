@@ -7,7 +7,7 @@
 
 | 未决项 | 默认值 | 何时推翻 |
 |---|---|---|
-| WSL 的 `reconnectNow()` | **先按可用设计**；T1 用真机验证，不可用则 WSL 只显示「在面板中重连」 | T1 结果 |
+| WSL 的 `reconnectNow()` | **已验证可用**（T1：5/5，重连 13.7 s / 16.8 s，工作区 id 不变，重连后对已有会话 `probe` 仍在远端执行）→ 两种后端都提供「重新连接」 | 已关闭 |
 | 「不再提醒」粒度 | **targetId**（host + user + port，与 `anchorIdFor` 同源） | 若发现同机多 profile 需区分 |
 | 远端版本高于本地 | 列表里标「远端更新（不处理）」，**不降级** | 用户明确要求降级时另开 |
 
@@ -50,7 +50,10 @@
 
 ## Active Checkpoint
 
-- 阶段：**P1 完成 → P2 待开工**（等用户确认 P3 执行后端）
+- 阶段：**P1 完成 → T1/T6 完成 → P2 待开工**（等用户确认 P3 执行后端）
 - 已完成：RFC-0003（In Review）、P0.5 调研（`.goal-loop/scratchpad.md`）、P1 计划与测试定级（本文件）
+- T1 结论（2026-11-18，`spikes/m3-reconnect-wsl/probe.cjs`）：**5/5** —— attach → disconnect（工作区标 offline）→ reconnectNow（13.7 s / 16.8 s，工作区 id 不变）→ 对已有会话 probe（`pwd` 落在远端、`uname` 含 Linux）→ dispose。**WSL 提供重连按钮**。
+  - 首跑 4/5 是探针自身缺陷（没先建会话，T1-4 空 detail），已修并复跑 5/5。
+- T6：上游 hole 提案已成文（`docs/proposals/upstream-workspace-row-holes.md`）
 - 下一步：确认执行后端后从 **P2-1** 开始 TDD
-- 里程碑门禁：T1 结论决定 WSL 是否提供重连按钮；T4 完成前不动 T5
+- 里程碑门禁：T4 完成前不动 T5

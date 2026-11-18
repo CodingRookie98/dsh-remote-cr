@@ -104,6 +104,6 @@ PATH=<staging>/bin:$PATH <staging>/npm/bin/dsh plugin --profile web add <name>@<
 
 ## 7. 未决项（交给 P1 前回答）
 
-1. WSL 后端的 `reconnectNow()` 是否等价可用（需要在 `ubuntu_dev` 上验证），否则先只对 SSH 提供按钮。
+1. ~~WSL 后端的 `reconnectNow()` 是否等价可用~~ **已答（T1，2026-11-18）**：`spikes/m3-reconnect-wsl/probe.cjs` 5/5 —— disconnect 后工作区标 offline，reconnectNow 13.7 s / 16.8 s 回到 online 且工作区 id 不变，重连后对已有会话的 `probe` 仍在远端执行（`cwd` 与 `uname` 断言）。**D3 维持「两种后端都给按钮」**。
 2. 「不再提醒」的粒度：按 target（主机 + 用户 + 端口）还是按 hostKey（含 profile）？
 3. 同步对话框是否需要展示**远端版本低于本地**的项（目前 ADR 只定义「锁到本机确切版本」安装，降级/升级策略未定）。
