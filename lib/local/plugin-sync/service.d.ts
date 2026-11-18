@@ -1,4 +1,4 @@
-import { type SyncExec } from './read.ts';
+import { type RemoteRuntimePaths, type SyncExec } from './read.ts';
 import { type LocalBundle, type SyncEntry, type SyncResult } from '../../shared/plugin-sync.ts';
 /**
  * 同步的路由级编排（RFC-0003 / T4 的内核）。
@@ -28,6 +28,8 @@ export interface SyncPlanView {
         readonly skipped: number;
     };
     readonly muted: boolean;
+    /** 同一次读取里探明的远端运行时；为 null 时前端应提示「先接入一次」而不是给同步按钮。 */
+    readonly runtime: RemoteRuntimePaths | null;
 }
 export interface PlanRequest {
     readonly backend: SyncBackend;
@@ -40,6 +42,8 @@ export interface PlanRequest {
 export declare function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView>;
 export interface ApplyRequest {
     readonly backend: SyncBackend;
+    /** 计划里探明的远端运行时；缺了就用 backend 兜底（测试用）。 */
+    readonly runtime?: RemoteRuntimePaths | null;
     readonly targetId: string;
     readonly entries: readonly SyncEntry[];
     readonly onResult?: (result: SyncResult) => void;

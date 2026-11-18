@@ -39,11 +39,26 @@ export declare function buildReadScript(request: {
     readonly profile: string;
     readonly homeDir: string;
 }): string;
+/** 远端「用哪个 node / 哪个 dsh」——同一次读取里探明，省掉第二次 exec。 */
+export interface RemoteRuntimePaths {
+    readonly homeDir: string;
+    readonly nodeCommand: string;
+    readonly nodeBin: string;
+    readonly dshCommand: string;
+    readonly stagingDir: string;
+}
 /**
  * 读一次远端 bundle 清单。
  *
  * 只在「脚本跑不动 / 输出不是 JSON / ok=false」时抛结构化错误；单个包读不到版本
  * 是**正常事实**（官方包在 profile 里就是 ENOENT），交给 diff 判定。
  */
+export interface RemoteProfileRead {
+    readonly bundles: readonly RemoteBundle[];
+    /** 远端 staging 里没装 dsh 时为 null（此时同步应当提示「先接入一次」）。 */
+    readonly runtime: RemoteRuntimePaths | null;
+}
+export declare function readRemoteProfile(request: ReadBundlesRequest): Promise<RemoteProfileRead>;
+/** 兼容入口：只要清单。 */
 export declare function readRemoteBundles(request: ReadBundlesRequest): Promise<readonly RemoteBundle[]>;
 //# sourceMappingURL=read.d.ts.map
