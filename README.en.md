@@ -3,18 +3,19 @@
 [中文](./README.md) | **English**
 
 [![CI](https://github.com/CodingRookie98/dsh-remote-cr/actions/workflows/ci.yml/badge.svg)](https://github.com/CodingRookie98/dsh-remote-cr/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](./package.json)
+[![DSH](https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.0%20%3C0.3.0-6f42c1.svg)](./package.json)
 
 > A remote-development plugin for DeepSeek Harness (DSH): **move the whole host to the remote (WSL2 / SSH) and keep only a native GUI plus the credentials on the local machine.**
 >
 > Shaped like VS Code Remote-SSH / Zed Remote — but what moves is not "commands", it is the agent runtime itself.
 
-| "Remote Workbench" panel: link state, projected workspaces, sessions | Adding a workspace: two-pane workbench |
-|---|---|
-| !["Remote Workbench" panel](./docs/assets/panel-ssh.png) | ![Adding a workspace](./docs/assets/host-wizard-wsl.png) |
+!["Remote Workbench" panel: status strip plus two-level master/detail (hosts → projected workspaces / sessions)](./docs/assets/panel-remote-cr.png)
 
-Screenshots come from real CDP probes (1440×900), not mockups.
+*Screenshots come from real CDP probes (1280×900), not mockups. Narrow layout: [panel-narrow.png](./docs/assets/panel-narrow.png); workspace wizard: [host-wizard.png](./docs/assets/host-wizard.png).*
 
-## How it differs from "remote execution" plugins
+## Why this exists
 
 Most remote plugins in the DSH marketplace are **type A (remote execution)**: the agent, plugins, sessions and model calls stay local and only command/file IO is dispatched to the remote. This project is **type B (remote host)**:
 
@@ -67,6 +68,38 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 Restart `dsh web` (or DSH Desktop) afterwards; the "Remote Workbench" entry appears in the sidebar. The package is `private: true` and ships through GitHub tags / local links, not npm publish.
 
+> The marketplace card blurb comes from the community catalog [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin). Our submission is prepared ([docs/release/market-listing.md](./docs/release/market-listing.md)); until it merges, the card shows only the package name and link.
+
+## Upgrading from 0.3.0 to 0.4.0
+
+0.4.0 is **breaking**: every runtime identifier was renamed ([ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)).
+
+| Surface | 0.3.0 | 0.4.0 |
+|---|---|---|
+| Local state root | `~/.dsh-teleport` | `~/.dsh-remote-cr` |
+| Environment variables | `DSH_TELEPORT_*` | `DSH_REMOTE_CR_*` |
+| API prefix | `/teleport/api` | `/remote-cr/api` |
+| DOM hooks | `data-teleport` | `data-remote-cr` |
+| cordis row id | `teleport` | `remote-cr` |
+
+Three steps:
+
+1. **Delete the old patch row by hand**: edit the profile's `cordis.patch.yml`, remove the `- id: teleport` row, then restart the host — there is no automatic cleanup job;
+2. **Stop the old instance first**: if a 0.3.0 dsh is still running on the remote, use "Stop remote" in the panel first, otherwise the new local host starts a second one and hits `remote/port-in-use`;
+3. **Local state migrates itself**: the first start **copies** `known_hosts` / `hostkeys.json` into the new root (copy only, never delete; rollback = remove the new root).
+
+**Not migrated**: local `anchors/`, `staging/`, remote `instances/`, `staging/` — consequences and manual steps in [ADR-0006 §3.5](./docs/decisions/ADR-0006-rename-runtime-identifiers.md).
+
+## Configuration
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `DSH_REMOTE_CR_REMOTE_ROOT` | Remote dsh checkout root (empty = let the bootstrapper install dsh into `~/.dsh-remote-cr/staging`) | empty |
+| `DSH_REMOTE_CR_PORT` | Port the remote dsh listens on | `8899` |
+| `REMOTE_CR_ENV_POLICY` | Environment policy: `reuse` / `isolated` (`sync` is rejected; lands in M3) | `reuse` |
+
+Legacy names (`DSH_TELEPORT_*`) are still read with a one-time warning and are **removed in 0.5.0**; setting both with different values makes the attach fail with `remote/env-conflict` instead of guessing.
+
 ## Usage
 
 1. **Attach a remote**: open the "Remote Workbench" panel → fill in an SSH target (or pick a WSL distro) → attach. The first attach shows staged bootstrap progress and can be cancelled.
@@ -91,7 +124,8 @@ local GUI ──(projection / control)──▶ local host half ──(SSH tunne
 ```bash
 pnpm install
 pnpm typecheck                     # host half + browser half, two tsconfigs
-pnpm test                          # node --test (645 tests)
+pnpm test                          # node --test (676 tests)
+pnpm check:cjk                     # UI-copy gate: no hard-coded Chinese in client/shared
 pnpm build && pnpm build:client    # lib/ is committed; rebuild after touching sources
 ```
 
@@ -123,12 +157,16 @@ docs/          research, design, decisions, plans and review archives
 
 - [Documentation index](./docs/README.md)
 - Design: [requirements](./docs/design/requirements.md) · [architecture](./docs/design/architecture.md) · [UI design](./docs/design/ui-design.md) · [milestones](./docs/design/milestones.md)
-- Decisions: [ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md) (type B) · [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md) (embedding route) · [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md) (plugin sync) · [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md) (workspace entry) · [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md) (naming)
+- Decisions: [ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md) (type B) · [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md) (embedding route) · [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md) (plugin sync) · [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md) (workspace entry) · [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md) (naming) · [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md) (bilingual layering)
+- Reviews: [eight adversarial review rounds for 0.4.0](./docs/project/reviews/2026-11-15-remote-cr-rename-i18n-ui/)
 - Research: [architecture models](./docs/research/01-architecture-models.md) · [competitive landscape](./docs/research/05-ecosystem-and-value-2026-11.md) · [DSH extension points and hard limits](./docs/research/04-dsh-extension-points.md)
 
 ## Known limitations
 
 - **Docker**: greyed out in the UI; implementation is scheduled for M5
+- **No version probe**: an old remote plus a new local host looks like `remote/port-in-use` (`remote/version-mismatch` does not exist)
+- **WSL cannot keep alive**: when the `wsl.exe` handle exits, distro-side children go with it (`keepAlive` is an optional capability)
+- **Cancellation is tiered**: `probe/bootstrap/launch/tunnel` are cancellable; `attach` RPC is best effort
 - **Browsers**: verified on Chrome only; Edge / Firefox / WebKit are unverified
 - **Accessibility**: screen-reader paths are unverified (`radiogroup` / `listbox` semantics and the keyboard path are implemented and asserted)
 - **Real-machine latencies**: the success-path timing distribution for waking is not measured; only failure classification and timeout semantics have real-machine evidence

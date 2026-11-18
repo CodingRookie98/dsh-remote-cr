@@ -1,6 +1,8 @@
 # 上架材料 · dsh-plugin.org
 
-> **状态**：当前版本 `0.3.0`（2026-11-15）。仓库已公开、topic 已加，站点 review 待回；更新与上架步骤见 §8 / §9。仓库地址 `CodingRookie98/dsh-remote-cr`。
+> **状态**：当前版本 `0.4.0`（2026-11-18）。仓库已公开、topic 已加，站点 review 待回；更新与上架步骤见 §8 / §9 / §10。仓库地址 `CodingRookie98/dsh-remote-cr`。
+>
+> 注意：本站（dsh-plugin.org）与插件市场卡片**不是同一套**。卡片简介来自 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 目录，投稿材料见 [market-listing.md](./market-listing.md)。
 
 ## 1. 一句话
 
@@ -72,3 +74,14 @@ dsh-plugin.org **不收表单**：流程是「公开仓库 + 打 `dsh-plugin` to
 | 待人工 | 推送分支与 tag（`git push origin master --follow-tags`）；站点 review 通过后回填 listing URL |
 
 发布前门禁（本地实测）：`pnpm typecheck` 0 · `pnpm test` 624 全绿 · `build`/`build:client` 通过且重建为 no-op（产物与源码同步）。
+
+## 10. v0.4.0 发布（2026-11-18）
+
+| 步骤 | 状态 |
+|---|---|
+| 版本号 | `0.4.0`（minor，但**含破坏性改名**，见 [ADR-0006](../decisions/ADR-0006-rename-runtime-identifiers.md)） |
+| 变更说明 | [CHANGELOG.md](../../CHANGELOG.md) 的 `[0.4.0]`：破坏性变更 / 升级三步 / 共享层形状变更 / 双语 / 面板重设计 / 已知限制 |
+| 产物 | `pnpm build` + `build:client`（23 模块 / 211 440 字符），与源码分开提交 |
+| README | 重写：徽章、新面板截图（`panel-remote-cr.png` / `panel-narrow.png` / `host-wizard.png`）、升级与配置两节、文档与审查归档链接；`README.en.md` 同步 |
+| 门禁 | `typecheck` 0 · `test` **676** · `check:cjk` OK · `build`/`build:client` 0 · harness 14 场景 + 键盘 10/10 · SSH 真机 11/11 |
+| 待人工 | 推送分支与 tag（`git push origin master --follow-tags`）；站点 review 通过后回填 listing URL |
