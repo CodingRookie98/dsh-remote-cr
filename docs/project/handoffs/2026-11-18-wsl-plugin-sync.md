@@ -124,6 +124,20 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 | Delta 复审（第二轮） | **不可签（1 条阻断 BLK-1）→ 已修**：`defaultWslRun` 换回 `runInDistro` 时全量仍绿（诊断链路没有执行级用例）。补 `exec.test.ts`（真机 UTF-16LE 字节）+ `defaultWslRun` 透传用例；顺带统一两端门禁判据（`requiresRuntime` 随 plan 下发）、补组件禁用位门禁 |
 | 未验证 | 远端无检出（runtime=null）的**真机**表现只有单测；安装中断后的重跑窗口没做故障注入；真机超时（180 s 内跑不完）未制造；`ubuntu_dev` 的 profile 已因探针真装多了一条 `dsh-better-sidebar@0.32.1`（`dsh plugin remove` 可回退） |
 
+## 6.6 追加能力：宿主版本对齐（2026-11-18，只做 registry 路径）
+
+用户拍板：**只做 registry**；本地 dev 构建搬运与检出形态切换用原因码拒绝。
+
+| 面 | 结果 |
+|---|---|
+| 判定 | `decideHostSync`（shared，纯）：来源≠staging → `checkout-mode`；本地版本读不出 → `local-version-unknown`；越界 → `out-of-range`；远端读不出 → `remote-version-unknown`；相同 → `up-to-date`；否则 `align` |
+| 版本来源 | 本地：从宿主入口向上找 `@deepseek-ai/dsh` 的 package.json（不 spawn）；远端：plugin-sync reader 同一次 exec 里 `--version`（检出用解释器跑） |
+| 执行 | `POST /plugin-sync/host` → 服务端重算判定 → `npm view <pkg>@<v> version`（失败 → `host-version-unavailable`）→ 复用 `buildDshPackageScript` 安装 → 装完必须自报同一版本（否则 `host-upgrade-failed`） |
+| UI | 对话框 `sync-host` 一段 + 两段式确认按钮；装完提示「重连后生效」（不自动重启）；三个 L4 场景 `sync-host-drift` / `sync-host-installed` / `sync-host-rejected` |
+| 门禁 | 788 tests / 0 fail；`e2e:preview` **24/24** 场景；错误码索引 71 条 |
+| 变异 | 去掉 checkout 拒绝 → 2 红；忽略 registry 探测结果 → 1 红；忽略「装完版本不符」→ 1 红 |
+| 未验证 | 一次真实的远端宿主升级（`ubuntu_dev` 是检出 → 按设计拒绝）；远端 `npm view` 的网络可达性只有单元证据 |
+
 ## 7. 建议的新会话开场
 
 ```

@@ -336,6 +336,96 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // 宿主版本漂移：两段式确认必须可拍（第一次点变「确认」，第二次才执行）。
+    id: 'sync-host-drift',
+    label: '宿主版本漂移：两段式确认（点一次变确认）',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-host-align"][data-confirming="true"]', '[data-remote-cr="sync-host-align"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-host', 'sync-host-align'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-host-align"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-host-align"]' },
+      { wait: '[data-remote-cr="sync-host-align"][data-confirming="true"]', timeoutMs: 5000 },
+      { sleep: 150 },
+    ],
+  },
+  {
+    // 第二次点击才真的装：装完必须说「重连后生效」，不能假装修好了。
+    id: 'sync-host-installed',
+    label: '宿主版本对齐：装完提示重连',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-host-installed"]', '[data-remote-cr="sync-host"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-host-installed'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-host-align"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-host-align"]' },
+      { wait: '[data-remote-cr="sync-host-align"][data-confirming="true"]', timeoutMs: 5000 },
+      { click: '[data-remote-cr="sync-host-align"]' },
+      { wait: '[data-remote-cr="sync-host-installed"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
+    // 已一致：不该出现对齐按钮（否则用户会被引导去做无意义的重装）。
+    id: 'sync-host-synced',
+    label: '宿主版本一致：无对齐按钮',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-host"][data-action="up-to-date"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-host'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-host"][data-action="up-to-date"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
+    // 失败面：码 + 原文 + 下一步都要在屏上（铁律 4）。
+    id: 'sync-host-failed',
+    label: '宿主对齐失败：码 + 下一步可复制',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-host-failed"]', '[data-remote-cr="sync-host-failed-next"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-host-failed', 'sync-host-failed-code', 'sync-host-failed-next'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-host-align"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-host-align"]' },
+      { wait: '[data-remote-cr="sync-host-align"][data-confirming="true"]', timeoutMs: 5000 },
+      { click: '[data-remote-cr="sync-host-align"]' },
+      { wait: '[data-remote-cr="sync-host-failed"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
+    // 检出形态：必须给原因，而不是一个按了会失败的按钮。
+    id: 'sync-host-rejected',
+    label: '宿主版本拒绝：远端是检出',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-host-reason"]', '[data-remote-cr="sync-host"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-host', 'sync-host-reason'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-host-reason"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
     // 远端没有可用 dsh：面板必须说清「先接入一次」，而不是给一个按下去必然 ENOENT 的按钮。
     id: 'sync-no-runtime',
     label: '插件同步：远端没有 dsh（提示先接入，按钮禁用）',
@@ -675,6 +765,16 @@ export function sceneFixtures(sceneId) {
       runtime: id === 'sync-no-runtime' ? null : { dshCommand: '/home/hui/workspace/tools/deepseek-harness/apps/cli/lib/bin.js' },
       // WSL：必须有 runtime 才能执行（UI 与后端同一个判据）。
       requiresRuntime: true,
+      // 宿主版本对齐（H 系列）：三个场景各取一档判定（align / 拒绝 / 一致）。
+      host:
+        id === 'sync-host-rejected'
+          ? { localVersion: '0.2.2-rc.4', remoteVersion: '0.2.1-rc.5', source: 'checkout', action: 'reject', reasonId: 'checkout-mode' }
+          : id === 'sync-host-synced'
+            ? { localVersion: '0.2.2-rc.4', remoteVersion: '0.2.2-rc.4', source: 'staging', action: 'up-to-date', reasonId: 'none' }
+            : id === 'sync-no-runtime'
+              // 没有 runtime 时来源也读不出：必须是 source-unknown，不能谎称「远端是检出」。
+              ? { localVersion: '0.2.2-rc.4', remoteVersion: null, source: null, action: 'reject', reasonId: 'source-unknown' }
+              : { localVersion: '0.2.2-rc.4', remoteVersion: '0.2.1-rc.5', source: 'staging', action: 'align', reasonId: 'none' },
       totals: { install: 2, upToDate: 1, skipped: 1 },
       entries: [
         { name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null },
@@ -688,6 +788,15 @@ export function sceneFixtures(sceneId) {
       { name: 'dshmarket', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1' },
     ],
     syncOptout: [],
+    // 宿主升级失败面：POST 回结构化错误（含 nextActions），场景据此断言「失败要响」。
+    syncHostError:
+      id === 'sync-host-failed'
+        ? {
+            code: 'remote/host-upgrade-failed',
+            detail: '远端安装 @deepseek-ai/dsh@0.2.2-rc.4 失败（退出码 1）',
+            nextActions: ['重试', '在远端手动执行 npm install --global --prefix /s/npm @deepseek-ai/dsh@0.2.2-rc.4'],
+          }
+        : null,
     // 「同步中」要拍得到：apply 的 POST 慢一点回（0 = 立刻回，其余场景行为不变）。
     syncDelayMs: id === 'sync-applying' ? 8000 : 0,
     wake: id === 'wsl-failed' ? WAKE_FAILED : WAKE_OK,

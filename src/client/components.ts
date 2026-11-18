@@ -24,7 +24,7 @@ import { canCancel, type FlowState } from '../shared/flow.ts'
 import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
 import { requestReconnect } from './session-actions.ts'
-import { resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
+import { HOST_REASON_KEYS, hostPanelOf, resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
 import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
 import {
@@ -645,6 +645,15 @@ export function SyncDialog(props: {
   readonly onClose: () => void
   readonly onRetry: () => void
   readonly onOptout: (muted: boolean) => void
+  /** 宿主版本对齐（H 系列）。两段式确认的状态由面板持有——对话框本身有早退分支，不能放 hook。 */
+  readonly onAlignHost?: () => void
+  readonly hostConfirming?: boolean
+  readonly hostUpgrade?: {
+    readonly phase: 'idle' | 'running' | 'done' | 'failed'
+    readonly version?: string
+    /** 失败要带码 + 下一步（铁律 4）：只显示 detail 等于把可照抄的出路吞掉。 */
+    readonly failure?: { readonly code: string; readonly detail: string; readonly nextActions: readonly string[] }
+  }
 }): unknown {
   const { state } = props
   if (state.phase === 'closed') return null
@@ -687,6 +696,8 @@ export function SyncDialog(props: {
   const groups = syncGroups(state.plan)
   // 远端没有 dsh 时不许同步：apply 的后端也会拒绝（双保险，且这里先给一句人话）。
   const blocked = syncBlockedReason(state.plan)
+  const host = hostPanelOf(state.plan)
+  const upgrade = props.hostUpgrade ?? { phase: 'idle' as const }
   const entries: unknown[] = []
   if (groups.installable.length > 0) {
     entries.push(h('h4', { 'data-remote-cr': 'sync-group-install' }, t('sync.group.install', { count: groups.installable.length })))
@@ -796,8 +807,62 @@ export function SyncDialog(props: {
     }
   }
 
+  const hostRow =
+    host === null
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'sync-host', 'data-action': host.action, 'data-reason': host.reasonId },
+          h(
+            'span',
+            { 'data-remote-cr': 'sync-host-title' },
+            t('sync.host.title', { remote: host.remoteVersion ?? '—', local: host.localVersion ?? '—' }),
+          ),
+          host.action === 'reject'
+            ? h('span', { 'data-remote-cr': 'sync-host-reason' }, t(HOST_REASON_KEYS[host.reasonId]))
+            : null,
+          host.action === 'align' && host.localVersion !== null && props.onAlignHost !== undefined
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  'data-remote-cr': 'sync-host-align',
+                  'data-confirming': String(props.hostConfirming === true),
+                  disabled: upgrade.phase === 'running',
+                  onClick: props.onAlignHost,
+                },
+                props.hostConfirming === true
+                  ? t('sync.host.confirm')
+                  : t('sync.host.align', { version: host.localVersion }),
+              )
+            : null,
+          upgrade.phase === 'running'
+            ? h('div', { 'data-remote-cr': 'sync-host-applying', role: 'status' }, t('sync.host.applying'))
+            : null,
+          upgrade.phase === 'done'
+            ? h('div', { 'data-remote-cr': 'sync-host-installed', role: 'status' }, t('sync.host.installed', { version: upgrade.version ?? '' }))
+            : null,
+          upgrade.phase === 'failed' && upgrade.failure !== undefined
+            ? (() => {
+                const text = localizeFailure(upgrade.failure as { code: string; detail: string; nextActions: readonly string[] })
+                return h(
+                  'div',
+                  { 'data-remote-cr': 'sync-host-failed', 'data-error-code': upgrade.failure?.code ?? '', role: 'alert' },
+                  h('div', { 'data-remote-cr': 'sync-host-failed-code' }, upgrade.failure?.code ?? ''),
+                  h('div', { 'data-remote-cr': 'sync-host-failed-detail' }, text.detail),
+                  h(
+                    'ul',
+                    { 'data-remote-cr': 'sync-host-failed-next' },
+                    ...text.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
+                  ),
+                )
+              })()
+            : null,
+        )
+
   return frame([
     h('div', { 'data-remote-cr': 'sync-subtitle' }, t('sync.subtitle')),
+    hostRow,
     blocked === null ? null : h('div', { 'data-remote-cr': 'sync-no-runtime', role: 'status' }, t('sync.noRuntime')),
     ...(entries.length === 0 ? [h('div', { 'data-remote-cr': 'sync-empty' }, t('sync.group.install', { count: 0 }))] : []),
     h('div', { 'data-remote-cr': 'sync-entries' }, ...entries),

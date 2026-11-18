@@ -278,6 +278,14 @@ export function readSyncPlan(
   return callApi('/plugin-sync', { query: { target: JSON.stringify(target) } }, fetchImpl)
 }
 
+/** 把远端宿主升到本地版本（服务端会重算判定，只接受 align）。 */
+export function applyHostUpgrade(
+  target: SyncTargetLike,
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly version: string; readonly restartRequired: boolean }> {
+  return callApi('/plugin-sync/host', { method: 'POST', body: { target } }, fetchImpl)
+}
+
 /** 执行勾选项（服务端会按自己的 plan 重算动作与版本）。 */
 export function applySyncRequest(
   target: SyncTargetLike,

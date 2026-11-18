@@ -56,9 +56,10 @@ const READER = [
   "const rows=bundles.map(function(name){var version=null,error=null;try{version=JSON.parse(fs.readFileSync(path.join(base,'node_modules',name,'package.json'),'utf8')).version||null}catch(e){error=String(e.code||e.message)}return{name:name,version:version,error:error}})",
   "const home=os.homedir()",
   "let runtime=null",
-  "try{var stagingRoot=path.join(home,'.dsh-remote-cr','staging');var dirs=fs.readdirSync(stagingRoot).filter(function(id){return fs.existsSync(path.join(stagingRoot,id,'npm','bin','dsh'))});if(dirs.length>0){var dir=path.join(stagingRoot,dirs[0]);var nodeCandidate=path.join(dir,'bin','node');var hasNode=fs.existsSync(nodeCandidate);runtime={homeDir:home,nodeCommand:hasNode?nodeCandidate:'node',nodeBin:hasNode?path.join(dir,'bin'):'$PATH',dshCommand:path.join(dir,'npm','bin','dsh'),interpreter:null,dshRoot:dir}}}catch(e){}",
-  "if(!runtime&&hint){try{var cli=path.join(hint," + JSON.stringify(DSH_CLI_RELATIVE) + ");if(fs.existsSync(cli)){runtime={homeDir:home,nodeCommand:process.execPath,nodeBin:path.dirname(process.execPath),dshCommand:cli,interpreter:process.execPath,dshRoot:hint}}}catch(e){}}",
-  "console.log(JSON.stringify({ok:true,root:base,profile:profile,bundles:rows,runtime:runtime}))",
+  "try{var stagingRoot=path.join(home,'.dsh-remote-cr','staging');var dirs=fs.readdirSync(stagingRoot).filter(function(id){return fs.existsSync(path.join(stagingRoot,id,'npm','bin','dsh'))});if(dirs.length>0){var dir=path.join(stagingRoot,dirs[0]);var nodeCandidate=path.join(dir,'bin','node');var hasNode=fs.existsSync(nodeCandidate);runtime={homeDir:home,nodeCommand:hasNode?nodeCandidate:'node',nodeBin:hasNode?path.join(dir,'bin'):'$PATH',dshCommand:path.join(dir,'npm','bin','dsh'),interpreter:null,dshRoot:dir,source:'staging'}}}catch(e){}",
+  "if(!runtime&&hint){try{var cli=path.join(hint," + JSON.stringify(DSH_CLI_RELATIVE) + ");if(fs.existsSync(cli)){runtime={homeDir:home,nodeCommand:process.execPath,nodeBin:path.dirname(process.execPath),dshCommand:cli,interpreter:process.execPath,dshRoot:hint,source:'checkout'}}}catch(e){}}",
+  "var dshVersion=null;if(runtime){try{var cp=require(\"child_process\");var env=Object.assign({},process.env);if(runtime.nodeBin&&runtime.nodeBin!==\"$PATH\"){env.PATH=runtime.nodeBin+\":\"+env.PATH}var args=[runtime.dshCommand,\"--version\"];var opts={encoding:\"utf8\",timeout:8000};var rr=runtime.interpreter?cp.spawnSync(runtime.interpreter,args,opts):cp.spawnSync(runtime.dshCommand,args,Object.assign({},opts,{env:env}));if(rr&&typeof rr.stdout===\"string\"){dshVersion=String(rr.stdout).trim()||null}}catch(e){}}",
+  "console.log(JSON.stringify({ok:true,root:base,profile:profile,bundles:rows,runtime:runtime,dshVersion:dshVersion}))",
 ].join(';')
 
 /**
@@ -133,6 +134,8 @@ export interface RemoteRuntimePaths {
   readonly interpreter: string | null
   /** dsh 的来源根：SSH 的 staging 目录，或（检出形态，WSL 常见）检出根目录。`dshCommand` 就在它里面。 */
   readonly dshRoot: string
+  /** 来源形态：`staging` 可由 registry 升级；`checkout` 只能换检出（拒绝自动升级）。 */
+  readonly source: 'staging' | 'checkout'
 }
 
 interface ReaderPayload {
@@ -142,6 +145,7 @@ interface ReaderPayload {
   readonly root?: string
   readonly bundles?: readonly { readonly name?: string; readonly version?: string | null; readonly error?: string | null }[]
   readonly runtime?: Partial<RemoteRuntimePaths> | null
+  readonly dshVersion?: string | null
 }
 
 /**
@@ -154,6 +158,8 @@ export interface RemoteProfileRead {
   readonly bundles: readonly RemoteBundle[]
   /** 远端既没有 staging 也没有检出时为 null（此时同步应当提示「先接入一次」）。 */
   readonly runtime: RemoteRuntimePaths | null
+  /** 远端 dsh 自报的版本（同一次 exec 里问的）；读不到为 null。 */
+  readonly dshVersion: string | null
 }
 
 export async function readRemoteProfile(request: ReadBundlesRequest): Promise<RemoteProfileRead> {
@@ -196,13 +202,18 @@ export async function readRemoteProfile(request: ReadBundlesRequest): Promise<Re
   const bundles = rows
     .filter((row) => typeof row.name === 'string' && row.name !== '')
     .map((row) => ({ name: String(row.name), version: typeof row.version === 'string' ? row.version : null }))
-  return { bundles, runtime: readRuntime(payload.runtime) }
+  return {
+    bundles,
+    runtime: readRuntime(payload.runtime),
+    dshVersion: typeof payload.dshVersion === 'string' && payload.dshVersion !== '' ? payload.dshVersion : null,
+  }
 }
 
 /** 把脚本回报的 runtime 收窄成可信形状；缺字段就整体当 null（不猜路径）。 */
 function readRuntime(raw: Partial<RemoteRuntimePaths> | null | undefined): RemoteRuntimePaths | null {
   if (raw === null || raw === undefined) return null
-  const { homeDir, nodeCommand, nodeBin, dshCommand, dshRoot, interpreter } = raw
+  const { homeDir, nodeCommand, nodeBin, dshCommand, dshRoot, interpreter, source } = raw
+  if (source !== 'staging' && source !== 'checkout') return null
   if ([homeDir, nodeCommand, nodeBin, dshCommand, dshRoot].some((value) => typeof value !== 'string' || value === '')) {
     return null
   }
@@ -216,6 +227,7 @@ function readRuntime(raw: Partial<RemoteRuntimePaths> | null | undefined): Remot
     dshCommand: String(dshCommand),
     interpreter: runner === null ? null : String(runner),
     dshRoot: String(dshRoot),
+    source,
   }
 }
 

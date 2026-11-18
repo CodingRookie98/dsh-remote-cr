@@ -36,6 +36,7 @@ import {
   stopRemote,
   readSyncPlan,
   applySyncRequest,
+  applyHostUpgrade,
   setSyncOptout,
   RemoteCrApiError,
   type SyncTargetLike,
@@ -174,6 +175,12 @@ export function RemoteCrPanel(): unknown {
   const [records, setRecords] = useState<readonly WorkspaceRecord[]>([])
   const [snapshot, setSnapshot] = useState<ProjectionSnapshotInfo | null>(null)
   const [sync, setSync] = useState<SyncDialogState>(CLOSED)
+  const [hostConfirming, setHostConfirming] = useState(false)
+  const [hostUpgrade, setHostUpgrade] = useState<{
+    phase: 'idle' | 'running' | 'done' | 'failed'
+    version?: string
+    failure?: { code: string; detail: string; nextActions: readonly string[] }
+  }>({ phase: 'idle' })
 
   // 会话菜单动作的失败面是**粘性**的：面板打开时补看一次，之后订阅（审查 B4）
   /**
@@ -237,6 +244,9 @@ export function RemoteCrPanel(): unknown {
    */
   const openSyncDialog = async (auto: boolean, explicit?: SyncTargetLike | null): Promise<void> => {
     const target = syncTarget(explicit)
+    // 每次打开都复位宿主对齐的两段式确认与上一次结果（否则会显示上一台远端的结论）。
+    setHostConfirming(false)
+    setHostUpgrade({ phase: 'idle' })
     setSync(openSync())
     if (target === null) {
       setSync(
@@ -257,6 +267,28 @@ export function RemoteCrPanel(): unknown {
       setSync(receiveSyncPlan(plan))
     } catch (caught) {
       setSync(failSync(syncFailureOf(caught)))
+    }
+  }
+
+  /**
+   * 宿主版本对齐（H 系列）：**两段式**——第一次点只把按钮换成「确认」，第二次才执行。
+   * 为什么不用 `confirm()`：预览 harness 不实现弹窗；而且确认态要能被 L4 断言。
+   */
+  const alignHost = async (): Promise<void> => {
+    if (!hostConfirming) {
+      setHostConfirming(true)
+      return
+    }
+    setHostConfirming(false)
+    const target = syncTarget()
+    if (target === null) return
+    setHostUpgrade({ phase: 'running' })
+    try {
+      const done = await applyHostUpgrade(target)
+      setHostUpgrade({ phase: 'done', version: done.version })
+    } catch (caught) {
+      // 失败要带码与下一步（铁律 4）：交给对话框的失败块渲染，别退化成一句 detail。
+      setHostUpgrade({ phase: 'failed', failure: syncFailureOf(caught) })
     }
   }
 
@@ -988,6 +1020,9 @@ export function RemoteCrPanel(): unknown {
       onClose: () => setSync(closeSync()),
       onRetry: () => void openSyncDialog(false),
       onOptout: (muted) => void toggleSyncOptout(muted),
+      onAlignHost: () => void alignHost(),
+      hostConfirming,
+      hostUpgrade,
     }),
     // ③ 错误块：唯一一处结构化失败面
     error === null

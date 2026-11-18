@@ -18,7 +18,12 @@ function runReader(input: {
   readonly argv: readonly string[]
   readonly exists: (file: string) => boolean
   readonly read: (file: string) => string
-}): { runtime: { dshCommand?: string; interpreter?: string | null; nodeBin?: string; dshRoot?: string } | null } {
+  /** 注入 `spawnSync` 的返回（版本探测）；省略时给空 stdout。 */
+  readonly spawn?: { readonly status?: number | null; readonly stdout?: string; readonly stderr?: string }
+}): {
+  runtime: { dshCommand?: string; interpreter?: string | null; nodeBin?: string; dshRoot?: string; source?: string } | null
+  dshVersion?: string | null
+} {
   const lines: string[] = []
   const enoent = (): never => {
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
@@ -35,8 +40,10 @@ function runReader(input: {
       // 与被测脚本在 distro 里看到的路径不是一回事。
       : name === 'path' ? { join: path.posix.join, dirname: path.posix.dirname }
       : name === 'os' ? { homedir: () => '/home/hui' }
+      // 版本探测走 spawnSync：远端那台机器上有没有 `--version` 由用例说了算。
+      : name === 'child_process' ? { spawnSync: () => input.spawn ?? { status: 0, stdout: '', stderr: '' } }
       : (() => { throw new Error('reader 不该 require ' + name) })(),
-    process: { argv: input.argv, execPath: '/usr/bin/node', exit: () => undefined },
+    process: { argv: input.argv, execPath: '/usr/bin/node', exit: () => undefined, env: {} },
     console: { log: (line: string) => lines.push(line) },
   }
   vm.runInNewContext(READER_SOURCE, sandbox)
@@ -87,6 +94,27 @@ test('真有检出时脚本报告检出形态（执行级：把 reader 正文真
   // 负控：检出根里没有 apps/cli/lib/bin.js → 不给 runtime（上层据此拒绝执行，不拼必然 ENOENT 的命令）
   const missing = runReader({ argv: ['node', 'reader.cjs', '', 'web', '/w/nope'], exists: () => false, read: () => '{}' })
   assert.equal(missing.runtime, null)
+})
+
+test('同一次读取里报远端 dsh 版本（H2）：检出用解释器跑，staging 直接执行入口', () => {
+  const checkout = runReader({
+    argv: ['node', 'reader.cjs', '', 'web', '/w/dsh'],
+    exists: (file) => file === '/w/dsh/apps/cli/lib/bin.js' || file.endsWith('package.json'),
+    read: () => JSON.stringify({ dsh: { profile: { bundles: [] } } }),
+    spawn: { status: 0, stdout: '0.2.2-rc.4\n', stderr: '' },
+  })
+  assert.equal(checkout.dshVersion, '0.2.2-rc.4')
+  assert.equal(checkout.runtime?.source, 'checkout', '版本探测必须带来源形态，上层据此拒绝检出切换')
+
+  // 版本读不出（命令失败/没输出）→ null，由上层给 remote-version-unknown，不猜。
+  const silent = runReader({
+    argv: ['node', 'reader.cjs', '/home/hui/.dsh/profiles/web', 'web', ''],
+    exists: (file) => file.endsWith('package.json'),
+    read: () => JSON.stringify({ dsh: { profile: { bundles: [] } } }),
+    spawn: { status: 1, stdout: '', stderr: 'boom' },
+  })
+  assert.equal(silent.runtime, null, '既无 staging 也无检出 → runtime 为 null')
+  assert.equal(silent.dshVersion, null)
 })
 
 test('encodeScript 是 UTF-8 base64，可往返', () => {
@@ -173,6 +201,7 @@ test('同一次读取里探明远端运行时：五个字段齐才收下，缺�
     dshCommand: '/home/hui/.dsh-remote-cr/staging/abc/npm/bin/dsh',
     interpreter: null,
     dshRoot: '/home/hui/.dsh-remote-cr/staging/abc',
+    source: 'staging',
   }
   const ok = fakeExec({ code: 0, stderr: '', stdout: JSON.stringify({ ok: true, bundles: [], runtime }) })
   const profile = await readRemoteProfile({ exec: ok.exec, nodeCommand: 'node' })
@@ -194,6 +223,7 @@ test('检出形态（WSL）：interpreter 原样收下，dshRoot 是检出根；
     dshCommand: '/home/hui/workspace/tools/deepseek-harness/apps/cli/lib/bin.js',
     interpreter: '/usr/bin/node',
     dshRoot: '/home/hui/workspace/tools/deepseek-harness',
+    source: 'checkout',
   }
   const ok = fakeExec({ code: 0, stderr: '', stdout: JSON.stringify({ ok: true, bundles: [], runtime }) })
   assert.deepEqual((await readRemoteProfile({ exec: ok.exec, nodeCommand: 'auto' })).runtime, runtime)

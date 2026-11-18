@@ -172,7 +172,9 @@ docs/          调研、设计、决策、计划与审查归档
 ## 已知限制
 
 - **Docker**：界面灰显，实装排到 M5
-- **没有版本探针**：老远端 + 新本地混跑表现为 `remote/port-in-use`（`remote/version-mismatch` 这个码不存在）
+- **宿主版本不一致只有 registry 一条路**：同步对话框会显示「本地 x / 远端 y」并允许把远端升到本地版本（`dsh plugin` 之外的另一条动作，**装完要重连才生效**）；
+  远端跑**检出**、或本地是**未发布的开发构建**时明确拒绝并给原因（`checkout-mode` / `host-version-unavailable`），不做检出切换与文件搬运
+- **没有自动版本对齐**：跨 `engines.dsh` 区间的升级一律拒绝（`out-of-range`），且升级永远不会自动发生
 - **WSL 后端不支持驻留**：`wsl.exe` 句柄一退就把 distro 侧子进程带走（`keepAlive` 是可选能力）
 - **WSL 插件同步期间别关面板/退应用**：安装跟着 `wsl.exe` 句柄走，句柄一断远端安装会被一起中断（`dsh plugin add` 幂等，重跑安全；UI 已当面提示）
 - **取消是分级的**：`probe/bootstrap/launch/tunnel` 保证可取消；`attach` RPC 尽力而为

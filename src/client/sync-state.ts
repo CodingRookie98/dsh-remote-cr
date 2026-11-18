@@ -1,4 +1,4 @@
-import type { SyncEntry, SyncResult, SyncReasonId } from '../shared/plugin-sync.ts'
+import type { HostPlan, HostReasonId, SyncEntry, SyncResult, SyncReasonId } from '../shared/plugin-sync.ts'
 import type { RemoteCrKey } from './locales.ts'
 
 /**
@@ -12,6 +12,16 @@ export const SYNC_REASON_KEYS: Readonly<Record<SyncReasonId, RemoteCrKey>> = {
   'remote-newer': 'syncReason.remote-newer',
   'local-path-plugin': 'syncReason.local-path-plugin',
   'local-version-unknown': 'syncReason.local-version-unknown',
+}
+
+/** 宿主版本拒绝原因 → 字典键（同一手法：类型化，漏键 tsc 就报）。 */
+export const HOST_REASON_KEYS: Readonly<Record<HostReasonId, RemoteCrKey>> = {
+  none: 'sync.host.upToDate',
+  'checkout-mode': 'syncHostReason.checkout-mode',
+  'source-unknown': 'syncHostReason.source-unknown',
+  'local-version-unknown': 'syncHostReason.local-version-unknown',
+  'out-of-range': 'syncHostReason.out-of-range',
+  'remote-version-unknown': 'syncHostReason.remote-version-unknown',
 }
 
 /**
@@ -41,6 +51,8 @@ export interface SyncPlanLike {
    * SSH 远端要是把 dsh 装在 PATH 上，runtime 同样是 null，但那条兜底命令是可用的。
    */
   readonly requiresRuntime?: boolean
+  /** 宿主版本对齐判定；字段缺省（旧宿主）时对话框不显示这一段。 */
+  readonly host?: HostPlan
 }
 
 export interface FailureLikeShape {
@@ -143,6 +155,11 @@ export function syncBlockedReason(plan: SyncPlanLike): 'no-runtime' | null {
   // 条件必须与 `applySyncPlan` 的后端门禁同形（runtime 为空 **且** 该后端必须有 runtime），
   // 否则 SSH（dsh 在 PATH 上时 runtime 也是 null）会被 UI 误拦。字段缺省 = 老宿主 = 不拦。
   return plan.runtime === null && plan.requiresRuntime === true ? 'no-runtime' : null
+}
+
+/** 宿主版本这一行怎么画：null = 旧宿主没这个字段，不渲染（不拿不存在的门禁去拦老版本）。 */
+export function hostPanelOf(plan: SyncPlanLike): HostPlan | null {
+  return plan.host ?? null
 }
 
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */

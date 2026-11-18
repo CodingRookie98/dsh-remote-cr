@@ -125,6 +125,11 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/plugin-sync') {
     return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
   }
+  if (path === '/remote-cr/api/plugin-sync/host' && method === 'POST') {
+    // 失败场景回结构化错误（含 nextActions），与线上信封同形。
+    if (fixtures.syncHostError) return { ok: false, ...fixtures.syncHostError };
+    return { ok: true, value: { version: fixtures.syncPlan.host.localVersion, restartRequired: true } };
+  }
   if (path === '/remote-cr/api/plugin-sync/optout') {
     return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
   }

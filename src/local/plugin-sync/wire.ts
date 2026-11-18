@@ -5,6 +5,7 @@ import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
 import { readSshConfig, resolveSshTarget, type SshTarget } from '../backend/ssh/config.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
 import { runSsh, type SshRunOptions, type SshRunResult } from '../backend/ssh/transport.ts'
+import { dshSupported } from '../backend/ssh/bootstrap.ts'
 import { runInDistroChecked } from '../backend/wsl/exec.ts'
 import type { SyncRoutesOptions } from '../api/routes.ts'
 import type { SyncBackend } from './service.ts'
@@ -31,6 +32,8 @@ export interface SyncWiringOptions {
   readonly sshExecutable?: string
   /** `wsl.exe` 的可执行文件名或绝对路径；测试可换。 */
   readonly wslExecutable?: string
+  /** 本地宿主版本（由 `index.ts` 传 `localHostVersion()`）；读不出为 null。 */
+  readonly hostVersion?: string | null
   /** 测试注入：默认用真 runSsh。 */
   readonly runSsh?: (options: SshRunOptions) => Promise<SshRunResult>
   /** 测试注入：默认用真 runInDistroChecked（spawn `wsl.exe -d <distro> --exec …` + 失败诊断）。 */
@@ -174,6 +177,8 @@ export function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesO
           checkoutRoot: target.remoteRoot,
           // WSL 上 dsh 只可能来自 staging 或检出（PATH 上没有 dsh，真机实测 NO_DSH）。
           requiresRuntime: true,
+          hostVersion: options.hostVersion ?? null,
+          supported: dshSupported,
           profile,
         }
       }
@@ -207,6 +212,8 @@ export function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesO
         homeDir: '',
         // 检出形态也要在同一次读取里探明（ssh/runtime.ts 的约定：remoteRoot 下就是检出）。
         checkoutRoot: target.remoteRoot,
+        hostVersion: options.hostVersion ?? null,
+        supported: dshSupported,
         profile,
       }
     },

@@ -149,6 +149,68 @@ export function diffBundles(input: {
   return entries.sort((a, b) => (rank[a.action] - rank[b.action]) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
+/**
+ * 宿主版本对齐（只做 registry 路径，2026-11-18 用户拍板）。
+ *
+ * 与插件同步是**两件事**：这里换的是远端 `dsh` 本身。三条边界写死在类型里：
+ * - 远端走检出（WSL 常见）→ 拒绝：换版本等于换检出，成本与收益不成比例；
+ * - 本地版本读不出 / 不在 engines 区间 → 拒绝：不拿一个自己都不支持的版本去装；
+ * - 远端版本读不出 → 拒绝：`未知 ≠ 不一致`，不猜。
+ */
+export type HostAction = 'up-to-date' | 'align' | 'reject'
+
+export type HostReasonId =
+  | 'none'
+  | 'checkout-mode'
+  /** 读不到远端 dsh 的位置：可能是半装（staging 的 bin/dsh 没了）或检出目录不对——**不是**「检出形态」。 */
+  | 'source-unknown'
+  | 'local-version-unknown'
+  | 'out-of-range'
+  | 'remote-version-unknown'
+
+export interface HostPlan {
+  readonly localVersion: string | null
+  readonly remoteVersion: string | null
+  /** 远端 dsh 从哪来：staging（可升级）或检出（拒绝）。读不出为 null。 */
+  readonly source: 'staging' | 'checkout' | null
+  readonly action: HostAction
+  readonly reasonId: HostReasonId
+}
+
+/**
+ * 判一次「远端宿主该怎么处理」。纯函数：`supported` 由调用方注入（宿主引擎区间判定），
+ * 免得这一层依赖 SSH 引导器。判定顺序即优先级：来源 → 本地版本 → 区间 → 远端版本 → 相等。
+ */
+export function decideHostSync(input: {
+  readonly localVersion: string | null
+  readonly remoteVersion: string | null
+  readonly source: 'staging' | 'checkout' | null
+  readonly supported: (version: string) => boolean
+}): HostPlan {
+  const base = { localVersion: input.localVersion, remoteVersion: input.remoteVersion, source: input.source }
+  // 三种来源要分开说：检出（只能换检出）、读不到（可能半装，重连会重跑引导器）、staging（可升级）。
+  // 把它们合成一句「远端跑的是检出」是假话——2026-11-18 R1 的 BLK-3 就是这条。
+  if (input.source === null) {
+    return { ...base, action: 'reject', reasonId: 'source-unknown' }
+  }
+  if (input.source === 'checkout') {
+    return { ...base, action: 'reject', reasonId: 'checkout-mode' }
+  }
+  if (input.localVersion === null || input.localVersion === '') {
+    return { ...base, action: 'reject', reasonId: 'local-version-unknown' }
+  }
+  if (!input.supported(input.localVersion)) {
+    return { ...base, action: 'reject', reasonId: 'out-of-range' }
+  }
+  if (input.remoteVersion === null || input.remoteVersion === '') {
+    return { ...base, action: 'reject', reasonId: 'remote-version-unknown' }
+  }
+  if (input.remoteVersion === input.localVersion) {
+    return { ...base, action: 'up-to-date', reasonId: 'none' }
+  }
+  return { ...base, action: 'align', reasonId: 'none' }
+}
+
 /** 给 UI 用的分组计数。 */
 export function planTotals(entries: readonly SyncEntry[]): {
   readonly install: number

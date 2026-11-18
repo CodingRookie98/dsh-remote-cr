@@ -52,6 +52,8 @@ import { applySyncPlan, buildSyncPlan, type SyncBackend, type SyncPlanView } fro
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
 import { readLocalBundles } from '../plugin-sync/local.ts'
+import { upgradeRemoteHost } from '../plugin-sync/host-upgrade.ts'
+import { DEFAULT_MIRRORS } from '../backend/ssh/bootstrap.ts'
 import type { ProjectedSession, ProjectedWorkspace } from '../projection/store.ts'
 import { REMOTE_FACTS_SCRIPT, parseRemoteFacts } from './remote-facts.ts'
 import { WorkspaceFlows } from './workspace.ts'
@@ -618,6 +620,9 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   // 四个端点都走「先判接线、再读 target」：没接线时明确报错，而不是返回空 plan
   // 让面板显示「已同步」——那会把「功能没上」伪装成「环境很干净」。
 
+  /** 正在升级宿主的 target（同一台并发两路 npm install 会互相踩）。 */
+  const upgradingHosts = new Set<string>()
+
   /** 同步用的稳定 target 标识（与 anchors / 隔离目录的 hostKey 同风格）。 */
   const requireSync = (): SyncRoutesOptions => {
     const sync = options.sync
@@ -700,6 +705,67 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     })
     sendJson(res, 200, okEnvelope({ results }))
   })
+
+  // ── 宿主版本对齐（H 系列，只做 registry 路径）──────────────────────────────
+  // 与插件同步分开：这里换的是远端 dsh 本身，副作用更大（且必须重连才生效），
+  // 所以判定（GET plan 里的 host）与执行（本路由）分开，执行前服务端**重算**一遍。
+  mount('/plugin-sync/host', ['POST'], async (req, res) => {
+    const syncOptions = requireSync()
+    const body = (await readJsonBody(req)) as { target?: unknown } | null
+    const target = readTarget(body?.target)
+    // 同一 target 同时只允许一次升级：两路 npm install 会往同一个 prefix 里互相踩。
+    const lockId = await syncOptions.targetId(target)
+    if (upgradingHosts.has(lockId)) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-unsupported',
+        detail: '这台远端已经在升级宿主',
+        nextActions: ['等当前升级结束', '或先关闭同步面板'],
+      })
+    }
+    upgradingHosts.add(lockId)
+    try {
+      return await runHostUpgrade(res, target, syncOptions)
+    } finally {
+      upgradingHosts.delete(lockId)
+    }
+  })
+
+  async function runHostUpgrade(
+    res: import('node:http').ServerResponse,
+    target: ConnectTarget,
+    syncOptions: SyncRoutesOptions,
+  ): Promise<void> {
+    const plan = await syncPlanOf(target, syncOptions)
+    // 只接受 align：checkout / 越界 / 版本读不出都必须原样拒绝，不能「先装上再说」。
+    if (plan.host.action !== 'align' || plan.host.localVersion === null) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-unsupported',
+        detail:
+          '这台远端不能升级宿主：' + plan.host.reasonId +
+          '（本地 ' + String(plan.host.localVersion) + ' / 远端 ' + String(plan.host.remoteVersion) +
+          ' / 来源 ' + String(plan.host.source) + '）',
+        nextActions: ['在面板里重新读取一次同步状态', '改用 registry 上已发布的版本对齐', '或在远端手工安装'],
+      })
+    }
+    const runtime = plan.runtime
+    if (runtime === null) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-read-failed',
+        detail: '远端没有可用的 dsh 安装（staging 不存在），无法升级',
+        nextActions: ['先在面板里接入这台远端（会跑引导器装 staging）', '再回来重试'],
+      })
+    }
+    const done = await upgradeRemoteHost({
+      exec: (await syncOptions.resolve(target)).exec,
+      stagingDir: runtime.dshRoot,
+      nodeBin: runtime.nodeBin,
+      version: plan.host.localVersion,
+      dshHome: runtime.homeDir.replace(/\/+$/, '') + '/.dsh',
+      registry: DEFAULT_MIRRORS[0]?.registry ?? 'https://registry.npmjs.org/',
+    })
+    // 装完不自动重启：重启 = 断连，属用户动作（面板已有「重新连接」）。
+    sendJson(res, 200, okEnvelope({ version: done.version, restartRequired: true }))
+  }
 
   mount('/plugin-sync/optout', ['GET', 'POST'], async (req, res) => {
     const syncOptions = requireSync()

@@ -30,6 +30,9 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/key-unusable': 'launch',
   'remote/forward-unavailable': 'launch',
   'remote/upload-failed': 'launch',
+  // 宿主版本对齐（H 系列）：装的是宿主本身，阶段归 bootstrap。
+  'remote/host-version-unavailable': 'bootstrap',
+  'remote/host-upgrade-failed': 'bootstrap',
   'remote/bootstrap-failed': 'bootstrap',
   'remote/host-key-changed': 'probe',
   'remote/host-unreachable': 'probe',

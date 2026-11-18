@@ -99,6 +99,44 @@ export interface SyncResult {
 - L2：POST 断言命令行含 `PATH=` 与 `add <name>@<exact>`；单条失败不影响其它条；
 - L4：三个场景（有差异 / 已同步 / 不可同步项存在）+ 键盘可达 + 屏上无漏译；本地工作区不受影响。
 
+## 6.5 宿主版本对齐（H 系列，只做 registry 路径）
+
+> 2026-11-18 用户拍板：**只做 registry 路径**；本地 dev 构建搬运与检出形态切换**用原因码明确拒绝**。
+
+与插件同步分开：这里换的是远端 `dsh` 本身，副作用更大（装完必须重连才生效）。
+
+**数据形状**（`SyncPlanView.host`，随 GET `/plugin-sync` 一次带回，不额外 exec）：
+
+```ts
+type HostAction = 'up-to-date' | 'align' | 'reject'
+type HostReasonId = 'none' | 'checkout-mode' | 'source-unknown' | 'local-version-unknown' | 'out-of-range' | 'remote-version-unknown'
+interface HostPlan { localVersion: string | null; remoteVersion: string | null; source: 'staging' | 'checkout' | null; action: HostAction; reasonId: HostReasonId }
+```
+
+判定顺序即优先级（`decideHostSync`，纯函数）：来源读不出 → `source-unknown`（**不谎称「检出」**：多半是半装，重连会重跑引导器）；
+来源是检出 → `checkout-mode`；本地版本读不出 → 拒绝；
+本地版本不在 `engines.dsh` 区间 → 拒绝；远端版本读不出 → 拒绝；相同 → 已一致；其余 → 可对齐。
+**`未知 ≠ 不一致`**：读不出就拒绝，不拿猜测的版本装远端。
+
+**路由**：`POST /remote-cr/api/plugin-sync/host`，body `{ target }` → `{ version, restartRequired: true }`。
+服务端**重算**判定，只有 `align` 才继续；两次 exec：registry 探测 `npm view <pkg>@<v> version` → 安装
+（复用引导器的 `buildDshPackageScript`）。
+
+| 码 | 触发 | 出路 |
+|---|---|---|
+| `remote/host-version-unavailable` | npm 明确报 404（本地是 dev 构建，或版本未发布） | 改用已发布版本 · 复制日志 |
+| `remote/host-upgrade-failed`（探测阶段） | 探测失败但不是 404（EAI_AGAIN / EACCES / 超时） | 检查 registry 可达与 npm 代理 · 复制日志 |
+| `remote/host-upgrade-failed` | 安装非零 / 装完自报版本不符 | 重试 · 查 npm 网络与磁盘 · 远端手工安装（命令已给出） |
+
+判定为 `reject` 时 POST 回 `remote/plugin-sync-unsupported`，detail 里带原因码——**不是**「先装上再说」。
+
+**UI**：`sync-host`（含 `data-action` / `data-reason`）、`sync-host-align`（两段式确认，第一段 `data-confirming="true"`）、
+`sync-host-reason`、`sync-host-applying`、`sync-host-installed`、`sync-host-failed`。
+装完**不自动重启**：提示「断开并重新连接后生效」，复用面板已有的「重新连接」（真机 13.7–16.8 s）。
+
+**未验证**：真机升级一次（`ubuntu_dev` 没有 staging，属检出形态，按设计被拒绝）；
+registry 探测与安装在真机上只有单元/路由级证据，没有一次真实的远端宿主升级。
+
 ## 7. WSL 目标（方案 A：同步期间保持句柄）
 
 **结论：WSL 与 SSH 共用同一条 `wire → read → diff → apply` 链路，只有执行面与长事务风险不同。**

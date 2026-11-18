@@ -54,7 +54,7 @@
 ## 错误码索引
 
 <!-- BEGIN GENERATED: error-codes -->
-<!-- 由 scripts/gen-error-index.mjs 生成，共 69 条；不要手改。 -->
+<!-- 由 scripts/gen-error-index.mjs 生成，共 71 条；不要手改。 -->
 
 | 错误码 | 中文文案 | English | 下一步 |
 |---|---|---|---|
@@ -90,6 +90,8 @@
 | `remote/host-key-changed` | 主机密钥变了（可能是中间人） | The host key changed (possible man-in-the-middle) | 确认机器是你换的 · 删掉 known_hosts 里对应行后重连 |
 | `remote/host-key-mismatch` | 主机密钥与记录不一致 | The host key does not match the recorded one | 确认机器身份 · 更新 known_hosts 后重连 |
 | `remote/host-unreachable` | 连不上这台主机 | The host is unreachable | 确认主机在线、端口开放 · 检查 VPN 或防火墙 |
+| `remote/host-upgrade-failed` | 远端宿主安装失败 | Installing the remote host failed | 重试 · 检查远端 npm 网络与磁盘 · 在远端手工安装 |
+| `remote/host-version-unavailable` | registry 上没有这个宿主版本 | The registry has no such host version | 改用已发布的版本 · 检查远端能否访问 registry · 复制日志查看 npm 原文 |
 | `remote/key-passphrase` | 私钥需要口令 | The private key needs a passphrase | 把密钥加进 ssh-agent · 或改用无口令密钥 |
 | `remote/key-unusable` | 私钥不可用（格式或权限） | The private key is unusable (format or permissions) | 把权限改成 600 · 重新生成密钥 |
 | `remote/node-missing` | 远端没有可用的 node（需要 22 或更新） | No usable node on the remote (22 or newer required) | 在远端安装 Node 22 或更新版本 · 确认 node 在 PATH 里 |
