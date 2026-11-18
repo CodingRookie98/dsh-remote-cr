@@ -9,7 +9,7 @@
  */
 
 import type { FlowState } from '../shared/flow.ts'
-import { DirectoryFlow } from './components.ts'
+import { DirectoryFlow, sessionBadge } from './components.ts'
 import { RemoteCrIcon, RemoteCrPanel } from './panel-view.ts'
 import type { SlotRecord } from './diagnostics.ts'
 import { HALF, describeSelf } from './half.ts'
@@ -55,6 +55,8 @@ export function apply(ctx: ClientContext): void {
     panel: RemoteCrPanel,
     icon: RemoteCrIcon,
     flow: DirectoryFlow,
+    // 会话行徽标：DSH 侧栏渲染时按 sessionId 注入 props（RFC-0003 R2-3）
+    sessionBadge,
   })
 
   const diagnostics = {

@@ -57,5 +57,9 @@
 - T1 结论（2026-11-18，`spikes/m3-reconnect-wsl/probe.cjs`）：**5/5** —— attach → disconnect（工作区标 offline）→ reconnectNow（13.7 s / 16.8 s，工作区 id 不变）→ 对已有会话 probe（`pwd` 落在远端、`uname` 含 Linux）→ dispose。**WSL 提供重连按钮**。
   - 首跑 4/5 是探针自身缺陷（没先建会话，T1-4 空 detail），已修并复跑 5/5。
 - T6：上游 hole 提案已成文（`docs/proposals/upstream-workspace-row-holes.md`）
+- **T5-a（需求② 面板面）已完成**：投影行 `data-kind=remote` + 徽标 + 离线降饱和 + 行内「重新连接」；L4 场景断言 `projected-badge` / `row-reconnect`（panel.json 57 标记）
+- **T5-b（会话行徽标）已完成代码**：`remote-sessions.ts`（模块级索引，3 条用例）+ `sidebar.session.row.leading` 注册 + 5 处注册的门禁用例。
+  **未验证**：预览 harness 不渲染 DSH 侧栏，徽标的真实外观只能在真机 GUI 里看；这条记入「未验证」而不是「已支持」。
+- 下一步：P2-4c 接线（sync 注入 index.ts）→ 同步对话框 → 首次连接提醒
 - 下一步：确认执行后端后从 **P2-1** 开始 TDD
 - 里程碑门禁：T4 完成前不动 T5

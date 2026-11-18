@@ -39,6 +39,8 @@ export interface RemoteCrComponents {
   readonly panel: unknown
   readonly icon: unknown
   readonly flow: unknown
+  /** 会话行「远端」徽标（RFC-0003 R2-3）。 */
+  readonly sessionBadge: unknown
 }
 
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
@@ -106,6 +108,24 @@ export function registerSlots(ctx: RegistrationContext, components: RemoteCrComp
         ),
       ),
     'dsh-remote-cr: panellist icon',
+  )
+
+  // 会话行徽标：挂在 DSH 侧栏会话行的 leading 洞里（props 只有 sessionId）。
+  // 与面板共用 remoteSessionIndex，因此面板没打开时也能认得出远端会话。
+  ctx.effect(
+    () =>
+      track(
+        'sessionBadge',
+        own(() =>
+          ctx.slots.inject('sidebar.session.row.leading', () =>
+            ctx.slots.register(
+              { name: 'sidebar.session.row.leading', id: 'remote-cr-badge', order: 10, inject: () => ({}) },
+              components.sessionBadge,
+            ),
+          ),
+        ),
+      ),
+    'dsh-remote-cr: session row badge',
   )
 
   const [hero, sidebar] = DIRECTORY_FLOW_SLOTS
