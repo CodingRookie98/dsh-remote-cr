@@ -60,6 +60,10 @@
 - **T5-a（需求② 面板面）已完成**：投影行 `data-kind=remote` + 徽标 + 离线降饱和 + 行内「重新连接」；L4 场景断言 `projected-badge` / `row-reconnect`（panel.json 57 标记）
 - **T5-b（会话行徽标）已完成代码**：`remote-sessions.ts`（模块级索引，3 条用例）+ `sidebar.session.row.leading` 注册 + 5 处注册的门禁用例。
   **未验证**：预览 harness 不渲染 DSH 侧栏，徽标的真实外观只能在真机 GUI 里看；这条记入「未验证」而不是「已支持」。
-- 下一步：P2-4c 接线（sync 注入 index.ts）→ 同步对话框 → 首次连接提醒
+- **T5-c 同步对话框 + 面板入口 + 首次自动提醒已完成**；预览场景 `sync-dialog` 走真点击（panel → 插件同步 → 对话框），
+  L4 断言 `sync-dialog` / 三组标题 / `sync-apply` / `sync-optout`（本轮 harness 15 场景全绿）。
+- **真机 E2E（S-1..S-4）4/4**：`spikes/m3-plugin-sync/remote-probe.cjs` 对 `syy_wsl_ubuntu_LAN` 一次往返 741 ms，
+  返回 runtime（staging 的 node/dsh 绝对路径）+ 2 个远端 bundle；差集 **install = 6**，版本全是确切值（非 latest）。
+- 下一步：R2-4（会话行菜单项「重新连接」）；随后把两项需求的验收项逐条勾选并跑一次 P4 定向红队审查。
 - 下一步：确认执行后端后从 **P2-1** 开始 TDD
 - 里程碑门禁：T4 完成前不动 T5

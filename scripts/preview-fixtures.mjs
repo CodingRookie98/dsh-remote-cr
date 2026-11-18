@@ -314,6 +314,28 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // 同步对话框（RFC-0003 需求①）：面板 → 点「插件同步」→ 五态里的 ready
+    id: 'sync-dialog',
+    label: '插件同步对话框：三组列表 + 勾选 + 不再提醒',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="sync-dialog"]',
+      '[data-remote-cr="sync-group-install"]',
+      '[data-remote-cr="sync-apply"]',
+      '[data-remote-cr="sync-optout"]',
+    ],
+    hideFlow: true,
+    requireMarkers: ['sync-dialog', 'sync-group-install', 'sync-group-uptodate', 'sync-group-skipped', 'sync-apply', 'sync-optout'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      // 先等投影到达：`sync-open` 的 disabled 取决于 snapshot.connected，投影没到之前点了没反应
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-dialog"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
     // 面板是本次重设计的主战场：状态带 + 两级主从（主机 / 投影+会话）+ 错误块。
     // 面板与向导在同一页面各自挂载，这里只要等两栏出现即可截图。
     id: 'panel',
@@ -581,6 +603,24 @@ export function sceneFixtures(sceneId) {
     workspaces: workspaceRecords(),
     projection: projectionSnapshot('connected'),
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
+    // 同步对话框夹具（RFC-0003 需求①）：两种可同步 + 一条已最新 + 一条不可同步
+    syncPlan: {
+      targetId: 'wsl:' + (id === 'sync-dialog' ? 'ubuntu_dev' : 'preview'),
+      profile: 'web',
+      muted: false,
+      totals: { install: 2, upToDate: 1, skipped: 1 },
+      entries: [
+        { name: 'dsh-ops', action: 'install', reasonId: 'missing-remote', localVersion: '0.5.5', remoteVersion: null },
+        { name: 'dshmarket', action: 'install', reasonId: 'missing-remote', localVersion: '1.73.20', remoteVersion: null },
+        { name: 'dsh-better-sidebar', action: 'up-to-date', reasonId: 'none', localVersion: '0.32.1', remoteVersion: '0.32.1' },
+        { name: 'local-dev-plugin', action: 'skip-path', reasonId: 'local-path-plugin', localVersion: '0.1.0', remoteVersion: null },
+      ],
+    },
+    syncResults: [
+      { name: 'dsh-ops', ok: true },
+      { name: 'dshmarket', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1' },
+    ],
+    syncOptout: [],
     wake: id === 'wsl-failed' ? WAKE_FAILED : WAKE_OK,
     // 「唤醒中」要拍得到：让 /wsl/wake 慢一点回（0 = 立刻回，既有 8 个场景的行为一个字没变）。
     wakeDelayMs: id === 'waking' ? 6000 : 0,

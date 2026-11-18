@@ -122,6 +122,12 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/flow' || path === '/remote-cr/api/flow/cancel') return { ok: true, value: fixtures.flow };
   if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
   if (path === '/remote-cr/api/projection') return { ok: true, value: fixtures.projection };
+  if (path === '/remote-cr/api/plugin-sync') {
+    return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
+  }
+  if (path === '/remote-cr/api/plugin-sync/optout') {
+    return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
+  }
   if (path === '/remote-cr/api/workspace/importable') return { ok: true, value: fixtures.importable };
   if (path.endsWith('/wake')) return { ok: true, value: fixtures.wake };
   return {
