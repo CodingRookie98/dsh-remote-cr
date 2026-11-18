@@ -1,1 +1,1 @@
-{"version":3,"file":"reconnect.test.d.ts","sourceRoot":"","sources":["../../../workspace/projects/dsh-remote-cr/src/shared/reconnect.test.ts"],"names":[],"mappings":""}
+{"version":3,"file":"reconnect.test.d.ts","sourceRoot":"","sources":["../../src/shared/reconnect.test.ts"],"names":[],"mappings":""}

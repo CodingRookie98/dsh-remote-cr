@@ -1,1 +1,1 @@
-{"version":3,"file":"runtime.test.d.ts","sourceRoot":"","sources":["../../../../workspace/projects/dsh-remote-cr/src/local/proxy/runtime.test.ts"],"names":[],"mappings":""}
+{"version":3,"file":"runtime.test.d.ts","sourceRoot":"","sources":["../../../src/local/proxy/runtime.test.ts"],"names":[],"mappings":""}

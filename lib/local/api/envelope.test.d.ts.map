@@ -1,1 +1,1 @@
-{"version":3,"file":"envelope.test.d.ts","sourceRoot":"","sources":["../../../../workspace/projects/dsh-remote-cr/src/local/api/envelope.test.ts"],"names":[],"mappings":""}
+{"version":3,"file":"envelope.test.d.ts","sourceRoot":"","sources":["../../../src/local/api/envelope.test.ts"],"names":[],"mappings":""}
