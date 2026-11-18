@@ -134,7 +134,9 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 | 版本来源 | 本地：从宿主入口向上找 `@deepseek-ai/dsh` 的 package.json（不 spawn）；远端：plugin-sync reader 同一次 exec 里 `--version`（检出用解释器跑） |
 | 执行 | `POST /plugin-sync/host` → 服务端重算判定 → `npm view <pkg>@<v> version`（失败 → `host-version-unavailable`）→ 复用 `buildDshPackageScript` 安装 → 装完必须自报同一版本（否则 `host-upgrade-failed`） |
 | UI | 对话框 `sync-host` 一段 + 两段式确认按钮；装完提示「重连后生效」（不自动重启）；三个 L4 场景 `sync-host-drift` / `sync-host-installed` / `sync-host-rejected` |
-| 门禁 | 788 tests / 0 fail；`e2e:preview` **24/24** 场景；错误码索引 71 条 |
+| 门禁 | **790 tests / 0 fail**；`e2e:preview` **24/24** 场景；错误码索引 71 条 |
+| 审查 | R1 不可签（4 条阻断：lib 未同步 / 探测失败不分因 / 半装谎称检出 / 失败面丢命令与日志）→ 全修 → Delta 复审 **可签** |
+| 待办（非阻断） | `sync-host-failed-next` 可加「li ≥ 1」断言；命令/日志的复制按钮文案共用 `action.copyLog`；「装完版本不符」分支可补 `command` |
 | 变异 | 去掉 checkout 拒绝 → 2 红；忽略 registry 探测结果 → 1 红；忽略「装完版本不符」→ 1 红 |
 | 未验证 | 一次真实的远端宿主升级（`ubuntu_dev` 是检出 → 按设计拒绝）；远端 `npm view` 的网络可达性只有单元证据 |
 

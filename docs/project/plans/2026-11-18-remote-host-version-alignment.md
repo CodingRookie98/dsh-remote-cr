@@ -77,7 +77,7 @@ interface HostPlan {
 
 ## Active Checkpoint
 
-- 阶段：**P3 完成 → P4 定向红队 R1 已跑（4 条阻断）→ 全部修复，待 Delta 复审**
+- 阶段：**P4 完成（R1 4 条阻断全修 → Delta 复审「可签」）**
 - R1 阻断与修法：B1 只改 src 不重建 lib（运行时仍读旧产物）→ 补「`lib/index.js` 带 hostVersion」产物门禁；
   B2 registry 探测把所有失败都说成「版本不存在」→ npm 原文保留、404 与网络/权限分因（EAI_AGAIN → `host-upgrade-failed`）；
   B3 runtime 读不出时谎称「远端是检出」→ 新增 `source-unknown` 原因码，文案指出「重连会重跑引导器」；
@@ -87,7 +87,7 @@ interface HostPlan {
   → 对话框 `sync-host-command` / `sync-host-log` 两块 + 复制按钮；L4 的 requireMarkers 加上这两块（实测缺任一块 e2e 直接红）。
 - 采纳的非阻断：`realpathSync(argv[1])`（npm 全局 bin 是 symlink）；reader 的 `--version` 加 8s 内层超时；
   service 层补 `out-of-range` 用例（注入的 supported 不能被默认值吞掉）；新增 `sync-host-synced` 场景；按钮文案改成「换成」。
-- 门禁：`pnpm typecheck` 0、783 tests / 0 fail（新增 22 条）、`check:cjk` / `check:errors`（71 条）OK、`build:client` 27 模块 257 398 B、`e2e:preview` **21/21** 场景 + 键盘 10/0
+- 门禁（最终）：`pnpm typecheck` 0、**790 tests / 0 fail**（新增 29 条）、`check:cjk` / `check:errors`（71 条）/ `check:boot` / `check:docs` OK、`build:client` 27 模块 260 801 B、`e2e:preview` **24/24** 场景 + 键盘 10/0
 - 变异（临时副本）：去掉 checkout 拒绝 → 2 红；忽略 registry 探测结果 → 1 红；忽略「装完版本不符」 → 1 红
 - **未验证**：真实远端宿主升级一次（`ubuntu_dev` 是检出形态，按设计被拒绝）；`npm view` 在远端网络上的可达性只有单元证据
 - 用户拍板（2026-11-18）：只做 registry 路径；dev 构建搬运与检出切换用原因码拒绝
