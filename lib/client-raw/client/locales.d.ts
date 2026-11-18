@@ -186,6 +186,8 @@ export declare const zh: {
     readonly 'err.remote/plugin-sync-apply-failed': "远端安装插件失败";
     readonly 'errNext.remote/plugin-sync-apply-failed': "重试该条 · 检查远端 npm 网络 · 在远端手动执行命令";
     readonly 'err.remote/plugin-sync-unsupported': "请求里包含不可同步的插件";
+    readonly 'err.remote/plugin-sync-busy': "这台远端正忙：另一个同步/升级动作正在进行";
+    readonly 'errNext.remote/plugin-sync-busy': "等当前动作结束 · 或先关闭同步面板";
     readonly 'err.remote/host-version-unavailable': "registry 上没有这个宿主版本";
     readonly 'errNext.remote/host-version-unavailable': "改用已发布的版本 · 检查远端能否访问 registry · 复制日志查看 npm 原文";
     readonly 'err.remote/host-upgrade-failed': "远端宿主安装失败";

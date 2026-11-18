@@ -18,6 +18,8 @@ export interface SyncBackend {
     readonly homeDir: string;
     /** 远端 dsh 检出根（WSL 必给）：同一次读取里顺带探明检出形态的运行时。 */
     readonly checkoutRoot?: string;
+    /** staging 相对后缀（SSH 必给）：只认这台目标的目录，不扫别人的。 */
+    readonly stagingSuffix?: string;
     /** 兜底解释器（检出形态）；真实值由读取脚本回报的 runtime 优先。 */
     readonly interpreter?: string | null;
     /** 本地宿主版本（决定「远端该升到哪个版本」）；读不出为 null。 */
@@ -73,6 +75,12 @@ export interface ApplyRequest {
     readonly onResult?: (result: SyncResult) => void;
     readonly deadlineMs?: number;
 }
+/**
+ * POST /plugin-sync 的内核：只接受 install 项；单条失败不影响其它条。
+ *
+ * 限流：与宿主升级共用一把锁（`locks.ts`）——两者写的是同一份 `<staging>/npm`，
+ * 各管各的会让「升级中点同步」互相踩（R1-B1）。
+ */
 export declare function applySyncPlan(request: ApplyRequest): Promise<readonly SyncResult[]>;
 /** 测试用：清掉并发锁（进程内状态在用例之间必须复位）。 */
 export declare function resetApplyingForTest(): void;

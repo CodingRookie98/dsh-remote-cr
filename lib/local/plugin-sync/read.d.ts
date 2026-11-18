@@ -54,6 +54,7 @@ export declare function buildReadScript(request: {
     readonly profile: string;
     readonly homeDir: string;
     readonly checkoutRoot?: string;
+    readonly stagingSuffix?: string;
 }): string;
 /** 远端「用哪个 node / 哪个 dsh」——同一次读取里探明，省掉第二次 exec。 */
 export interface RemoteRuntimePaths {

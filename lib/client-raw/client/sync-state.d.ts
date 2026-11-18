@@ -120,6 +120,17 @@ export declare function hostFailureExtras(failure: {
     readonly command: string | null;
     readonly logTail: string | null;
 };
+/**
+ * 首次接入要不要自动弹同步对话框（R2-S12：这条需求原本零覆盖）。
+ *
+ * 只有「有可同步项」且「这台没被静音」才打扰用户；静音后手动入口仍然可用（由 UI 保证）。
+ */
+export declare function shouldAutoOpenSync(plan: {
+    readonly muted: boolean;
+    readonly totals: {
+        readonly install: number;
+    };
+}): boolean;
 /** 宿主版本这一行怎么画：null = 旧宿主没这个字段，不渲染（不拿不存在的门禁去拦老版本）。 */
 export declare function hostPanelOf(plan: SyncPlanLike): HostPlan | null;
 /** 给 UI 的分组：可同步 / 已最新 / 不可同步（跳过 + blocked + remote-newer）。 */
