@@ -15,7 +15,7 @@
 | 文档索引 | ✅ | `docs/README.md` 补 `keep-alive` / `SECRETS` / `plugin-listing` / 生态评估，修正旧项目名 |
 | 死链 | ✅ | 扫描 67 个 markdown，断链 0 |
 | 门禁 | ✅ | `pnpm typecheck`（双 tsc）Exit 0、`pnpm test` **577 全绿**、`build` / `build:client`（20 modules / 91555 B） |
-| 子模块 | ✅ | `vendor/zcode` → `https://github.com/zai-org/ZCode`，`git ls-remote` 验证公开可达 |
+| 参考实现 | ✅ | 2026-11-18 起**不再以 submodule 入库**：`vendor/` 下的参考副本只在本机保留（`.git/info/exclude` 排除），仓库与历史里没有它们的代码 |
 
 ## 2. 已执行（2026-11-14）
 

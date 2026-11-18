@@ -2,7 +2,7 @@
 
 > **结论先行**：ZCode 的 remote 与 dsh-teleport 是同构问题——**控制端只做呈现与凭据，agent/host 全在远端**（B 型）。它已经用生产代码回答了 dsh-teleport 全部关键设计题：三后端 transport 抽象、远端安装与版本收敛、ingress 鉴权、断线重连状态机、资产分发、配置同步。**可以直接照搬的是「契约分层 + 状态机 + 鉴权边界」；必须改造的是「传输实现」与「嵌入 UI」；不适用的是「它自己那套 Desktop Controller/RPC」**。
 
-- 调研对象：`vendor/zcode`（git submodule，commit `3c5b2276`，`package.json` version 3.16.2）
+- 调研对象：`vendor/zcode`（commit `3c5b2276`，`package.json` version 3.16.2）。**2026-11-18 起该副本只在本机保留**（`.git/info/exclude` 排除），文中路径是当时的本地路径
 - 代码规模：`packages/server/src/remote/` 合计 10 044 行（`wc -l` 实测），另有 R3 的 `packages/server/src/source-server/` 与 `packages/desktop/src/host/` 连接层
 - 权威规格：`vendor/zcode/docs/architecture/r3-source-server-remote-architecture.md`（1 169 行）——该文档自述是唯一合同，其余子规格从属（`docs/remote/README.md`）
 

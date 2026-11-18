@@ -12,7 +12,7 @@
 | 维度 | 状态 |
 |---|---|
 | 仓库 | `D:/workspace/projects/dsh-remote-cr`，分支 `master`，HEAD `507ed10`（**所有本轮改动均未提交**） |
-| 参考实现 | `vendor/zcode` submodule @ `3c5b2276`（zai-org/ZCode 3.16.2，2026-10-20） |
+| 参考实现 | `vendor/zcode` 本机只读副本 @ `3c5b2276`（zai-org/ZCode 3.16.2，2026-10-20）。2026-11-18 起该目录**已从仓库移除**，改为 `.git/info/exclude` 本地排除 |
 | 调研 | 5 份 ZCode remote 报告 + 4 份前期调研，全部落盘 |
 | 设计 | 4 份设计文档（`requirements` / `architecture` / `ui-design` / `milestones`）+ 5 份 ADR |
 | M0 Spike | 槽位原型 ✅、工作区 UNC + cwd 投影 ✅、深引 picker ❌（不需要）；三条未验证项待做 |
@@ -67,7 +67,7 @@ dsh-remote-cr/
 ## 4. 本轮做完的事
 
 ### 4.1 参考实现调研（ZCode）
-把 `zai-org/ZCode` 作为 git submodule 拉进 `vendor/zcode`，精读其 remote 全链路，产出 5 份报告。**关键事实更正**：ZCode R3 是**方案 B（原生 UI 代理）的完整工程实现**（`sourceServerConnectionManager.ts` 1460 行 + `transportAdapter.ts` 511 + `serverRemoteConnection.ts` 423 等，B 型成本约 2820 行），**不是方案 C**。原 ADR-0003 记成「ZCode 用 C 型内核复用成功」是错的，已改正。
+把 `zai-org/ZCode` 拉到 `vendor/zcode`（曾以 submodule 入库，2026-11-18 改为本地只读副本），精读其 remote 全链路，产出 5 份报告。**关键事实更正**：ZCode R3 是**方案 B（原生 UI 代理）的完整工程实现**（`sourceServerConnectionManager.ts` 1460 行 + `transportAdapter.ts` 511 + `serverRemoteConnection.ts` 423 等，B 型成本约 2820 行），**不是方案 C**。原 ADR-0003 记成「ZCode 用 C 型内核复用成功」是错的，已改正。
 
 ### 4.2 两轮 grilling 裁决（全部落盘）
 | # | 裁决 | 落点 |
