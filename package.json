@@ -64,6 +64,8 @@
     "check:docs": "node scripts/check-doc-images.mjs",
     "check:boot": "node scripts/check-boot-constraints.mjs",
     "doctor": "node lib/local/doctor.js",
+    "coverage": "node --test --experimental-test-coverage \"src/**/*.test.ts\"",
+    "release:notes": "node scripts/extract-release-notes.mjs",
     "e2e:preview": "node scripts/preview-wizard.mjs --no-build",
     "e2e:host": "node spikes/m4/add-workspace-ui/probe.cjs",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",

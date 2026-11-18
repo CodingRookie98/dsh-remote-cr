@@ -1,0 +1,73 @@
+# Release
+#
+# 推一个与 package.json 版本一致的 tag（vX.Y.Z）即发布：
+#   1) 全门禁（与 CI 同口径，多跑一次，防止 tag 打在没跑过门禁的提交上）；
+#   2) 构建产物并与仓库里的 lib/ 比对（产物必须与源码同源）；
+#   3) 用 scripts/extract-release-notes.mjs 从 CHANGELOG 抽正文，建 GitHub Release。
+#
+# 本包 private: true，**不发 npm**（分发走 GitHub tag / 本地 link，见 README「安装」）。
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布/重发的 tag（如 v0.4.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # 门禁与 CI 同口径
+      - run: pnpm typecheck
+      - run: pnpm check:boot
+      - run: pnpm check:cjk
+      - run: pnpm check:errors
+      - run: pnpm check:docs
+      - run: pnpm test
+
+      # 产物必须与源码同源：重建后 lib/ 有 diff 就失败
+      - run: pnpm build
+      - run: pnpm build:client
+      - name: 校验 lib/ 与源码同源
+        run: |
+          if [ -n "$(git status --porcelain lib)" ]; then
+            echo "::error::lib/ 与当前源码不一致：本地跑 pnpm build && pnpm build:client 后单独提交"
+            git status --porcelain lib
+            exit 1
+          fi
+
+      - name: 解析版本
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: 从 CHANGELOG 抽正文
+        run: node scripts/extract-release-notes.mjs "${{ steps.version.outputs.version }}" --out release-notes.md
+
+      - name: 建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            --verify-tag

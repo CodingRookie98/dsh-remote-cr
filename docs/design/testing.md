@@ -44,7 +44,23 @@ L4 需要真 Chrome，**不进 CI**（`ubuntu-latest` 没有 Windows/WSL2，挂�
 4. 新错误码：`locales.ts` 里 `err.*` 与 `errNext.*` 成对加，跑 `pnpm gen:errors` 更新排查手册；
 5. 新界面文案：只进 `locales.ts`，`pnpm check:cjk` 会拦住写死中文。
 
-## 5. 与交付门禁的关系
+## 5. 覆盖率（基线，2026-11-18）
+
+`pnpm coverage` 用的是 **Node 自带的 `--experimental-test-coverage`**，不引第三方工具（也就没有「覆盖率工具本身要维护」的成本）：
+
+```
+node --test --experimental-test-coverage "src/**/*.test.ts"
+all files | 88.48 % 行 | 83.55 % 分支 | 87.02 % 函数
+```
+
+**怎么读这个数字**：`src/shared` 与 `src/local/backend/{ssh,wsl}` 的关键模块在 95–100 %；低的地方集中在两处——
+
+1. **`src/client/panel*.ts`**：它主要是渲染接线，单测只覆盖到「本地化与文案」这一层，真正的渲染由 L4 的 CDP harness 兜（覆盖率工具看不到浏览器那一半）；
+2. **极少走的错误分支**（例如 `i18n.ts` 的回落链）：有断言但没走到全部路径。
+
+**因此覆盖率不作为门禁**：门禁是 L0 的静态检查、L4 的场景与 L6 的不变量。覆盖率只用来发现「整块没测」，不是「每行都测」的许可。
+
+## 6. 与交付门禁的关系
 
 `docs/` 里的验收口径（见 [AGENTS.md §5](../../AGENTS.md)）要求：关键路径有真机证据、失败路径有测试、文档随代码更新。
 本页是「测试怎么写」的说明书；**交付前必须跑的是** `pnpm typecheck && pnpm test && pnpm check:boot && pnpm check:cjk && pnpm check:errors && pnpm check:docs && pnpm build && pnpm build:client`。
