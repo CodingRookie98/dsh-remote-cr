@@ -68,6 +68,10 @@ export declare const zh: {
     readonly 'panel.collapseHosts': "收起主机";
     readonly 'panel.creating': "新建中…";
     readonly 'panel.newSession': "新建会话";
+    readonly 'panel.remoteBadge': "远端";
+    readonly 'panel.remoteBadgeHint': "这个工作区由远端宿主提供（断连后仍保留在远端）";
+    readonly 'panel.rowReconnect': "重新连接";
+    readonly 'panel.rowReconnectHint': "重新连上这台远端，工作区与会话会恢复";
     readonly 'panel.idle': "空闲";
     readonly 'panel.sshReadFailed': "读 ~/.ssh/config 失败：";
     readonly 'panel.running': "运行中";
