@@ -53,7 +53,7 @@ Most remote plugins in the DSH marketplace are **type A (remote execution)**: th
 
 | Component | Supported range |
 |---|---|
-| DSH host | `>=0.2.1-rc.0 <0.3.0` (`package.json#engines.dsh`) |
+| DSH host | `>=0.2.1-rc.0 <0.3.0` (`package.json#engines.dsh`); verified on **0.2.2-rc.4** (WSL 7/7, SSH 11/11) |
 | Node | `^22.19.0` or `>=24.0.0` |
 | Local machine | Windows 10/11 with WSL2 or an OpenSSH client |
 | Remote | Linux (POSIX shell + `node`; the first attach needs dsh installed on the remote, which the installer can do) |

@@ -56,11 +56,24 @@
 
 ## 6. 约束
 
-- 目标宿主：DSH Desktop 0.2.x（至少 0.2.0-rc.2 / 0.2.1-rc.2 两线；当前验证基线为 **0.2.1-rc.5**——2026-10-31 T5 跨机取证即在本机 rc.5 上跑通，原写 rc.3 已过时，见 `spikes/m1/cross-machine-t5/README.md`），dsh web profile 兼容。兼容声明用 **`engines.dsh`** 或 **`@deepseek-ai/dsh-*` 的 `peerDependencies`**（`packages/boot/app-boot/src/plugin-compatibility.ts:55-74` 是唯一读取方；`dsh.compatibility.dshReleases` 在宿主侧零读取方，已废弃），判定规则见 `architecture.md` §5 与 `ADR-0004`。
+- 目标宿主：DSH Desktop 0.2.x（至少 0.2.0-rc.2 / 0.2.1-rc.2 两线；当前验证基线为 **0.2.2-rc.4**（2026-11-18：本机宿主 `@deepseek-ai/dsh-app-boot 0.2.2-rc.4` 上跑通 WSL 接入 7/7 与 SSH 接入 11/11，见 §6.1；此前基线 0.2.1-rc.5 的 T5 跨机取证见 `spikes/m1/cross-machine-t5/README.md`），dsh web profile 兼容。兼容声明用 **`engines.dsh`** 或 **`@deepseek-ai/dsh-*` 的 `peerDependencies`**（`packages/boot/app-boot/src/plugin-compatibility.ts:55-74` 是唯一读取方；`dsh.compatibility.dshReleases` 在宿主侧零读取方，已废弃），判定规则见 `architecture.md` §5 与 `ADR-0004`。
 - Windows 本机 + WSL2；SSH 目标为 POSIX（Linux/macOS）。
 - 远端需要 Node + dsh（由我们安装或复用），版本对齐规则由我们定义。
 - 不修改 DSH 内核代码；只用已文档化的扩展点；内核缺口用「兼容层 + 明确降级」处理。
 - 凭据安全：不把 `.credentials.yaml` 复制到远端。
+
+### 6.1 宿主版本实测记录（0.2.2-rc.4，2026-11-18）
+
+| 项 | 结果 |
+|---|---|
+| `pnpm check:boot`（补丁行 id / `dsh` 三件套 / 旧名残留） | OK |
+| L4 真浏览器（14 场景 + 键盘 10/10） | 通过 |
+| WSL 真机接入（`ubuntu_dev`，`spikes/m1/p35-projection`） | **7/7**（launch → workspace/create → UNC stat → session/create 20.8 s → 会话内 `pwd`/`uname` 在 distro 执行 → 投影 online（512 会话）→ dispose 端口释放） |
+| SSH 真机接入（`syy_wsl_ubuntu_LAN`，全新引导） | **11/11**（reuse/isolated 两档、DSH_HOME 落点、隔离目录落地、端口释放、两个负控） |
+
+**判定要点**：宿主的兼容判定走 `semver.satisfies(..., { includePrerelease: true })`（`plugin-compatibility.ts:51-53`），所以 `0.2.2-rc.4` 满足 `>=0.2.1-rc.0 <0.3.0`；但**默认 semver 语义下不满足**（预发布 tuple 规则），其他工具报的「不兼容」属警告级，不影响加载。
+
+本轮真机回归顺带修掉两个缺陷：① 刚引导装好 node 后仍用 PATH 上的 `node` 启动（`sh: node: not found`，180 s 超时）；② `sh: 2: node: not found` 未被识别成 `remote/node-missing`，落到泛化的 `startup-failed`。
 
 ## 7. 体验基准（「丝滑」的定义，量化）
 

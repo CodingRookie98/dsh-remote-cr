@@ -53,7 +53,7 @@ DSH 插件市场里的远程插件多为 **A 型（远端执行）**：agent、�
 
 | 组件 | 支持范围 |
 |---|---|
-| DSH 宿主 | `>=0.2.1-rc.0 <0.3.0`（`package.json#engines.dsh`） |
+| DSH 宿主 | `>=0.2.1-rc.0 <0.3.0`（`package.json#engines.dsh`）；已实测 **0.2.2-rc.4**（WSL 7/7、SSH 11/11） |
 | Node | `^22.19.0` 或 `>=24.0.0` |
 | 本机 | Windows 10/11，WSL2 或 OpenSSH 客户端 |
 | 远端 | Linux（POSIX shell + `node`；首次接入需在远端安装 dsh，可由引导器代做） |

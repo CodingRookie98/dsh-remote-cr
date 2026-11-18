@@ -24,7 +24,11 @@ const EADDRINUSE = /EADDRINUSE: address already in use (\S+):(\d+)/
  * - 经 shell + nohup：`nohup: failed to run command 'node': No such file or directory`
  * 两种都是真机实测输出（前者见 P32-6 首跑失败、后者见 T6-3），不能只认一种。
  */
-const NO_SUCH_COMMAND = /execvpe\(([^)]+)\) failed: No such file or directory|failed to run command '([^']+)': No such file or directory/
+// 三种写法都要认：execvpe（node 直接 spawn 失败）、bash 的 "failed to run command"、
+// 以及 POSIX sh 的 `sh: 2: node: not found` —— 最后这种是远端走 `sh -c` 时最常见的形状，
+// 曾经漏判，被落到泛化的 startup-failed（真机回归在 SSH 目标上打出来的）。
+const NO_SUCH_COMMAND =
+  /execvpe\(([^)]+)\) failed: No such file or directory|failed to run command '([^']+)': No such file or directory|(?:^|\n)[^\n]*?(?:sh|dash|bash):\s*(?:line\s*)?\d*:?\s*([A-Za-z0-9._-]+):\s*(?:command\s*)?not found/
 const STARTUP_FAILED = /startup failed:\s*(.+)/
 
 /**
@@ -77,7 +81,7 @@ export function readStartFailure(logText: string): StartFailureFacts {
   }
   const missing = NO_SUCH_COMMAND.exec(logText)
   if (missing !== null) {
-    const command = missing[1] ?? missing[2]
+    const command = missing[1] ?? missing[2] ?? missing[3]
     if (command !== undefined && command !== '') facts.missingCommand = command
   }
   const failed = STARTUP_FAILED.exec(logText)
