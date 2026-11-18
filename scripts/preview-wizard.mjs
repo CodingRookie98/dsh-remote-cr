@@ -9,7 +9,7 @@
  *    /preview/*.mjs 给三个浏览器侧模块（页面、夹具、React 垫片）；
  * 3. 用 Chrome headless + 原生 CDP（全局 WebSocket，不用 puppeteer/playwright）
  *    逐场景打开页面、等页面自己把向导点到位、截图；
- * 4. 把每个场景的 [data-teleport] 清单、页面请求、动作流水、console 错误 dump 成 json。
+ * 4. 把每个场景的 [data-remote-cr] 清单、页面请求、动作流水、console 错误 dump 成 json。
  *
  * 为什么是「真浏览器 + 真组件」而不是 jsdom：本仓库不装 react，组件要么跑在宿主模块表里、
  * 要么跑在一个足够像的垫片上。垫片在**真 Chrome** 里跑意味着布局、尺寸、calc/color-mix、
@@ -25,7 +25,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -183,7 +183,7 @@ function renderHtml({ sceneId, theme, bundleUrl }) {
     '<div id="flow-root" class="preview-canvas"></div>',
     '</section>',
     '<aside class="preview-column">',
-    '<div class="preview-label">TeleportPanel · main</div>',
+    '<div class="preview-label">RemoteCrPanel · main</div>',
     '<div id="panel-root" class="preview-canvas"></div>',
     '</aside>',
     '</main>',
@@ -267,21 +267,198 @@ async function fetchJson(url, timeoutMs) {
 
 async function waitForDevTools(port, timeoutMs, child) {
   const deadline = Date.now() + timeoutMs;
-  let exited = false;
+  let exitedAt = null;
   let exitCode = null;
   child.once('exit', (code) => {
-    exited = true;
+    exitedAt = Date.now();
     exitCode = code;
   });
   for (;;) {
-    if (exited) throw new Error('Chrome 提前退出（exit ' + String(exitCode) + '）');
     try {
       return await fetchJson('http://127.0.0.1:' + port + '/json/version');
     } catch {
       /* 端口还没起来 */
     }
+    // Windows 上 spawn 到的 chrome.exe 往往只是**启动器**：它把真正的 browser 进程拉起来后
+    // 自己就退出（实测 exit 0 / 13，且此时 DevTools 端口还没就绪）。所以进程退出不能直接判失败，
+    // 但也不能无限等：退出后再给 5s 让端口起来，仍没有才认为真失败。
+    if (exitedAt !== null && Date.now() - exitedAt > 5000) {
+      throw new Error('Chrome 提前退出（exit ' + String(exitCode) + '）且 5s 内 DevTools 端口没起来');
+    }
     if (Date.now() >= deadline) throw new Error('等 Chrome DevTools 端口超时（' + port + '）');
     await delay(120);
+  }
+}
+
+// ── 进程与 profile 生命周期 ──────────────────────────────────────────────
+//
+// Chrome 是**多进程树**：browser 主进程 + renderer / gpu / utility / crashpad。
+// Windows 上 child.kill() 只对 spawn 出来的那一个 TerminateProcess，其余子进程不在同一
+// 作业对象里，会全部孤儿化常驻（实测一次中断漏下 8 个进程；133 轮 = 328 个 chrome.exe、
+// 11 GB 内存 + 5.8 GB 磁盘）。taskkill /T 才会顺着父子关系把整棵树带走。
+//
+// 另一个洞是 finally 本身：Ctrl+C、终端关闭、CI 超时把 node 硬杀掉时，finally 根本没机会
+// 执行。所以这里同时挂 exit / signal 钩子（钩子里只能同步操作，故只杀进程、不删目录），
+// 目录交给下次启动时的 sweepStaleProfiles() 回收。
+
+const PROFILE_PREFIX = 'dsh-preview-chrome-';
+const PROFILE_STALE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 一次运行里活着的那只 Chrome。pid 是 spawn 出来的进程，**不一定**是 browser 主进程：
+ * Windows 上 chrome.exe 会先把活交给另一个进程再自己退出（实测 spawn 到 33180，真正的
+ * browser 是 39628、ppid 指向已消失的 33180），所以清理按 profile 目录认人，不按 pid。
+ */
+let activeChrome = null;
+
+function killChromeTree(pid) {
+  if (typeof pid !== 'number' || pid <= 0) return;
+  if (process.platform === 'win32') {
+    // 同步 + stdio ignore：exit 钩子里也能跑，且不会往报告里掺输出。
+    spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    /* 已经退出 */
+  }
+}
+
+function normalizeProfilePath(value) {
+  return resolve(value).replace(/\\/g, '/').toLowerCase();
+}
+
+/**
+ * 当前所有 chrome.exe 的 { pid, profileDir }。
+ * Windows 的 profile 没有 Linux 那种 SingletonLock，只能从命令行认；
+ * 拿不到进程表返回 null，调用方据此退回保守策略（宁可少杀/少删）。
+ */
+function listChromeProcesses() {
+  if (process.platform !== 'win32') return null;
+  const script =
+    "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'chrome.exe' } | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
+  const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (result.status !== 0 || typeof result.stdout !== 'string') return null;
+  // 一个 chrome 都没在跑时 ConvertTo-Json 输出空串：那是「零个」，不是「读不到」。
+  // 混为一谈会让 sweep 永远退回时间策略，死目录要躺满 2 小时才可能被回收。
+  const raw = result.stdout.trim();
+  if (raw === '') return [];
+  let rows;
+  try {
+    rows = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(rows) ? rows : [rows];
+  const found = [];
+  for (const row of list) {
+    if (row === null || typeof row !== 'object' || typeof row.CommandLine !== 'string') continue;
+    const hit = /--user-data-dir=(?:"([^"]+)"|(\S+))/.exec(row.CommandLine);
+    if (hit === null) continue;
+    found.push({ pid: row.ProcessId, profileDir: normalizeProfilePath(hit[1] ?? hit[2]) });
+  }
+  return found;
+}
+
+/**
+ * 杀掉占着某个 profile 的所有 chrome 进程（含 renderer / gpu / utility / crashpad）。
+ * 按 profile 认人而不是按 pid：spawn 得到的那个 pid 在 Windows 上会先退出（见 activeChrome 注释）。
+ */
+function killChromeByProfile(userDataDir) {
+  if (process.platform !== 'win32') return 0;
+  const wanted = normalizeProfilePath(userDataDir);
+  const processes = listChromeProcesses();
+  if (processes === null) return 0;
+  let killed = 0;
+  for (const entry of processes) {
+    if (entry.profileDir !== wanted) continue;
+    spawnSync('taskkill', ['/F', '/T', '/PID', String(entry.pid)], { stdio: 'ignore', windowsHide: true });
+    killed += 1;
+  }
+  return killed;
+}
+
+/** 统一收尾：Windows 按 profile 认人整棵带走；零匹配说明 Chrome 早退了，此时 pid 可能已被系统复用，不能拿去 kill。 */
+function shutdownChrome(pid, userDataDir) {
+  if (process.platform === 'win32') {
+    killChromeByProfile(userDataDir);
+    return;
+  }
+  killChromeTree(pid);
+}
+
+function installCleanupHooks() {
+  const cleanup = () => {
+    const current = activeChrome;
+    activeChrome = null;
+    if (current === null) return;
+    // exit 钩子里只能同步，所以 powershell / taskkill 全走 spawnSync；目录交给下次 sweep 收。
+    shutdownChrome(current.pid, current.profileDir);
+  };
+  process.on('exit', cleanup);
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => {
+      cleanup();
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    });
+  }
+}
+
+function liveProfileDirs() {
+  const processes = listChromeProcesses();
+  if (processes === null) return null;
+  return new Set(processes.map((entry) => entry.profileDir));
+}
+
+/**
+ * 启动前回收上一轮被打断留下的 profile 目录。
+ * 命令行里没人认领的就是确定的死目录，直接删；认领不了进程表时只删超过 2 小时的。
+ */
+async function sweepStaleProfiles() {
+  let names;
+  try {
+    names = await readdir(tmpdir());
+  } catch {
+    return;
+  }
+  const candidates = names.filter((name) => name.startsWith(PROFILE_PREFIX));
+  if (candidates.length === 0) return;
+  const live = liveProfileDirs();
+  let removed = 0;
+  let kept = 0;
+  for (const name of candidates) {
+    const dir = join(tmpdir(), name);
+    if (live !== null && live.has(normalizeProfilePath(dir))) {
+      kept += 1;
+      continue;
+    }
+    let info;
+    try {
+      info = await stat(dir);
+    } catch {
+      continue;
+    }
+    // 「命令行里没人认领」不等于「死目录」：目录刚建出来、chrome 还没 spawn 的那几十毫秒
+    // 就是这种状态。所以留 60s 保护窗口，免得并行跑两个 harness 时把对方正在启动的 profile 删掉。
+    // 进程表都读不到（live === null）时更保守：只动超过 2 小时的老目录。
+    const graceMs = live === null ? PROFILE_STALE_MS : 60 * 1000;
+    if (Date.now() - info.mtimeMs < graceMs) {
+      kept += 1;
+      continue;
+    }
+    try {
+      await rm(dir, { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      kept += 1;
+    }
+  }
+  if (removed > 0) {
+    process.stdout.write('preview-wizard: 回收残留 profile ' + String(removed) + ' 个（保留 ' + String(kept) + ' 个）\n');
   }
 }
 
@@ -318,11 +495,7 @@ async function launchChrome({ debugPort, userDataDir }) {
       return { child, executable, headless: headless[0], stderr: () => stderr };
     } catch (error) {
       lastError = new Error(String(error && error.message) + (stderr === '' ? '' : '\nchrome stderr:\n' + stderr));
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        /* 已经死了 */
-      }
+      shutdownChrome(child.pid, userDataDir);
       await delay(300);
     }
   }
@@ -616,9 +789,11 @@ async function main() {
   const baseUrl = 'http://127.0.0.1:' + options.port;
   process.stdout.write('preview-wizard: 服务 ' + baseUrl + ' · 场景 ' + scenes.length + ' 个 · 输出 ' + outDir + '\n');
 
+  await sweepStaleProfiles();
   const debugPort = await freePort();
-  const userDataDir = await mkdtemp(join(tmpdir(), 'dsh-preview-chrome-'));
+  const userDataDir = await mkdtemp(join(tmpdir(), PROFILE_PREFIX));
   const chrome = await launchChrome({ debugPort, userDataDir });
+  activeChrome = { pid: chrome.child.pid, profileDir: userDataDir };
   const target = await findPageTarget(debugPort);
   const cdp = await Cdp.open(target.webSocketDebuggerUrl);
 
@@ -666,16 +841,15 @@ async function main() {
   } finally {
     cdp.close();
     if (options.keep) {
+      // --keep 是「留着给手工接着看」，exit 钩子不许把它收走。
+      activeChrome = null;
       process.stdout.write(
         'preview-wizard: --keep，Chrome 留着（pid ' + String(chrome.child.pid) + '，CDP 端口 ' + debugPort +
           '，user-data-dir ' + userDataDir + '）；收工时 kill 掉这个 pid\n',
       );
     } else {
-      try {
-        chrome.child.kill('SIGKILL');
-      } catch {
-        /* 已经退出 */
-      }
+      shutdownChrome(chrome.child.pid, userDataDir);
+      activeChrome = null;
       await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
     }
     await new Promise((done) => server.close(() => done(undefined)));
@@ -707,7 +881,11 @@ async function main() {
   // 全量跑才要求 wizard 与 source 都在这一批 dump 里出现过 —— 那是管线打通的判据。
   const reasons = [];
   if (withScreenshot < neededShots) reasons.push('截图不足（' + withScreenshot + ' < ' + neededShots + '）');
-  if ((totals.wizard || 0) === 0) reasons.push('没有 wizard 标记');
+  // 面板场景刻意不挂向导（hideFlow），此时没有 wizard 标记是预期的，不能算失败。
+  const flowScenes = PREVIEW_SCENES.filter(
+    (scene) => scene.hideFlow !== true && (options.only === null || scene.id === options.only),
+  );
+  if ((totals.wizard || 0) === 0 && flowScenes.length > 0) reasons.push('没有 wizard 标记');
   if (options.only === null && (totals.source || 0) === 0) reasons.push('全量跑里没有 source 标记');
   if (broken > 0) reasons.push('有场景没跑完（' + broken + ' 个）');
   // B3：目标标记必须真的命中。之前只打印不判 —— 场景表写了目标却没有任何断言执行它，
@@ -723,6 +901,80 @@ async function main() {
   );
   if (missed.length > 0) {
     reasons.push('目标标记没命中：' + missed.map((record) => record.scene + '→' + String(record.targetReached)).join(','));
+  }
+  // 结构顺序必须是**门禁**，不是采集数组里的巧合：把 head 挪到 body 后面，
+  // 13/13 依然全绿、截图依然好看（R2 把这条提级为 Must-Fix）。
+  for (const record of results) {
+    const scene = PREVIEW_SCENES.find((candidate) => candidate.id === record.scene);
+    if (!Array.isArray(scene?.order)) continue;
+    const sequence = record.markers.map((marker) => marker.marker);
+    const positions = scene.order.map((key) => sequence.indexOf(key));
+    const ascending = positions.every((at, index) => at >= 0 && (index === 0 || at > positions[index - 1]));
+    if (!ascending) {
+      reasons.push('DOM 顺序不符（' + record.scene + '）：期望 ' + scene.order.join(' → ')
+        + '，实际位置 ' + JSON.stringify(positions));
+    }
+    if (typeof scene.sectionTitleCount === 'number') {
+      const actual = sequence.filter((key) => key === 'panel-section-title').length;
+      if (actual !== scene.sectionTitleCount) {
+        reasons.push('区块标题数量不符（' + record.scene + '）：期望 ' + scene.sectionTitleCount + '，实际 ' + actual);
+      }
+    }
+  }
+  // 结构门禁的「必须是哪些场景」写在代码里，不写在场景数据里：
+  // 把声明绑到 hideFlow 之类的场景字段上，删两行 fixtures 就能回到「13/13 绿、无顺序门禁」。
+  // 期望顺序是**代码常量**，不是场景数据：写在 fixtures 里的话，把它缩成 ['panel-head'] 仍然绿（Delta-3 N3）。
+  const REQUIRED_ORDER_SCENES = [
+    { id: 'panel', order: ['panel-head', 'panel-body', 'panel-hosts', 'panel-detail'], sectionTitleCount: 3 },
+  ];
+  for (const requirement of (options.only === null ? REQUIRED_ORDER_SCENES : REQUIRED_ORDER_SCENES.filter((item) => item.id === options.only))) {
+    const scene = PREVIEW_SCENES.find((candidate) => candidate.id === requirement.id);
+    const record = results.find((entry) => entry.scene === requirement.id);
+    if (scene === undefined || record === undefined) { reasons.push('缺必需场景：' + requirement.id); continue; }
+    const sequence = record.markers.map((marker) => marker.marker);
+    const positions = requirement.order.map((key) => sequence.indexOf(key));
+    const ascending = positions.every((at, index) => at >= 0 && (index === 0 || at > positions[index - 1]));
+    if (!ascending) {
+      reasons.push('DOM 顺序不符（' + requirement.id + '）：期望 ' + requirement.order.join(' → ')
+        + '，实际位置 ' + JSON.stringify(positions));
+    }
+    const titles = sequence.filter((key) => key === 'panel-section-title').length;
+    if (titles !== requirement.sectionTitleCount) {
+      reasons.push('区块标题数量不符（' + requirement.id + '）：期望 ' + requirement.sectionTitleCount + '，实际 ' + titles);
+    }
+  }
+  // 「屏上出现 undefined / 漏译 key」必须判失败：夹具与线上形状脱节时，
+  // 截图看起来正常、13/13 也全绿，但用户看到的是 sourceReason.undefined（Delta-5 N1′）。
+  for (const record of results) {
+    // text 里用「包含」判（用户路径里出现 source.xxx 是可能的，但那不该出现在 text 顶上）；
+    // title 里必须**整串**都像一个字典键，否则真实路径会被误判（Delta-7 N2）。
+    // 覆盖全部 19 个命名空间（Delta-8 U-R2）：漏一个前缀，那个命名空间的漏译就永远看不见。
+    const NS = 'sourceReason|source|linkState|flow|err|errNext|panel|wizard|action|phase|projection|api|time|env|verdict|plan|link|import';
+    const LEAK_ANY = /undefined|\{[a-z]+\}|\b(?:' + NS + ')\.[a-z0-9/*-]+\b/;
+    const LEAK_TEXT = new RegExp(LEAK_ANY.source);
+    // title 也按包含判（`ubuntu_dev · undefined` 这种拼出来的泄露要能抓到），
+    // 但只在**确实出现**三个特征之一时才判，避免把普通路径当漏译（Delta-8 N1）。
+    const LEAK_TITLE = new RegExp(LEAK_ANY.source);
+    const leaked = [];
+    for (const marker of record.markers) {
+      // 文案可能在 text，也可能在 title（tooltip 同样是用户能看到的）。
+      if (typeof marker.text === 'string' && LEAK_TEXT.test(marker.text)) leaked.push(marker.marker + '.text: ' + marker.text.slice(0, 60));
+      const title = marker.attrs?.title;
+      if (typeof title === 'string' && LEAK_TITLE.test(title.trim())) leaked.push(marker.marker + '.title: ' + title.slice(0, 60));
+      // 不可用来源的原因行不许是空串：那说明字典没命中（曾经渲染成空白行，Delta-6 N1″）。
+      if (marker.marker === 'source-reason-text' && String(marker.text ?? '').trim() === '') {
+        leaked.push('source-reason-text: <empty>');
+      }
+    }
+    if (leaked.length > 0) reasons.push('屏上有漏译/undefined/空白原因（' + record.scene + '）：' + leaked.join(' | '));
+  }
+  // `targets` 是 OR 语义（firstMatch），挡不住「新增的标记根本没渲染」——
+  // 需要**必须存在**的关键标记用 requireMarkers 明说（Delta-8 N2）。
+  for (const record of results) {
+    const scene = PREVIEW_SCENES.find((candidate) => candidate.id === record.scene);
+    for (const marker of scene?.requireMarkers ?? []) {
+      if ((record.counts[marker] ?? 0) < 1) reasons.push('缺必需标记（' + record.scene + '）：' + marker);
+    }
   }
   const wslFailed = results.find((record) => record.scene === 'wsl-failed');
   if (wslFailed !== undefined && (wslFailed.counts['wake-error'] || 0) < 1) {
@@ -745,6 +997,8 @@ async function main() {
   }
   return exitCode;
 }
+
+installCleanupHooks();
 
 main().then((code) => {
   process.exitCode = code;
