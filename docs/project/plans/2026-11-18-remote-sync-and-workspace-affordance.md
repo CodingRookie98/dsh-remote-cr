@@ -1,0 +1,56 @@
+# 计划：远端插件同步 + 远端工作区可视化区分（RFC-0003）
+
+> 契约来源：[RFC-0003](../proposals/RFC-0003-plugin-sync-and-remote-workspace-affordance.md)（In Review）。
+> 分支：`feat/remote-sync-and-workspace-affordance`。基线：`master` @ 0.4.0。
+
+## 已定假设（P0 未决项的默认值）
+
+| 未决项 | 默认值 | 何时推翻 |
+|---|---|---|
+| WSL 的 `reconnectNow()` | **先按可用设计**；T1 用真机验证，不可用则 WSL 只显示「在面板中重连」 | T1 结果 |
+| 「不再提醒」粒度 | **targetId**（host + user + port，与 `anchorIdFor` 同源） | 若发现同机多 profile 需区分 |
+| 远端版本高于本地 | 列表里标「远端更新（不处理）」，**不降级** | 用户明确要求降级时另开 |
+
+## 批次与依赖
+
+| 批次 | 内容 | 依赖 | 主要文件 |
+|---|---|---|---|
+| **T1** | 真机验证：WSL 下 `reconnectNow()` 是否等价可用；顺带确认 `availability=offline` 在断连后被正确标出 | 无 | `spikes/`（新探针）+ `src/local/projection/{live,service}.ts`（只读） |
+| **T2** | 同步差集的读取与解析（纯函数 + 远端 shell 脚本） | 无 | `src/local/plugin-sync/{read.ts,parse.ts}` + 单测 |
+| **T3** | 同步执行器（勾选 → 确认 → 执行 `dsh plugin add`，带 `PATH=`）与结果结构 | T2 | `src/local/plugin-sync/apply.ts` + 单测 |
+| **T4** | 宿主路由：`GET /plugin-sync`（差集）、`POST /plugin-sync`（执行）、`optout` 读写 | T2,T3 | `src/local/api/{routes.ts,plugin-sync.ts}` + 路由用例 |
+| **T5** | 客户端：面板「远端工作区」区（图标/灰显/重连）+ 会话行徽标与菜单项 + 同步对话框 + 文案 | T4（数据面） | `src/client/{panel-view,components,state,locales}.ts` + 预览场景 |
+| **T6** | 上游提案：`workspace.row.leading` / `workspace.menu.item` 两个 hole 的补丁要点与 issue 文本 | 无（可与 T5 并行） | `docs/proposals/upstream-workspace-row-holes.md` |
+
+## 测试策略裁定书
+
+| 批次 | 级别 | 判据（Exit 0 才允许提交） |
+|---|---|---|
+| T1 | **L3 真机** | 探针在 `ubuntu_dev` 上给出 `reconnectNow` 的通过/失败与耗时；失败必须带结构化错误 |
+| T2 | **L1 纯函数** | 差集计算对 5 种输入（远端空/少几项/版本不同/包名解析失败/官方项）给出确定输出；不含任何 I/O |
+| T3 | **L2 模块** | 执行命令 argv 断言含 `PATH=<staging>/bin`；逐项结果成功/失败分离；失败带 `code` + `nextActions` |
+| T4 | **L1 路由** | 三个端点各有成功/失败用例；`GET` 不产生远端写入（断言 exec 调用次数为 1 次只读） |
+| T5 | **L4 真浏览器** | 新增 3 个预览场景（远端行 online / offline / 同步对话框）+ 键盘可达；屏上无漏译；本地工作区断言零新增标记 |
+| T6 | 文档 | 补丁能编译（在 DSH checkout 上 `tsc --noEmit`）+ issue 文本审阅 |
+
+**回归门禁（每次提交）**：`pnpm typecheck && pnpm test && pnpm check:boot && pnpm check:cjk && pnpm check:errors && pnpm check:docs && pnpm build && pnpm build:client` + `pnpm e2e:preview`。
+
+## P2 原子任务（可独立提交）
+
+- [ ] P2-1 `src/shared/plugin-sync.ts`：`PluginEntry` / `SyncPlan` / `SyncOutcome` 类型 + `diffBundles(local, remote)` 纯函数（L1）
+- [ ] P2-2 `src/local/plugin-sync/read.ts`：远端 `sh` 脚本读取 bundles（每次 ≤ 2 次 exec：一次 profile，一次批量版本）
+- [ ] P2-3 `src/local/plugin-sync/apply.ts`：逐项执行 + 结果聚合（L2）
+- [ ] P2-4 路由与 optout 持久化（本地状态根，`targetId` 键）（L1）
+- [ ] P2-5 客户端状态：`syncDialog` / `optout` / `reconnect(reason)`（reducer + 用例）
+- [ ] P2-6 面板「远端工作区」区（视图 + 样式 + 文案 zh/en）（L4 场景 1–2）
+- [ ] P2-7 会话行徽标 + 菜单项「重新连接」（L4 场景 3）
+- [ ] P2-8 同步对话框（视图 + 勾选 + 确认 + 结果列表）（L4 场景 4）
+- [ ] P2-9 上游 hole 提案文档（T6）
+- [ ] P2-10 文档：README「工作原理」补「同步/区分」两段；`docs/design/architecture.md` 补依赖与失效模式
+
+## Active Checkpoint
+
+- 阶段：**P1 完成 → P2 待开工**（等用户确认 P3 执行后端）
+- 已完成：RFC-0003（In Review）、P0.5 调研（`.goal-loop/scratchpad.md`）、P1 计划与测试定级（本文件）
+- 下一步：确认执行后端后从 **P2-1** 开始 TDD
+- 里程碑门禁：T1 结论决定 WSL 是否提供重连按钮；T4 完成前不动 T5

@@ -51,6 +51,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [RFC-0003-plugin-sync-and-remote-workspace-affordance.md](./proposals/RFC-0003-plugin-sync-and-remote-workspace-affordance.md) | **远端插件同步 + 远端工作区可视化区分**：ADR-0004 落地（首次连接提示差额、面板同步入口）+ 远端工作区图标/离线灰显/原位重连；含上游 hole 提案与决策台账 D1–D7 |
 | [RFC-0001-add-workspace-ui-v2.md](./proposals/RFC-0001-add-workspace-ui-v2.md) | **添加工作区双栏重做 + WSL 启动失败可见化**：契约增量（`WslDiagnosis` / `WslWakeResult` / `POST /wsl/wake`）、状态机变更、失败态矩阵、交互与视觉规范、断言面清单 |
 
 ## project/ — 项目运行记录（非长期知识）
