@@ -258,3 +258,44 @@ export function probeRemoteSession(
 ): Promise<import('../shared/api.ts').ProbeOutcome> {
   return callApi('/probe', { method: 'POST', body: { sessionId } }, fetchImpl)
 }
+
+/** ── 插件同步（RFC-0003 需求①）──────────────────────────────────────────── */
+
+/** 同步只需要目标身份（后端 + 名字 + 端口 + 远端根），不需要 remotePath/localPath。 */
+export interface SyncTargetLike {
+  readonly backend: 'ssh' | 'wsl'
+  readonly alias?: string
+  readonly distro?: string
+  readonly port: number
+  readonly remoteRoot: string
+}
+
+/** 读一次同步计划（GET 只打一次远端往返，不写远端）。 */
+export function readSyncPlan(
+  target: SyncTargetLike,
+  fetchImpl?: typeof fetch,
+): Promise<import('./sync-state.ts').SyncPlanLike> {
+  return callApi('/plugin-sync', { query: { target: JSON.stringify(target) } }, fetchImpl)
+}
+
+/** 执行勾选项（服务端会按自己的 plan 重算动作与版本）。 */
+export function applySyncRequest(
+  target: SyncTargetLike,
+  names: readonly string[],
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly results: readonly import('../shared/plugin-sync.ts').SyncResult[] }> {
+  return callApi('/plugin-sync', { method: 'POST', body: { target, names } }, fetchImpl)
+}
+
+/** 「不再提醒」的本地清单。 */
+export function readSyncOptout(fetchImpl?: typeof fetch): Promise<{ readonly targets: readonly string[] }> {
+  return callApi('/plugin-sync/optout', {}, fetchImpl)
+}
+
+export function setSyncOptout(
+  target: SyncTargetLike,
+  muted: boolean,
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly targets: readonly string[] }> {
+  return callApi('/plugin-sync/optout', { method: 'POST', body: { target, muted } }, fetchImpl)
+}
