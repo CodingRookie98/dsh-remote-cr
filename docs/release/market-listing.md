@@ -2,6 +2,8 @@
 
 > 面向 0.4.0 发布前。结论先行：**简介不来自我们仓库的任何字段，而来自社区目录包 `dsh-plugin-catalog`；`dsh-remote-cr` 不在该目录里，所以卡片是空的。**
 
+> **别和另一个站点搞混**：`docs/release/plugin-listing.md` 记录的是 **dsh-plugin.org**（公开仓库 + `dsh-plugin` topic → 站点自动发现）；本文说的市场卡片来自 **awesome-dsh-plugin.com** 的 YAML 列表，后者被构建成 npm 包 `dsh-plugin-catalog` 供 `dshmarket` 渲染。两套体系互不相通 —— 我们的 topic 早就加了（见 `plugin-listing.md` §8），市场卡片依旧空白，就是因为缺了这边的投稿。
+
 ## 1. 卡片上的简介从哪来（代码级证据）
 
 本机装的 `dshmarket@1.73.19`（`~/.dsh/profiles/web/node_modules/dshmarket`）：
@@ -25,13 +27,13 @@
 
 - 一个 PR 只加**一个文件**：`data/plugins/<owner>__<repo>.yml`；
 - 必填：`url`、`name`（链接文字，写 `owner/repo`）、`category`、`description.en`（`zh` 可选，维护者会补）；
-- 我们的条件：`package.json` 已声明 `dsh.bundle.patch`（最常见的被拒原因就是只写 `dsh.client`，我们两个都有 ✔）；仓库创建于 2026-10-19（≥1 天 ✔）；有真实代码 ✔；还需给仓库加 **`dsh-plugin` topic**（待做）；
+- 我们的条件：`package.json` 已声明 `dsh.bundle.patch`（最常见的被拒原因就是只写 `dsh.client`，我们两个都有 ✔）；仓库创建于 2026-10-19（≥1 天 ✔）；有真实代码 ✔；**`dsh-plugin` topic 已在 2026-11-14 加过**（见 `plugin-listing.md` §8 与 `OPEN-SOURCE-CHECKLIST.md` §2；本次无 GitHub token，未能二次复核）；
 - 分类选 `remote`（「Remote & Mobile」），与我们做的事一致；
 - 描述只讲功能、不带营销词，且**会与代码核对**。
 
 ## 4. 待办清单（0.4.0 前）
 
-- [ ] 给仓库加 `dsh-plugin` topic（GitHub → Settings → Topics；我没有 token，做不了这一步）
+- [x] `dsh-plugin` topic —— **已加**（2026-11-14，见 `plugin-listing.md` §8）；无需重做
 - [ ] 用 `docs/release/catalog-entry.yml` 提 PR 到 `awesome-dsh-plugin/awesome-dsh-plugin`，落点 `data/plugins/CodingRookie98__dsh-remote-cr.yml`
 - [ ]（可选）补 `assets/icon-180.png` 并在 YAML 打开 `icon:`；不补则回退作者头像
 - [ ] **决定是否发 npm** —— 见 §5
