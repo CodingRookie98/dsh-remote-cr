@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { applySync, buildInstallCommand } from './apply.ts'
+import type { SyncEntry } from '../../shared/plugin-sync.ts'
+
+function entry(name: string, overrides: Partial<SyncEntry> = {}): SyncEntry {
+  return { name, action: 'install', reasonId: 'missing-remote', localVersion: '1.0.0', remoteVersion: null, ...overrides }
+}
+
+test('安装命令带 PATH 与确切版本（dsh 是 #!/usr/bin/env node，缺 PATH 会 127）', () => {
+  const command = buildInstallCommand({
+    dshCommand: '/home/hui/.dsh-remote-cr/staging/abc/npm/bin/dsh',
+    nodeBin: '/home/hui/.dsh-remote-cr/staging/abc/bin',
+    profile: 'web',
+    name: 'dsh-ops',
+    version: '0.5.5',
+  })
+  assert.match(command, /^PATH='\/home\/hui\/\.dsh-remote-cr\/staging\/abc\/bin':\$PATH /)
+  assert.match(command, /'dsh-ops@0\.5\.5'$/)
+  assert.match(command, /plugin --profile 'web' add /)
+})
+
+test('版本缺失：整条拒绝，不发命令', () => {
+  assert.throws(
+    () => buildInstallCommand({ dshCommand: 'dsh', nodeBin: '/b', profile: 'web', name: 'x', version: null }),
+    (error: unknown) => (error as { code?: string }).code === 'remote/plugin-sync-unsupported',
+  )
+})
+
+test('混入非 install 项：整单拒绝（UI 漏判不许写坏远端）', async () => {
+  const calls: string[] = []
+  await assert.rejects(
+    () =>
+      applySync({
+        entries: [entry('a'), entry('b', { action: 'up-to-date', reasonId: 'none' })],
+        dshCommand: 'dsh',
+        nodeBin: '/b',
+        exec: async (script) => {
+          calls.push(script)
+          return { code: 0, stdout: '', stderr: '' }
+        },
+      }),
+    (error: unknown) => (error as { code?: string }).code === 'remote/plugin-sync-unsupported',
+  )
+  assert.equal(calls.length, 0, '拒绝时不许执行任何命令')
+})
+
+test('逐条独立：一条失败不影响后续，结果逐条回传', async () => {
+  const seen: string[] = []
+  const results = await applySync({
+    entries: [entry('a'), entry('b'), entry('c')],
+    dshCommand: 'dsh',
+    nodeBin: '/b',
+    exec: async (script) => {
+      seen.push(script)
+      return script.includes("'b@") ? { code: 1, stdout: '', stderr: 'E404 not found' } : { code: 0, stdout: 'ok', stderr: '' }
+    },
+    onResult: (result) => seen.push('progress:' + result.name + ':' + String(result.ok)),
+  })
+  assert.deepEqual(results.map((result) => [result.name, result.ok]), [['a', true], ['b', false], ['c', true]])
+  assert.equal(results[1]?.code, 'remote/plugin-sync-apply-failed')
+  assert.match(String(results[1]?.detail), /E404/)
+  assert.deepEqual(seen.filter((item) => item.startsWith('progress:')), ['progress:a:true', 'progress:b:false', 'progress:c:true'])
+})
+
+test('空列表：返回空数组，不执行任何命令', async () => {
+  const calls: string[] = []
+  const results = await applySync({ entries: [], dshCommand: 'dsh', nodeBin: '/b', exec: async (s) => { calls.push(s); return { code: 0, stdout: '', stderr: '' } } })
+  assert.deepEqual(results, [])
+  assert.equal(calls.length, 0)
+})
