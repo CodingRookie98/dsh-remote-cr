@@ -1,6 +1,6 @@
 import { RemoteCrError } from '../backend/errors.ts'
 import { applySync } from './apply.ts'
-import { readRemoteBundles, type SyncExec } from './read.ts'
+import { readRemoteProfile, type RemoteRuntimePaths, type SyncExec } from './read.ts'
 import { diffBundles, planTotals, type LocalBundle, type SyncEntry, type SyncResult } from '../../shared/plugin-sync.ts'
 
 /**
@@ -28,6 +28,8 @@ export interface SyncPlanView {
   readonly entries: readonly SyncEntry[]
   readonly totals: { readonly install: number; readonly upToDate: number; readonly skipped: number }
   readonly muted: boolean
+  /** 同一次读取里探明的远端运行时；为 null 时前端应提示「先接入一次」而不是给同步按钮。 */
+  readonly runtime: RemoteRuntimePaths | null
 }
 
 export interface PlanRequest {
@@ -41,25 +43,28 @@ export interface PlanRequest {
 /** GET /plugin-sync 的内核：远端只读一次，不写任何东西。 */
 export async function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView> {
   const profile = request.backend.profile ?? 'web'
-  const remote = await readRemoteBundles({
+  const remote = await readRemoteProfile({
     exec: request.backend.exec,
     nodeCommand: request.backend.nodeCommand,
     homeDir: request.backend.homeDir,
     profile,
     ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
   })
-  const entries = diffBundles({ local: request.local, remote })
+  const entries = diffBundles({ local: request.local, remote: remote.bundles })
   return {
     targetId: request.targetId,
     profile,
     entries,
     totals: planTotals(entries),
     muted: request.muted,
+    runtime: remote.runtime,
   }
 }
 
 export interface ApplyRequest {
   readonly backend: SyncBackend
+  /** 计划里探明的远端运行时；缺了就用 backend 兜底（测试用）。 */
+  readonly runtime?: RemoteRuntimePaths | null
   readonly targetId: string
   readonly entries: readonly SyncEntry[]
   readonly onResult?: (result: SyncResult) => void
@@ -83,11 +88,12 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
   }
   applying.add(request.targetId)
   try {
+    const runtime = request.runtime ?? null
     return await applySync({
       entries: request.entries,
       exec: request.backend.exec,
-      dshCommand: request.backend.dshCommand,
-      nodeBin: request.backend.nodeBin,
+      dshCommand: runtime?.dshCommand ?? request.backend.dshCommand,
+      nodeBin: runtime?.nodeBin ?? request.backend.nodeBin,
       profile: request.backend.profile ?? 'web',
       ...(request.onResult === undefined ? {} : { onResult: request.onResult }),
       ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),

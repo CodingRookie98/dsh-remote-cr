@@ -42,7 +42,10 @@ const READER = [
   "try{manifest=JSON.parse(fs.readFileSync(path.join(base,'package.json'),'utf8'))}catch(e){console.log(JSON.stringify({ok:false,reason:'manifest-unreadable',detail:String(e.code||e.message)}));process.exit(0)}",
   "const bundles=(manifest.dsh&&manifest.dsh.profile&&manifest.dsh.profile.bundles)||[]",
   "const rows=bundles.map(function(name){var version=null,error=null;try{version=JSON.parse(fs.readFileSync(path.join(base,'node_modules',name,'package.json'),'utf8')).version||null}catch(e){error=String(e.code||e.message)}return{name:name,version:version,error:error}})",
-  "console.log(JSON.stringify({ok:true,root:base,profile:profile,bundles:rows}))",
+  "const home=os.homedir()",
+  "let runtime=null",
+  "try{var stagingRoot=path.join(home,'.dsh-remote-cr','staging');var dirs=fs.readdirSync(stagingRoot).filter(function(id){return fs.existsSync(path.join(stagingRoot,id,'npm','bin','dsh'))});if(dirs.length>0){var dir=path.join(stagingRoot,dirs[0]);var nodeCandidate=path.join(dir,'bin','node');var hasNode=fs.existsSync(nodeCandidate);runtime={homeDir:home,nodeCommand:hasNode?nodeCandidate:'node',nodeBin:hasNode?path.join(dir,'bin'):'$PATH',dshCommand:path.join(dir,'npm','bin','dsh'),stagingDir:dir}}}catch(e){}",
+  "console.log(JSON.stringify({ok:true,root:base,profile:profile,bundles:rows,runtime:runtime}))",
 ].join(';')
 
 /** 把脚本文本 base64 化：躲开两层 shell 的引号与换行。 */
@@ -82,12 +85,22 @@ function shellQuote(value: string): string {
   return "'" + value.split("'").join("'\\''") + "'"
 }
 
+/** 远端「用哪个 node / 哪个 dsh」——同一次读取里探明，省掉第二次 exec。 */
+export interface RemoteRuntimePaths {
+  readonly homeDir: string
+  readonly nodeCommand: string
+  readonly nodeBin: string
+  readonly dshCommand: string
+  readonly stagingDir: string
+}
+
 interface ReaderPayload {
   readonly ok?: boolean
   readonly reason?: string
   readonly detail?: string
   readonly root?: string
   readonly bundles?: readonly { readonly name?: string; readonly version?: string | null; readonly error?: string | null }[]
+  readonly runtime?: Partial<RemoteRuntimePaths> | null
 }
 
 /**
@@ -96,7 +109,13 @@ interface ReaderPayload {
  * 只在「脚本跑不动 / 输出不是 JSON / ok=false」时抛结构化错误；单个包读不到版本
  * 是**正常事实**（官方包在 profile 里就是 ENOENT），交给 diff 判定。
  */
-export async function readRemoteBundles(request: ReadBundlesRequest): Promise<readonly RemoteBundle[]> {
+export interface RemoteProfileRead {
+  readonly bundles: readonly RemoteBundle[]
+  /** 远端 staging 里没装 dsh 时为 null（此时同步应当提示「先接入一次」）。 */
+  readonly runtime: RemoteRuntimePaths | null
+}
+
+export async function readRemoteProfile(request: ReadBundlesRequest): Promise<RemoteProfileRead> {
   const profile = request.profile ?? 'web'
   const script = buildReadScript({ nodeCommand: request.nodeCommand, profile, homeDir: request.homeDir ?? '' })
   const result = await request.exec(script, request.deadlineMs ?? 20_000)
@@ -128,7 +147,30 @@ export async function readRemoteBundles(request: ReadBundlesRequest): Promise<re
     })
   }
   const rows = payload.bundles ?? []
-  return rows
+  const bundles = rows
     .filter((row) => typeof row.name === 'string' && row.name !== '')
     .map((row) => ({ name: String(row.name), version: typeof row.version === 'string' ? row.version : null }))
+  return { bundles, runtime: readRuntime(payload.runtime) }
+}
+
+/** 把脚本回报的 runtime 收窄成可信形状；缺字段就整体当 null（不猜路径）。 */
+function readRuntime(raw: Partial<RemoteRuntimePaths> | null | undefined): RemoteRuntimePaths | null {
+  if (raw === null || raw === undefined) return null
+  const { homeDir, nodeCommand, nodeBin, dshCommand, stagingDir } = raw
+  if ([homeDir, nodeCommand, nodeBin, dshCommand, stagingDir].some((value) => typeof value !== 'string' || value === '')) {
+    return null
+  }
+  return {
+    homeDir: String(homeDir),
+    nodeCommand: String(nodeCommand),
+    nodeBin: String(nodeBin),
+    dshCommand: String(dshCommand),
+    stagingDir: String(stagingDir),
+  }
+}
+
+/** 兼容入口：只要清单。 */
+export async function readRemoteBundles(request: ReadBundlesRequest): Promise<readonly RemoteBundle[]> {
+  const profile = await readRemoteProfile(request)
+  return profile.bundles
 }

@@ -684,6 +684,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
       backend: await syncOptions.resolve(target),
       targetId: plan.targetId,
       entries: selected,
+      runtime: plan.runtime,
     })
     sendJson(res, 200, okEnvelope({ results }))
   })
