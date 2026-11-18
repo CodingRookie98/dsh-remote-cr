@@ -68,6 +68,12 @@ export declare function syncGroups(plan: SyncPlanLike): {
     readonly upToDate: readonly SyncEntry[];
     readonly skipped: readonly SyncEntry[];
 };
+/**
+ * 可复制的同步报告（done 态「复制日志」）。
+ *
+ * 只放**事实与码**：包名、动作、版本、结果、code/detail；不放远端路径（可能含用户名）。
+ */
+export declare function syncReport(state: SyncDialogState): string;
 /** 成功/失败计数（done 态标题用）。 */
 export declare function resultTotals(results: readonly SyncResult[]): {
     readonly ok: number;

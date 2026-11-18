@@ -45,6 +45,11 @@ export interface HostDeps {
 export interface SyncRoutesOptions {
     /** 按 target 解析出远端执行面（node / dsh / home）。 */
     readonly resolve: (target: ConnectTarget) => Promise<SyncBackend>;
+    /**
+     * target 的稳定标识（静音粒度）。SSH 用 `anchorIdFor(host+user+port)`——与 anchors / 隔离目录同源，
+     * 这样「同一台机器的不同用户」不会互相静音。WSL 用 `wsl:<distro>`。
+     */
+    readonly targetId: (target: ConnectTarget) => Promise<string>;
     /** 本地 `sync-optout.json` 的绝对路径。 */
     readonly optoutFile: string;
     /** 本机 profile 目录（读本地已装清单）。 */
