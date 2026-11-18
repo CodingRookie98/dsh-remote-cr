@@ -156,7 +156,7 @@ docs/          调研、设计、决策、计划与审查归档
 
 ## 文档
 
-- [文档索引](./docs/README.md)
+- [文档索引](./docs/README.md) · **[排查手册](./docs/troubleshooting.md)**（按症状查，含 66 个错误码索引）
 - 设计：[需求与验收标准](./docs/design/requirements.md) · [总体架构](./docs/design/architecture.md) · [UI 设计](./docs/design/ui-design.md) · [里程碑](./docs/design/milestones.md)
 - 决策：[ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md)（B 型）· [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md)（嵌入路线）· [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md)（插件同步）· [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md)（工作区入口）· [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)（命名）· [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md)（双语分层）
 - 调研：[架构模型判定](./docs/research/01-architecture-models.md) · [竞品与生态](./docs/research/05-ecosystem-and-value-2026-11.md) · [DSH 扩展点与硬限制](./docs/research/04-dsh-extension-points.md)

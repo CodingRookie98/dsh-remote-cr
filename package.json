@@ -59,6 +59,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
     "check:cjk": "node scripts/check-client-cjk.mjs",
+    "gen:errors": "node scripts/gen-error-index.mjs",
+    "check:errors": "node scripts/gen-error-index.mjs --check",
     "e2e:preview": "node scripts/preview-wizard.mjs --no-build",
     "e2e:host": "node spikes/m4/add-workspace-ui/probe.cjs",
     "spike:t5": "node spikes/m1/cross-machine-t5/probe.cjs",

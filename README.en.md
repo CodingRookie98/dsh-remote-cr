@@ -155,7 +155,7 @@ docs/          research, design, decisions, plans and review archives
 
 ## Docs
 
-- [Documentation index](./docs/README.md)
+- [Documentation index](./docs/README.md) · **[Troubleshooting](./docs/troubleshooting.md)** (symptom-first, with an index of all error codes)
 - Design: [requirements](./docs/design/requirements.md) · [architecture](./docs/design/architecture.md) · [UI design](./docs/design/ui-design.md) · [milestones](./docs/design/milestones.md)
 - Decisions: [ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md) (type B) · [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md) (embedding route) · [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md) (plugin sync) · [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md) (workspace entry) · [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md) (naming) · [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md) (bilingual layering)
 - Reviews: [eight adversarial review rounds for 0.4.0](./docs/project/reviews/2026-11-15-remote-cr-rename-i18n-ui/)
