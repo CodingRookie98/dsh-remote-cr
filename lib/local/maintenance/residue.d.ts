@@ -39,6 +39,8 @@ export declare function applyLiveness(report: ResidueReportInfo, stdout: string)
 /** 清理计划：由 TS 决定删什么（不把判断留给 shell）。 */
 export interface PurgePlan {
     readonly removeStaging: boolean;
+    /** staging 为什么没被删（null = 没跳过）。 */
+    readonly skipReason: 'resident-alive' | null;
     readonly instances: readonly ResidueInstanceFileInfo[];
 }
 export declare function planPurge(report: ResidueReportInfo): PurgePlan;
