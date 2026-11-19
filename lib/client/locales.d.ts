@@ -215,6 +215,7 @@ export declare const zh: {
     readonly 'err.remote/maintenance-unavailable': "远端残留盘点没有接线：宿主半启动时未传入执行面";
     readonly 'err.remote/maintenance-confirm-required': "清理远端残留需要二次确认（confirm）";
     readonly 'err.remote/maintenance-busy': "这台远端正连着：先断开再清理，别删掉正在用的东西";
+    readonly 'err.remote/maintenance-locked': "这台远端正忙：另一个同步/升级/清理动作正在进行";
     readonly 'err.remote/maintenance-failed': "远端残留操作失败";
     readonly 'err.remote/plugin-sync-busy': "这台远端正忙：另一个同步/升级动作正在进行";
     readonly 'err.remote/host-sync-rejected': "这台远端不能自动对齐宿主版本";
@@ -222,6 +223,7 @@ export declare const zh: {
     readonly 'errNext.remote/maintenance-unavailable': "确认插件版本与本地 DSH 一致 · 重启 dsh 后重试";
     readonly 'errNext.remote/maintenance-confirm-required': "在面板里勾选「我确认删除」后重试 · 或先看一遍清单";
     readonly 'errNext.remote/maintenance-busy': "先点「断开」 · 或换一台没用着的目标";
+    readonly 'errNext.remote/maintenance-locked': "等当前动作结束 · 或先关闭同步面板";
     readonly 'errNext.remote/maintenance-failed': "看远端原文（复制日志）· 确认远端磁盘与权限 · 重试";
     readonly 'errNext.remote/plugin-sync-busy': "等当前动作结束 · 或先关闭同步面板";
     readonly 'err.remote/host-version-unavailable': "registry 上没有这个宿主版本";
