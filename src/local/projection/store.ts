@@ -94,6 +94,19 @@ export class ProjectionStore {
     return true
   }
 
+  /**
+   * 移除一个投影工作区，连它的会话一起删（`workspaceId` 属于它的那些）。
+   *
+   * 返回 `false` 表示投影里没有这条——调用方据此报「已经不在列表里」，而不是假装成功。
+   */
+  removeWorkspace(id: string): boolean {
+    if (!this.#workspaces.delete(id)) return false
+    for (const [sessionId, session] of this.#sessions) {
+      if (session.workspaceId === id) this.#sessions.delete(sessionId)
+    }
+    return true
+  }
+
   /** 按远端快照整体重建；远端是唯一真相源，本地不留远端已经删掉的条目。 */
   replaceAll(workspaces: readonly ProjectedWorkspace[], sessions: readonly ProjectedSession[]): void {
     this.#workspaces.clear()

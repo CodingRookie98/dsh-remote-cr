@@ -61,7 +61,17 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 另修：`disposeAll` 清空引用计数（B5）；`sameHostOf` SSH 别名大小写归一 + 补用例（B6）；探针改三态端口探测、用 `effective.port`、补 same-host 场景（B7）。
 
-**残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）在停掉远端后按 service 找到 entry 调 `hub.release(target)`（最后一个引用才 recycle、删 entry、还端口）；`release` 对 `recycle()` 抛错也兜底删 entry。仍未接的是「单独关闭某个工作区」——目前没有删除工作区的入口。为避免「接过两次、只放一次」留下 refs>0 的僵尸，「结束远端」改为 `releaseAll`（一次放干净），并有用例覆盖。**`references` 的准确定义 = 接入次数，不是工作区个数。**
+**A（工作区级引用）已完成（2026-11-19）**：
+
+- `references` 改为**从投影表派生**（`snapshot().workspaces.length`）——计数器会被「重复接入 / 幂等导入 / 失败回滚」搞漂移，
+  而投影表本来就知道「还剩几个工作区」；`ReferenceCounter`、`refcount.test.ts`、`hub.release` 一并删除。
+- `ProjectionStore.removeWorkspace(id)`（连它的会话一起删）+ `ProjectionService.removeWorkspace(id)`（只删本地投影，**不删远端工作区**）。
+- 新路由 `POST /workspace/remove`：移走最后一个工作区 → 这台 target 直接回收（`releaseAll`：recycle + 删 entry + 还端口）；
+  不在投影里 → `remote/not-attached` 结构化报错，不假装成功。
+- 面板每个投影工作区多一个「移除」按钮（`data-remote-cr="remove-workspace"`），经 focusTarget 分流；中英文案齐全。
+- 「结束远端」也改用 `releaseAll`（同一台反复接过时一次放干净）。
+
+**残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：
 

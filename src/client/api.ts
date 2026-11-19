@@ -340,6 +340,16 @@ export function probeRemoteSession(
   return callApi('/probe', { method: 'POST', body: { sessionId } }, fetchImpl)
 }
 
+/** 移除一个投影工作区（工作区级引用）：移走最后一个会回收这台 target。 */
+export function removeWorkspace(
+  workspaceId: string,
+  target?: RemoteTargetInfo,
+  fetchImpl?: typeof fetch,
+): Promise<ProjectionSnapshotInfo> {
+  const body = target === undefined ? { workspaceId } : { workspaceId, target }
+  return callApi('/workspace/remove', { method: 'POST', body }, fetchImpl)
+}
+
 /** 目标版：会话 / 取证 / 导入（RFC-0007 B2 的客户端半边）。 */
 export function createSessionOf(
   target: RemoteTargetInfo,

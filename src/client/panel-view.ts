@@ -47,6 +47,7 @@ import {
   purgeResidue,
   readHosts,
   createSessionOf,
+  removeWorkspace,
   probeRemoteSessionOf,
   listImportableOf,
   importWorkspacesOf,
@@ -793,6 +794,25 @@ export function RemoteCrPanel(): unknown {
   }
 
   /**
+   * 移除一个投影工作区（工作区级引用）。
+   *
+   * 只删本地投影、不删远端工作区；移走最后一个时后端会把这台 target 回收（recycle + 还端口）。
+   */
+  const onRemoveWorkspace = async (workspaceId: string): Promise<void> => {
+    setBusy('remove:' + workspaceId)
+    try {
+      const next =
+        focusTarget === null ? await removeWorkspace(workspaceId) : await removeWorkspace(workspaceId, focusTarget)
+      setSnapshot(next)
+      setError(null)
+    } catch (caught) {
+      setError(failureOf(caught))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
    * 断开 / 重连。
    *
    * 两者都直接拿响应里的快照覆盖本地状态：先乐观改再补一次 `readProjection`
@@ -802,7 +822,6 @@ export function RemoteCrPanel(): unknown {
   const onLink = async (action: 'disconnect' | 'reconnect'): Promise<void> => {
     setBusy(action)
     try {
-      // 切到哪台就操作哪台：不带 target 时服务端只作用「最后 attach 的那台」，
       // 用户点 A 的主机却断开了 B（P4 B2）。
       const next =
         action === 'disconnect'
@@ -1095,8 +1114,22 @@ export function RemoteCrPanel(): unknown {
             },
             busy === 'reconnect' ? t('panel.reconnecting') : t('panel.rowReconnect'),
           ),
+      // 移除：只删本地投影（远端工作区不动）；移走最后一个这台就回收。
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-remote-cr': 'remove-workspace',
+          disabled: busy !== null,
+          title: t('panel.removeWorkspaceHint'),
+          onClick: () => void onRemoveWorkspace(workspace.id),
+        },
+        busy === 'remove:' + workspace.id ? t('panel.removing') : t('panel.removeWorkspace'),
+      ),
     )
   })
+
+
 
   // 过滤（R4）：`filterSessions` 只筛不排，快照给的顺序就是渲染顺序。
   const filtering = sessionFilter.trim() !== ''

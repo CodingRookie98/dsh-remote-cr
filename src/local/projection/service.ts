@@ -580,7 +580,7 @@ export class ProjectionService {
   }
 
   /** 把勾选的远端路径逐个投影进来（`workspace/create` 幂等，已有就复用）。 */
-  async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number }> {
+  async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number; readonly created: number }> {
     const live = this.#live
     if (live === undefined) {
       throw new RemoteCrError({
@@ -599,12 +599,25 @@ export class ProjectionService {
     }
     const deps = attachDeps(live.target, live.connection.rpc, this.#store)
     let imported = 0
+    let created = 0
     for (const remotePath of paths) {
       const mapped = await anchorFor(remotePath)
-      await attachWorkspace(deps, { remotePath, localPath: mapped.localPath, title: baselineTitle(remotePath) })
+      const result = await attachWorkspace(deps, { remotePath, localPath: mapped.localPath, title: baselineTitle(remotePath) })
       imported += 1
+      // 只数**新建**的：重复导入同一路径是幂等的，数进去会让引用数虚高（虹吸成永不回收）。
+      if (result.created) created += 1
     }
-    return { imported }
+    return { imported, created }
+  }
+
+  /**
+   * 从投影里移除一个工作区（连同它的会话）。
+   *
+   * 只动本地投影表，**不删远端工作区**：DSH 的 `workspace/create` 是幂等的，远端目录仍可能有会话在跑，
+   * 擅自删远端等于替用户丢数据。要彻底不再用这台，走「结束远端」。
+   */
+  removeWorkspace(workspaceId: string): boolean {
+    return this.#store.removeWorkspace(workspaceId)
   }
 
   async stopRemote(): Promise<void> {

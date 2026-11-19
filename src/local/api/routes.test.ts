@@ -262,7 +262,8 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
   '/remote-cr/api/stop POST',
       '/remote-cr/api/workspace POST',
   '/remote-cr/api/workspace/import POST',
-  '/remote-cr/api/workspace/importable GET',
+      '/remote-cr/api/workspace/importable GET',
+      '/remote-cr/api/workspace/remove POST',
       '/remote-cr/api/workspaces GET',
       '/remote-cr/api/wsl/wake POST',
     ],
@@ -313,7 +314,7 @@ test('/disconnect?target=：只断开指定那台，不动 focus（P4 A3-B2）',
 })
 
 
-test('/stop：结束远端要放掉引用（entry 消失、端口归还），否则 references 永远是 attach 次数', async () => {
+test('/stop：结束远端要把这台回收掉（entry 消失、端口归还）', async () => {
   const target: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }
   const stub = {
     attach: async () => ({ created: true, workspace: {}, sessions: [] }),
@@ -326,8 +327,7 @@ test('/stop：结束远端要放掉引用（entry 消失、端口归还），否
   } as unknown as ProjectionService
   const hub = new ProjectionHub(() => stub)
   await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
-  await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
-  assert.equal(hub.entries()[0]?.references, 2, '接过两次 → 两个引用')
+  assert.equal(hub.entries().length, 1)
   const result = await rig({}, { hub }).call({
     path: '/stop',
     method: 'POST',
@@ -335,6 +335,51 @@ test('/stop：结束远端要放掉引用（entry 消失、端口归还），否
   })
   assert.equal(result.status, 200)
   assert.equal(hub.entries().length, 0, '结束远端之后不该再留着这台')
+})
+
+test('/workspace/remove：移走最后一个工作区后这台被回收（工作区级引用）', async () => {
+  const hub = new ProjectionHub(
+    () =>
+      new ProjectionService({
+        store: new ProjectionStore(),
+        connect: async () => ({
+          rpc: {
+            async call<T>(endpoint: string, payload: unknown): Promise<T> {
+              if (endpoint === 'workspace/create') {
+                const path = (payload as { args?: { request?: { path?: string } } }).args?.request?.path ?? '/x'
+                return { workspace: { workspaceId: 'ws:' + path, path, title: path, sessionIds: [], createdAt: '', updatedAt: '' }, created: true } as T
+              }
+              return { items: [] } as T
+            },
+            openStream: () => ({ cancel() {}, async *[Symbol.asyncIterator]() {} }),
+          },
+          dispose() {},
+        }),
+      }),
+  )
+  const target: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }
+  await hub.attach(target, { remotePath: '/home/hui/a', localPath: 'C:/a' })
+  assert.equal(hub.entries().length, 1)
+  const result = await rig({}, { hub }).call({
+    path: '/workspace/remove',
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: 'ws:/home/hui/a', target }),
+  })
+  const envelope = result.json as { ok: boolean; value?: { workspaces: unknown[] } }
+  assert.equal(envelope.ok, true, JSON.stringify(result.json))
+  assert.deepEqual(envelope.value?.workspaces, [])
+  assert.equal(hub.entries().length, 0, '移走最后一个 → 这台被回收')
+})
+
+test('/workspace/remove：不在投影里时结构化报错，不假装成功', async () => {
+  const hub = new ProjectionHub(() => ({}) as unknown as ProjectionService)
+  hub.serviceFor({ backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/a' })
+  const result = await rig({}, { hub }).call({
+    path: '/workspace/remove',
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: 'nope', target: { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/a' } }),
+  })
+  assert.equal((result.json as { ok: boolean }).ok, false)
 })
 
 test('/disconnect 的未知 target：结构化报错，不许静默回落到 focus（P4 M5）', async () => {
