@@ -1,0 +1,131 @@
+{
+  "at": "2026-11-19T12:53:00.301Z",
+  "real": true,
+  "host": true,
+  "alias": "wsl_local",
+  "passed": 20,
+  "skipped": 0,
+  "failed": 0,
+  "results": [
+    {
+      "name": "typecheck",
+      "status": "PASS",
+      "detail": "",
+      "ms": 9415
+    },
+    {
+      "name": "test",
+      "status": "PASS",
+      "detail": "ℹ duration_ms 12562.913",
+      "ms": 13768
+    },
+    {
+      "name": "check:cjk",
+      "status": "PASS",
+      "detail": "check-client-cjk: OK（根 client + shared；白名单 2 个文件）",
+      "ms": 1906
+    },
+    {
+      "name": "check:errors",
+      "status": "PASS",
+      "detail": "error-index: OK（79 条与字典一致）",
+      "ms": 1391
+    },
+    {
+      "name": "check:docs",
+      "status": "PASS",
+      "detail": "check-doc-images: OK（本地 0 张 / 本仓库 raw 2 张 / 第三方外链 10 张）",
+      "ms": 1485
+    },
+    {
+      "name": "check:boot",
+      "status": "PASS",
+      "detail": "check-boot-constraints: OK（行 id remote-cr；engines.dsh = >=0.2.1-rc.0 <0.3.0）",
+      "ms": 1987
+    },
+    {
+      "name": "check:load",
+      "status": "PASS",
+      "detail": "check-load-smoke: OK（28 条路由 / 30 个 effect）",
+      "ms": 1539
+    },
+    {
+      "name": "check:compat",
+      "status": "PASS",
+      "detail": "compat: verdict = unknown",
+      "ms": 1428
+    },
+    {
+      "name": "doctor",
+      "status": "PASS",
+      "detail": "结论：可以正常加载",
+      "ms": 1230
+    },
+    {
+      "name": "build",
+      "status": "PASS",
+      "detail": "",
+      "ms": 12218
+    },
+    {
+      "name": "build:client",
+      "status": "PASS",
+      "detail": "build-client: 31 modules -> lib\\client.js (302108 B)",
+      "ms": 5967
+    },
+    {
+      "name": "e2e:preview",
+      "status": "PASS",
+      "detail": "preview-wizard: 通过",
+      "ms": 46986
+    },
+    {
+      "name": "probe:reclaim",
+      "status": "PASS",
+      "detail": "回收探针：通过 3 / 失败 0",
+      "ms": 22628
+    },
+    {
+      "name": "probe:cross-host",
+      "status": "PASS",
+      "detail": "多 host 探针：通过 5 / 失败 0",
+      "ms": 34665
+    },
+    {
+      "name": "probe:same-host",
+      "status": "PASS",
+      "detail": "多 host 探针：通过 3 / 失败 0",
+      "ms": 15418
+    },
+    {
+      "name": "probe:cross-backend",
+      "status": "PASS",
+      "detail": "跨后端探针：通过 6 / 失败 0",
+      "ms": 193382
+    },
+    {
+      "name": "probe:route-stop",
+      "status": "PASS",
+      "detail": "路由级 /stop 探针：通过 6 / 失败 0",
+      "ms": 21839
+    },
+    {
+      "name": "probe:residue-wsl",
+      "status": "PASS",
+      "detail": "残留探针：通过 4 / 失败 0",
+      "ms": 1766
+    },
+    {
+      "name": "probe:residue-ssh",
+      "status": "PASS",
+      "detail": "残留探针：通过 4 / 失败 0",
+      "ms": 962
+    },
+    {
+      "name": "verify:real-host",
+      "status": "PASS",
+      "detail": "verify-real-host: OK",
+      "ms": 13236
+    }
+  ]
+}

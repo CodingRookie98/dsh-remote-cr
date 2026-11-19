@@ -64,6 +64,7 @@
     "check:docs": "node scripts/check-doc-images.mjs",
     "check:boot": "node scripts/check-boot-constraints.mjs",
     "check:load": "node scripts/check-load-smoke.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "check:compat": "node scripts/check-compat.mjs",
     "doctor": "node lib/local/doctor.js",
     "doctor:remote": "node lib/local/doctor.js",
