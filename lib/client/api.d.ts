@@ -13,7 +13,7 @@
  * 3. **线上形状只有一份**：所有类型都从 `src/shared/api.ts` 来，两侧改字段会在
  *    `tsc` 阶段炸，而不是在浏览器里变成 `undefined`。
  */
-import type { HostEntryInfo, ImportableWorkspaceInfo, PurgeResultInfo, RemoteTargetInfo, ResidueReportInfo } from '../shared/api.ts';
+import type { HostEntryInfo, ProjectionSnapshotInfo, ImportableWorkspaceInfo, PurgeResultInfo, RemoteTargetInfo, ResidueReportInfo } from '../shared/api.ts';
 /** 宿主半挂载的前缀；与 `src/local/api/routes.ts` 共用同一个常量。 */
 export declare const API_BASE = "/remote-cr/api";
 /** 结构化错误：与 `src/shared/flow.ts#FlowError` 的字段同名，便于直接塞进流程状态。 */
@@ -48,6 +48,17 @@ export declare function callApi<T>(path: string, init?: {
 }, fetchImpl?: typeof fetch): Promise<T>;
 /** `/doctor` 的答复：检查项 + 与 CLI 同款的报告文本（RFC-0005）。 */
 export declare function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo>;
+/**
+ * 写操作的目标版（RFC-0007 A2/B2）：切到哪台就操作哪台。
+ *
+ * 不带 target 时服务端只作用「最后 attach 的那台」；用户点了 A 主机却断开了 B 就是这么来的。
+ */
+export declare function disconnectRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo>;
+export declare function reconnectRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo>;
+export declare function stopRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<{
+    stopped: boolean;
+}>;
+export declare function refreshProjectionOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo>;
 /** `GET /projection/targets`：容器里每台的状态与条目数（RFC-0007 A1/A2）。 */
 export declare function readHosts(): Promise<HostEntryInfo[]>;
 /** `GET /maintenance/residue`：远端残留只读盘点（RFC-0006 Phase 2）。 */

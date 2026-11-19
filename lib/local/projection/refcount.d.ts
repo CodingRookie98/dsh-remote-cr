@@ -16,5 +16,7 @@ export declare class ReferenceCounter {
         readonly recycle: boolean;
     };
     count(key: string): number;
+    /** 全清（`disposeAll` 用）：先清计数，重建后一次 release 才能正常回收。 */
+    clear(): void;
 }
 //# sourceMappingURL=refcount.d.ts.map

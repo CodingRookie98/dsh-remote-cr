@@ -18,7 +18,7 @@ import type { IncomingMessage } from 'node:http';
 import { type MountedRoute, type RemoteCrHostContext } from './local/api/routes.ts';
 import { type CredentialProxyRuntime } from './local/proxy/runtime.ts';
 import { type PromptProjectionLog } from './local/projection/prompt.ts';
-import { ProjectionService } from './local/projection/service.ts';
+import { ProjectionHub } from './local/projection/hub.ts';
 /** Loader 行里的插件名（与 \`cordis.patch.yml\` 的 \`id\` 无关，那个是行 id）。 */
 export declare const name = "dsh-remote-cr";
 /** 依赖的宿主服务：\`webServer\` 挂路由，\`connection\` 提供越权围栏，\`systemPrompt\` 挂投影。 */
@@ -49,7 +49,11 @@ export interface RemoteCrPluginContext extends RemoteCrHostContext {
 /** 一次启动挂上的全部东西；测试与启动自检都能据此断言「该挂的都挂了」。 */
 export interface RemoteCrMount {
     readonly routes: readonly MountedRoute[];
-    readonly projection: ProjectionService;
+    /**
+     * 多 host 容器（RFC-0007）：每台 target 一个 `ProjectionService`，各自 store / 连接 / 重连驱动。
+     * 之前这里暴露的是单个 `projection`——那正是 A3 红队判「生产仍单引擎」的根因。
+     */
+    readonly hub: ProjectionHub;
     readonly promptLog: PromptProjectionLog | undefined;
     /**
      * 本机凭据代理的启动结果；`undefined` 表示起不来（没有凭据文件、端口被占、被策略拦）。

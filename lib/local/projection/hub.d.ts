@@ -17,6 +17,12 @@ import { type AttachControl, type ConnectTarget, ProjectionService, type Project
 /** target 的稳定键：与 `sameTarget` 同形（后端 + 标识 + 端口 + 检出根）。 */
 export declare function targetKeyOf(target: ConnectTarget): string;
 /** 同一台远端主机（不含端口/目录）：端口冲突只发生在同一台主机上。 */
+/**
+ * 同一台远端主机（不含端口/目录）：端口冲突只发生在同一台主机上。
+ *
+ * 已知边界（写进 RFC-0007 未验证清单）：**跨后端同机**（WSL + 从宿主 sshd 进同一 distro）这里判不出来；
+ * WSL2 不同发行版是否共享网络命名空间也未验证——判成「不同主机」是保守方向（宁可撞端口报错，也不误删）。
+ */
 export declare function sameHostOf(left: ConnectTarget, right: ConnectTarget): boolean;
 export interface HubEntry {
     readonly key: string;
@@ -35,7 +41,12 @@ export declare class ProjectionHub {
     serviceFor(target: ConnectTarget): ProjectionService;
     /** 只查不建：`?target=` 指向一台从没接过的机器时不该顺手造一个空引擎。 */
     peek(target: ConnectTarget): ProjectionService | undefined;
-    /** 经容器接入：建/复用引擎 → 记 focus → 引用 +1 → 委托给引擎。 */
+    /**
+     * 经容器接入：建/复用引擎 → 记 focus → 引用 +1 → 委托给引擎。
+     *
+     * **失败要回滚**（P4 B3）：`retain` 在 attach 之前，失败不回滚会让「重试 N 次」变成「要 release N+1 次才回收」，
+     * 远端 dsh 会一直常驻；同机不同目录反复失败还会持续吃池端口。
+     */
     attach(target: ConnectTarget, request: AttachRequest, control?: AttachControl): Promise<AttachResult>;
     /**
      * 释放一个引用：最后一个引用才 `recycle()`（停远端、释放端口），但**保留投影条目**。
