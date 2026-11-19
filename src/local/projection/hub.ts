@@ -143,7 +143,7 @@ export class ProjectionHub {
   }
 
   /**
-   * 结束某 target：`recycle()` + 删 entry + 还端口（「结束远端」与「移走最后一个工作区」都用它）。
+   * 结束某 target：`recycle()` + 删 entry + 还端口。**只有「结束远端」用它**——移除工作区只改投影。
    *
    * 为什么不再维护一个计数器：计数器会与投影表漂移（重复接入、幂等导入、失败回滚都能让它错位），
    * 而「还剩几个工作区」投影表本来就知道——直接读它，`references` 才不会说谎。
@@ -184,7 +184,7 @@ export class ProjectionHub {
       target: value.target,
       effective: value.effective,
       portAdjusted: value.effective.port !== value.target.port,
-      // 引用数 = 这台投影里有几个工作区（移走最后一个 → 这台就回收）。
+      // 引用数 = 这台投影里有几个工作区（归零只说明没人用了；回收要用户点「结束远端」）。
       references: value.service.snapshot().workspaces.length,
       service: value.service,
     }))

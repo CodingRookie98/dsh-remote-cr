@@ -107,6 +107,15 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 另：`recycle()` 改成 live/detached **两条都收**（live 先失败不再让 detached 泄漏）；删掉无消费方的 `importWorkspaces().created`；
 面板「移除」文案抽成纯函数 `removeButtonLabel(busy, id, labels)` + 4 条断言（原来内联三元被改坏仍全绿）。
 
+**Delta-3（判不可签，2 条残余）已修（2026-11-19）**：
+
+| 编号 | 问题 | 修法 |
+|---|---|---|
+| P1-C | 「移走最后一个会回收」还有 **5 处源码 + 全部 lib 产物**在说（含**用户可见 tooltip**） | `locales.ts` 中英 tooltip、`client/api.ts`、`hub.ts` 两处、`panel-view.ts` 两处注释全部改成「移除只改列表；结束远端才收进程」，并重建产物 |
+| P1-D（我引入的回归） | 把 `/stop` 合并成 `releaseAll → recycle → dispose()` 后，**复用/驻留实例只关隧道**（真杀在 `stopRemote` 的按 pid kill）→ `/stop` 回 `stopped:true` 但远端 dsh 还在 | `#reclaim` **优先 `connection.stopRemote?.()`**（有 clean 通道），无该能力才回落到 `dispose()`；`live.ts` 复用分支的 `stopRemote` 补 `return true` 并标注 clean 语义 |
+
+判据：service 用例「recycle 优先用 stopRemote」——变异回「只 dispose」会红；真机 `reclaim-probe` 在修复后仍 **3/3**（pid 14698 在 `releaseAll` 后消失）。
+
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：

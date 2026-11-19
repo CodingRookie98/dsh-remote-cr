@@ -351,7 +351,8 @@ async function connectSsh(
         envPolicy: policy,
         dispose: async () => tunnel.dispose(),
         // 「结束远端」：复用连接只关隧道的话，驻留实例会永远留着 —— 必须按登记 pid 真杀。
-        stopRemote: async () => {
+        // 返回值语义同 `dispose()`：`false` = 没能确认进程退出（P4 P1-B）。
+        stopRemote: async (): Promise<boolean> => {
           await runSsh({
             target: sshTarget,
             knownHostsFile: knownHostsPath(ssh.homeDir),
@@ -362,6 +363,7 @@ async function connectSsh(
             ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
           })
           await tunnel.dispose()
+          return true
         },
       }
     }

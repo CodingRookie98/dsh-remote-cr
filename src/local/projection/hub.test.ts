@@ -108,7 +108,7 @@ test('references = 投影里的工作区数（不是 attach 次数）', async ()
   assert.equal(hub.entries()[0]?.references, 2)
 })
 
-test('移走最后一个工作区后 releaseAll 才回收这台', async () => {
+test('releaseAll 回收这台（只有「结束远端」会调它）', async () => {
   const hub = hubWith()
   await hub.attach(A, { remotePath: '/home/hui/a', localPath: LOCAL })
   await hub.attach(A, { remotePath: '/home/hui/a/other', localPath: LOCAL })

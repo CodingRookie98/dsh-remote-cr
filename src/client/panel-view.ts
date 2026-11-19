@@ -796,7 +796,7 @@ export function RemoteCrPanel(): unknown {
   /**
    * 移除一个投影工作区（工作区级引用）。
    *
-   * 只删本地投影、不删远端工作区；移走最后一个时后端会把这台 target 回收（recycle + 还端口）。
+   * 只删本地投影：远端工作区与远端进程都保留；要收进程请走「结束远端」。
    */
   const onRemoveWorkspace = async (workspaceId: string): Promise<void> => {
     setBusy('remove:' + workspaceId)
@@ -1114,7 +1114,7 @@ export function RemoteCrPanel(): unknown {
             },
             busy === 'reconnect' ? t('panel.reconnecting') : t('panel.rowReconnect'),
           ),
-      // 移除：只删本地投影（远端工作区不动）；移走最后一个这台就回收。
+      // 移除：只删本地投影（远端工作区与进程都不动）。
       h(
         'button',
         {

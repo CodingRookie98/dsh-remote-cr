@@ -556,11 +556,15 @@ export class ProjectionService {
   async #reclaim(connection: RemoteConnection | undefined): Promise<void> {
     if (connection === undefined) return
     this.#retired.add(connection)
+    // **优先 `stopRemote()`**（P4 P1-D）：对复用/驻留实例，`dispose()` 只关隧道，真正的杀是按登记 pid 做的；
+    // 只调 dispose 会得到「/stop 返回 stopped:true，远端 dsh 还在」。没有该能力时才回落到 dispose。
     let clean = true
     try {
-      clean = (await connection.dispose()) !== false
+      clean =
+        typeof connection.stopRemote === 'function'
+          ? (await connection.stopRemote()) !== false
+          : (await connection.dispose()) !== false
     } catch (error) {
-      clean = false
       throw incomplete(error)
     }
     if (!clean) throw incomplete(undefined)
