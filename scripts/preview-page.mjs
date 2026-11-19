@@ -172,6 +172,26 @@ function respond(fixtures, method, url) {
     return { ok: true, value: fixtures.doctor };
   }
   if (path === '/remote-cr/api/workspace/importable') return { ok: true, value: fixtures.importable };
+  // 「添加工作区」done 之后向导会自动接远端宿主（architecture §2 第 4–7 步）。
+  // 夹具直接复用 projection 里的第一条工作区，避免在这里再写一遍字段名。
+  if (path === '/remote-cr/api/attach' && method === 'POST') {
+    if (fixtures.attachFails === true) {
+      return {
+        ok: false,
+        code: 'remote/launch-failed',
+        detail: '预览：远端 dsh 起不来（夹具）',
+        nextActions: ['重试接入', '检查远端 Node 与目录权限'],
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        workspace: fixtures.projection.workspaces[0],
+        sessions: fixtures.projection.sessions,
+        created: true,
+      },
+    };
+  }
   if (path.endsWith('/wake')) return { ok: true, value: fixtures.wake };
   return {
     ok: false,

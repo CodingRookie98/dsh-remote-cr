@@ -19,6 +19,7 @@
 | [2026-11-19-m4-uninstall-residue.md](./2026-11-19-m4-uninstall-residue.md) | M4 卸载干净（RFC-0006 Phase 1+2） | Phase 1/2 已交付；P4 三阻断已修（v2），等 Delta 复审 |
 | [2026-11-19-multi-host-a1.md](./2026-11-19-multi-host-a1.md) | 多 host A1（RFC-0007 方案 A：ProjectionHub 容器） | P3 开工 |
 | [2026-11-19-ui-polish-home-and-workspace-menu.md](./2026-11-19-ui-polish-home-and-workspace-menu.md) | 面板视觉 v2 · 家目录起点 · 工作区行远端菜单（用户四条反馈） | 已落地（927 测试 / 32 预览场景全绿）；contextMenus 真机未验证 |
+| [2026-11-19-remote-host-correction-c.md](./2026-11-19-remote-host-correction-c.md) | 远端宿主纠正（B）与远端会话进侧栏（C） | B 已落地（向导即接入，932 测试 / 33 场景全绿）；**C 被内核阻断，见 RFC-0008，待裁决** |
 
 ## 约定
 

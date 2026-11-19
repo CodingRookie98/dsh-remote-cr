@@ -274,6 +274,24 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    id: 'done-wsl',
+    label: '已添加（WSL 分支：done 屏显示远端宿主接入）',
+    theme: 'light',
+    targets: [
+      '[data-remote-cr="host-attach"][data-phase="done"]',
+      '[data-remote-cr="host-attach"]',
+      '[data-remote-cr="done-path"]',
+    ],
+    steps: [
+      { wait: '[data-remote-cr="sources"]' },
+      { click: '[data-remote-cr="source"][data-source="wsl"]' },
+      { click: '[data-remote-cr="distro"]' },
+      { wait: '[data-remote-cr="listing"]', timeoutMs: 20000 },
+      { click: '[data-remote-cr="confirm"]' },
+      { wait: '[data-remote-cr="host-attach"], [data-remote-cr="done-path"]', timeoutMs: 20000 },
+    ],
+  },
+  {
     id: 'flow-failed',
     label: '流程失败（四段可复制报告）',
     theme: 'light',
@@ -758,6 +776,21 @@ function doneSnapshot() {
   };
 }
 
+/** WSL 分支的完成态：record 带 UNC + POSIX 路径，向导因此会去接远端宿主。 */
+function doneWslSnapshot() {
+  const posix = DISTRO_HOME;
+  const unc = uncOf(posix);
+  return {
+    id: 'flow-preview-2',
+    state: {
+      status: 'done',
+      phase: 'attach',
+      completed: ['probe', 'bootstrap', 'verify', 'launch', 'tunnel', 'barrier', 'attach'],
+    },
+    record: { localPath: unc, source: 'wsl', distro: DISTRO, posixPath: posix, unc, remote: REMOTE_FACTS },
+  };
+}
+
 function failedSnapshot() {
   return {
     id: 'flow-preview-2',
@@ -895,7 +928,8 @@ export function sceneFixtures(sceneId) {
     sshAvailable: id !== 'ssh-unavailable',
     wslProbeError: id === 'wsl-probe-error' ? 'wsl.exe --list --verbose 退出码 1' : null,
   });
-  const terminal = id === 'done' ? doneSnapshot() : id === 'flow-failed' ? failedSnapshot() : doneSnapshot();
+  const terminal =
+    id === 'done-wsl' ? doneWslSnapshot() : id === 'flow-failed' ? failedSnapshot() : doneSnapshot();
   return {
     scene: id,
     sources,

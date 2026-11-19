@@ -21,12 +21,23 @@ import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { DirListing } from '../shared/api.ts'
 import type { WorkspaceSource } from '../shared/choices.ts'
 import { canCancel, type FlowState } from '../shared/flow.ts'
-import { cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
+import { attachWorkspace, cancelFlow, listDirectory, loadSources, readFlow, startWorkspace, wakeDistro } from './api.ts'
 import { remoteSessionIndex } from './remote-sessions.ts'
 import { requestReconnect } from './session-actions.ts'
 import { HOST_REASON_KEYS, hostFailureExtras, hostPanelOf, resultTotals, syncBlockedReason, syncReport, SYNC_REASON_KEYS, syncGroups } from './sync-state.ts'
 import { t } from './i18n.ts'
-import { failureFromError, flowLine, localizeFailure, sourceLabel, sourceReasonText } from './panel.ts'
+import { failureFromError, flowLine, localizeFailure, planAttach, sourceLabel, sourceReasonText } from './panel.ts'
+import {
+  attachKeyOf,
+  beginAttach,
+  decideAttach,
+  failAttach,
+  IDLE_ATTACH,
+  retryAttach,
+  settleAttach,
+  type HostAttachFailure,
+  type HostAttachState,
+} from './host-attach.ts'
 import {
   activeEntry,
   addInputOf,
@@ -1037,10 +1048,44 @@ function wizardMain(state: WizardState, handlers: WizardHandlers): unknown {
 }
 
 /** 终态（running / done / failed / cancelled）：单列，不再显示左右栏。 */
+function hostAttachLine(state: HostAttachState, onRetry: () => void): unknown | null {
+  if (state.phase === 'idle') return null
+  if (state.phase === 'running') {
+    return h(
+      'div',
+      { 'data-remote-cr': 'host-attach', 'data-phase': 'running', role: 'status' },
+      t('wizard.hostAttaching'),
+    )
+  }
+  if (state.phase === 'done') {
+    return h('div', { 'data-remote-cr': 'host-attach', 'data-phase': 'done', role: 'status' }, t('wizard.hostReady'))
+  }
+  const failure = state.failure
+  return h(
+    'div',
+    { 'data-remote-cr': 'host-attach', 'data-phase': 'failed', role: 'alert' },
+    h('div', { 'data-remote-cr': 'host-attach-code' }, failure?.code ?? 'remote/unknown'),
+    h('div', { 'data-remote-cr': 'host-attach-detail' }, failure?.detail ?? t('wizard.hostFailed')),
+    failure !== null && failure.nextActions.length > 0
+      ? h(
+          'ul',
+          { 'data-remote-cr': 'host-attach-next' },
+          ...failure.nextActions.map((action, index) => h('li', { key: String(index) }, action)),
+        )
+      : null,
+    h(
+      'button',
+      { type: 'button', 'data-remote-cr': 'host-attach-retry', onClick: onRetry },
+      t('wizard.hostRetry'),
+    ),
+  )
+}
+
 function renderTerminal(
   state: WizardState,
   flowId: string | undefined,
   handlers: WizardHandlers,
+  hostAttach: HostAttachState,
 ): unknown | null {
   if (state.step === 'running') {
     const flow = state.flow?.state
@@ -1075,6 +1120,9 @@ function renderTerminal(
       'div',
       { 'data-remote-cr': 'wizard-terminal-body' },
       h('div', { 'data-remote-cr': 'done-path' }, pickedPathOf(state) ?? ''),
+      // 远端宿主这一行回答的是「这个工作区到底跑在哪」——没有它，用户看到「已添加」
+      // 会以为会话已经跑在远端（2026-11-19 的现场就是这样）。
+      hostAttachLine(hostAttach, () => handlers.retryHost()),
       h('button', { type: 'button', 'data-remote-cr': 'close', onClick: () => handlers.cancel() }, t('wizard.close')),
     )
   }
@@ -1113,6 +1161,17 @@ export function DirectoryFlow(props: AnyProps): unknown {
    * 主区的 880px 里。容器查询也够不到自己（只能查祖先），所以这里量自身矩形。
    */
   const [layout, setLayout] = useState<'wide' | 'compact'>('wide')
+  /**
+   * 远端宿主接入（architecture.md §2 第 4–7 步）。
+   *
+   * 向导原来到 `onPicked(path)` 就结束了——那只把目录注册进本地工作区表，
+   * 远端一个 `dsh` 都没起，会话照样跑在本地宿主（用户在 2026-11-19 抓到现场）。
+   * 这里在 done 之后补这一次接入：能接就接，接不了（本机目录 / 缺 remoteRoot）
+   * 静默跳过，失败给码 + 下一步 + 重试。
+   */
+  const [hostAttach, setHostAttach] = useState<HostAttachState>(IDLE_ATTACH)
+  /** 去重：组件重挂（切会话、宿主回收插槽）不许再起一个远端进程。 */
+  const attachAttempt = useRef<string | null>(null)
   const onPicked = readFunction<(path: string) => void>(props, 'onPicked')
   const onCancel = readFunction<() => void>(props, 'onCancel')
   const onError = readFunction<(message: string) => void>(props, 'onError')
@@ -1156,6 +1215,57 @@ export function DirectoryFlow(props: AnyProps): unknown {
     reported.current = true
     onPicked?.(path)
   }, [open, state.step, state.flow, onPicked])
+
+  /**
+   * 发起（或重试）一次远端接入。
+   *
+   * 与 `onPicked` 的顺序是**先本地后远端**：本地注册失败会丢用户刚选的目录，
+   * 而远端接入失败可以重试。这条与 architecture §2 的理想顺序（先起远端再注册）
+   * 相反，取鲁棒性，判据锁在「失败不丢本地工作区」。
+   */
+  const runHostAttach = (record: NonNullable<WizardState['flow']>['record'], defaults: WizardState['defaults']): void => {
+    if (record === null || record === undefined) return
+    const key = attachKeyOf(record, defaults)
+    attachAttempt.current = key
+    setHostAttach((current) => beginAttach(current, key))
+    const plan = planAttach(record, defaults)
+    if (!plan.ok) {
+      // 正常路径不可达：decideAttach 已经挡掉「不是 WSL / 缺 posix / 缺 remoteRoot」。
+      // 走到这里说明两组判据漂移了 —— 用**已有**的通用码报出来（不为它新造码，
+      // 新码要在 error-index 与两套字典里同时登记，而这是一条不该发生的分支）。
+      setHostAttach((current) =>
+        failAttach(current, key, { code: 'remote/unknown', detail: plan.reason, nextActions: [] }),
+      )
+      return
+    }
+    void attachWorkspace(plan.input).then(
+      () => setHostAttach((current) => settleAttach(current, key)),
+      (caught: unknown) => {
+        const shaped = failureFromError(caught)
+        const failure: HostAttachFailure =
+          typeof shaped === 'string'
+            ? { code: 'remote/unknown', detail: shaped, nextActions: [] }
+            : { code: shaped.code, detail: shaped.detail, nextActions: shaped.nextActions }
+        setHostAttach((current) => failAttach(current, key, failure))
+      },
+    )
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const record = state.flow?.record ?? null
+    const decision = decideAttach({
+      open,
+      step: state.step,
+      record,
+      defaults: state.defaults,
+      current: hostAttach,
+    })
+    if (decision.kind === 'skip') return
+    // ref 是**最后一道**去重：setState 是异步的，同一轮里 effect 可能连跑两次。
+    if (attachAttempt.current === decision.key) return
+    runHostAttach(record, state.defaults)
+  }, [open, state.step, state.flow, state.defaults])
 
   // 失败：告诉 owner 一句人话，但不替它决定关不关。
   useEffect(() => {
@@ -1295,6 +1405,12 @@ export function DirectoryFlow(props: AnyProps): unknown {
     copy: (text) => {
       void copyText(text)
     },
+    retryHost: () => {
+      // 重试是「同一条记录再来一次」：清掉 ref，但保留 key 语义（attachKeyOf 不变）。
+      attachAttempt.current = null
+      setHostAttach((current) => retryAttach(current))
+      runHostAttach(state.flow?.record ?? null, state.defaults)
+    },
   }
 
   // 底栏显示的必须是**真正会提交的那个路径**（addInputOf 取 listing.path）：
@@ -1306,7 +1422,7 @@ export function DirectoryFlow(props: AnyProps): unknown {
     : typedNotLoaded
       ? t('wizard.pendingInput')
       : t('wizard.nothingPicked')
-  const terminal = renderTerminal(state, flowId, handlers)
+  const terminal = renderTerminal(state, flowId, handlers, hostAttach)
   const workbench = h(
     'div',
     { 'data-remote-cr': 'wizard-body' },
@@ -1396,6 +1512,8 @@ interface WizardHandlers {
   readonly cancelFlow: (id: string) => void
   readonly retryPoll: (id: string) => void
   readonly copy: (text: string) => void
+  /** 远端接入失败后的重试（用户点的，不是 effect 触发）。 */
+  readonly retryHost: () => void
 }
 
 
