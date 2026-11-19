@@ -126,6 +126,9 @@ function respond(fixtures, method, url) {
     if (method === 'GET' && fixtures.syncPlanError) return { ok: false, ...fixtures.syncPlanError };
     return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
   }
+  if (path === '/remote-cr/api/plugin-sync/progress') {
+    return { ok: true, value: fixtures.syncProgress };
+  }
   if (path === '/remote-cr/api/plugin-sync/host' && method === 'POST') {
     // 失败场景回结构化错误（含 nextActions），与线上信封同形。
     if (fixtures.syncHostError) return { ok: false, ...fixtures.syncHostError };

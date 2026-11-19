@@ -48,7 +48,7 @@ import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, s
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts'
-import { applySyncPlan, buildSyncPlan, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
+import { applySyncPlan, buildSyncPlan, readSyncProgress, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
 import { readLocalBundles } from '../plugin-sync/local.ts'
@@ -704,6 +704,31 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     sendJson(res, 200, okEnvelope({ results }))
   })
 
+  // 逐条进度（R2-S2）：applying 态轮询这里；POST 完成后 running=false，客户端据此收口。
+  mount('/plugin-sync/progress', ['GET'], async (_req, res, url) => {
+    const syncOptions = requireSync()
+    const raw = url.searchParams.get('target')
+    if (raw === null) {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-read-failed',
+        detail: '缺少 target 查询参数',
+        nextActions: ['从面板重新打开同步对话框'],
+      })
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new RemoteCrError({
+        code: 'remote/plugin-sync-read-failed',
+        detail: 'target 不是合法 JSON',
+        nextActions: ['从面板重新打开同步对话框'],
+      })
+    }
+    const targetId = await syncOptions.targetId(readTarget(parsed))
+    sendJson(res, 200, okEnvelope(readSyncProgress(targetId)))
+  })
+
   // ── 宿主版本对齐（H 系列，只做 registry 路径）──────────────────────────────
   // 与插件同步分开：这里换的是远端 dsh 本身，副作用更大（且必须重连才生效），
   // 所以判定（GET plan 里的 host）与执行（本路由）分开，执行前服务端**重算**一遍。
@@ -738,7 +763,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     // 只接受 align：checkout / 越界 / 版本读不出都必须原样拒绝，不能「先装上再说」。
     if (plan.host.action !== 'align' || plan.host.localVersion === null) {
       throw new RemoteCrError({
-        code: 'remote/plugin-sync-unsupported',
+        code: 'remote/host-sync-rejected',
         detail:
           '这台远端不能升级宿主：' + plan.host.reasonId +
           '（本地 ' + String(plan.host.localVersion) + ' / 远端 ' + String(plan.host.remoteVersion) +

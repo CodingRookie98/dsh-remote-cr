@@ -35,6 +35,7 @@ import {
   reconnectRemote,
   stopRemote,
   readSyncPlan,
+  readSyncProgress,
   applySyncRequest,
   applyHostUpgrade,
   setSyncOptout,
@@ -298,17 +299,41 @@ export function RemoteCrPanel(): unknown {
     const started = beginApply(sync)
     setSync(started)
     if (target === null || started.phase !== 'applying') return
+    // 逐条进度（R2-S2）：POST 期间轮询服务端进度表，把「已完成的条目」逐条画出来。
+    // 去重按 name（同一条只画一次）；轮询失败不打断同步——POST 的最终结果仍会收口。
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const progress = await readSyncProgress(target)
+          for (const result of progress.results) {
+            setSync((previous) =>
+              previous.phase === 'applying' && !previous.results.some((item) => item.name === result.name)
+                ? receiveResult(previous, result)
+                : previous,
+            )
+          }
+        } catch {
+          // 轮询只是显示层：失败不升级成错误，最终结果由 POST 决定。
+        }
+      })()
+    }, 750)
     try {
       const response = await applySyncRequest(target, started.selected)
-      let current: SyncDialogState = started
-      for (const result of response.results) {
-        current = receiveResult(current, result)
-        setSync(current)
-      }
-      setSync(finishApply(current))
+      setSync((previous) => {
+        if (previous.phase !== 'applying') return previous
+        let current: SyncDialogState = previous
+        for (const result of response.results) {
+          if (current.phase !== 'applying') break
+          if (current.results.some((item) => item.name === result.name)) continue
+          current = receiveResult(current, result)
+        }
+        return finishApply(current)
+      })
       await refresh()
     } catch (caught) {
       setSync(failSync(syncFailureOf(caught)))
+    } finally {
+      clearInterval(timer)
     }
   }
 

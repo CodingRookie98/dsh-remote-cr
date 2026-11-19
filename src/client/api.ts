@@ -305,6 +305,19 @@ export function applySyncRequest(
   return callApi('/plugin-sync', { method: 'POST', body: { target, names } }, fetchImpl)
 }
 
+/** 逐条进度（applying 态轮询；POST 完成后 running=false）。 */
+export function readSyncProgress(
+  target: SyncTargetLike,
+  fetchImpl?: typeof fetch,
+): Promise<{
+  readonly running: boolean
+  readonly done: number
+  readonly total: number
+  readonly results: readonly import('../shared/plugin-sync.ts').SyncResult[]
+}> {
+  return callApi('/plugin-sync/progress', { query: { target: JSON.stringify(target) } }, fetchImpl)
+}
+
 /** 「不再提醒」的本地清单。 */
 export function readSyncOptout(fetchImpl?: typeof fetch): Promise<{ readonly targets: readonly string[] }> {
   return callApi('/plugin-sync/optout', {}, fetchImpl)

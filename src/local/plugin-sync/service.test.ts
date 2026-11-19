@@ -6,7 +6,7 @@ import test from 'node:test'
 
 import { syncBlockedReason } from '../../client/sync-state.ts'
 import { acquireWrite, releaseWrite } from './locks.ts'
-import { applySyncPlan, buildSyncPlan, resetApplyingForTest, type SyncBackend } from './service.ts'
+import { applySyncPlan, buildSyncPlan, readSyncProgress, resetApplyingForTest, type SyncBackend } from './service.ts'
 import { readOptout, setMuted, writeOptout } from './optout.ts'
 
 /** L1：optout 本地落盘 + L2：编排（假 exec 跑完整链路）。 */
@@ -87,6 +87,38 @@ test('buildSyncPlan：远端已装同版本 → up-to-date（不产生 install�
   assert.equal(plan.entries[0]?.action, 'up-to-date')
   assert.equal(plan.totals.install, 0)
   assert.equal(plan.muted, true)
+})
+
+test('applySyncPlan：执行中可读到逐条进度，结束后 running=false（R2-S2）', async () => {
+  resetApplyingForTest()
+  let release: (() => void) | undefined
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const { backend: stub } = backend({ ok: true, bundles: [] })
+  const seen: number[] = []
+  const stop = acquireWrite('t-progress', 'apply')
+  // 先占锁再用另一个 target 跑，避免干扰；拿锁只是为了让 apply 走正常路径。
+  if (stop.ok) releaseWrite('t-progress')
+  const running = applySyncPlan({
+    backend: { ...stub, exec: async () => { await gate; return { code: 0, stdout: '', stderr: '' } } },
+    targetId: 't-progress',
+    entries: [
+      { name: 'a', action: 'install', reasonId: 'missing-remote', localVersion: '1.0.0', remoteVersion: null },
+      { name: 'b', action: 'install', reasonId: 'missing-remote', localVersion: '1.0.0', remoteVersion: null },
+    ],
+    onResult: () => { seen.push(readSyncProgress('t-progress').done) },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  const mid = readSyncProgress('t-progress')
+  assert.equal(mid.running, true, 'POST 还没回来时必须能读到「正在跑」')
+  assert.equal(mid.total, 2)
+  release?.()
+  await running
+  const done = readSyncProgress('t-progress')
+  assert.equal(done.running, false)
+  assert.equal(done.done, 2)
+  assert.deepEqual(done.results.map((result) => result.name), ['a', 'b'])
+  assert.deepEqual(seen, [1, 2], '每完成一条就该在进度里可见（第一条之后是 1，第二条之后是 2）')
+  resetApplyingForTest()
 })
 
 test('applySyncPlan：宿主升级占着锁时拒绝，执行 0 次且说清在等谁（R1-B1）', async () => {

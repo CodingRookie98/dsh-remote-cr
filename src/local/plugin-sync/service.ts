@@ -98,6 +98,34 @@ export async function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView>
   }
 }
 
+/**
+ * 逐条进度（R2-S2）：POST 本身仍是一次普通 JSON 响应，但执行过程中每完成一条就把结果
+ * 写进这张表；客户端在 applying 态轮询 `GET /plugin-sync/progress` 就能真的「逐条显示」。
+ *
+ * 为什么不做流式响应：宿主路由全是 `{ok,value}` 信封 + `sendJson`，改成 NDJSON/SSE 会波及
+ * 所有调用方与预览 harness；轮询是最小改动里唯一不撒谎的方案。
+ */
+export interface SyncProgressView {
+  readonly running: boolean
+  readonly done: number
+  readonly total: number
+  readonly results: readonly SyncResult[]
+}
+
+interface ProgressBucket {
+  total: number
+  results: SyncResult[]
+  finished: boolean
+}
+
+const progress = new Map<string, ProgressBucket>()
+
+export function readSyncProgress(targetId: string): SyncProgressView {
+  const bucket = progress.get(targetId)
+  if (bucket === undefined) return { running: false, done: 0, total: 0, results: [] }
+  return { running: !bucket.finished, done: bucket.results.length, total: bucket.total, results: [...bucket.results] }
+}
+
 export interface ApplyRequest {
   readonly backend: SyncBackend
   /** 计划里探明的远端运行时；缺了就用 backend 兜底（测试用）。 */
@@ -124,6 +152,9 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
       nextActions: ['等当前动作结束', '或先关闭同步面板'],
     })
   }
+  // 先登记进度桶：客户端在 POST 还挂着的时候就要能读到「正在跑、已做几条」。
+  const bucket: ProgressBucket = { total: request.entries.length, results: [], finished: false }
+  progress.set(request.targetId, bucket)
   try {
     const runtime = request.runtime ?? null
     // 没有 runtime 时兜底命令按定义指向不存在的入口（检出不存在才判 null）——不能把它当出路。
@@ -141,10 +172,14 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
       nodeBin: runtime?.nodeBin ?? request.backend.nodeBin,
       interpreter: runtime?.interpreter ?? request.backend.interpreter ?? null,
       profile: request.backend.profile ?? 'web',
-      ...(request.onResult === undefined ? {} : { onResult: request.onResult }),
+      onResult: (result) => {
+        bucket.results.push(result)
+        request.onResult?.(result)
+      },
       ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
     })
   } finally {
+    bucket.finished = true
     releaseWrite(request.targetId)
   }
 }
@@ -152,4 +187,5 @@ export async function applySyncPlan(request: ApplyRequest): Promise<readonly Syn
 /** 测试用：清掉并发锁（进程内状态在用例之间必须复位）。 */
 export function resetApplyingForTest(): void {
   resetWritesForTest()
+  progress.clear()
 }

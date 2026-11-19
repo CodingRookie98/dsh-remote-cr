@@ -34,6 +34,9 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   // 同一台远端的两条写路径（插件同步 / 宿主升级）互斥；被占时用这个码，
   // 不能复用 plugin-sync-unsupported——那会被字典渲染成「请求里包含不可同步的插件」。
   'remote/plugin-sync-busy': 'probe',
+  // 宿主对齐被拒（检出来源 / 版本未知 / 越界）：与「混入不可同步插件」是两件事，
+  // 共用一个码会让字典把 detail 换成「请求里包含不可同步的插件」（R1-S3）。
+  'remote/host-sync-rejected': 'bootstrap',
   'remote/host-version-unavailable': 'bootstrap',
   'remote/host-upgrade-failed': 'bootstrap',
   'remote/bootstrap-failed': 'bootstrap',

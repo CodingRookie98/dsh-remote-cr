@@ -52,6 +52,7 @@ export interface SyncResult {
 |---|---|---|---|---|
 | GET | `/remote-cr/api/plugin-sync` | query：`target`（同 attach 的 target 编码） | `SyncPlan` | **无**（只读一次 profile 与 node_modules） |
 | POST | `/remote-cr/api/plugin-sync` | body：`{ target, names: string[] }` | `{ results: SyncResult[] }` | 逐条执行 `dsh plugin --profile <p> add <name>@<version>` |
+| GET | `/remote-cr/api/plugin-sync/progress` | query：`target` | `{ running, done, total, results }` | 无（读进程内进度表；POST 完成后 `running=false`） |
 | GET | `/remote-cr/api/plugin-sync/optout` | 无 | `{ targets: string[] }` | 无（读本地状态根） |
 | POST | `/remote-cr/api/plugin-sync/optout` | body：`{ target, muted: boolean }` | `{ targets: string[] }` | 无（写本地 `~/.dsh-remote-cr/sync-optout.json`） |
 
@@ -75,6 +76,7 @@ export interface SyncResult {
 | `remote/plugin-sync-apply-failed` | 单条安装失败（保留逐条结果） | 重试该条 · 查看远端 npm 网络 · 手动在远端执行命令 |
 | `remote/plugin-sync-unsupported` | 请求里包含不可同步项（official / path / blocked） | 取消勾选这些项后重试 |
 | `remote/plugin-sync-busy` | 同一 target 的另一条写路径正在进行（插件同步 ↔ 宿主升级互斥） | 等当前动作结束 · 或先关闭同步面板 |
+| `remote/host-sync-rejected` | 宿主对齐被拒（`checkout-mode` / `source-unknown` / `out-of-range` / 版本未知） | 看 detail 里的原因码 · 改用已发布版本 · 远端手工处理 |
 
 ## 4. UI 状态与文案键
 
@@ -83,7 +85,7 @@ export interface SyncResult {
 | closed | 面板只显示入口按钮「插件同步」 | `sync.open` |
 | loading | 列出前先显示「正在读取远端插件…」 | `sync.loading` |
 | ready | 三组列表：可同步（默认全选）/ 已是最新（灰）/ 不可同步（灰 + 原因）；底部「同步选中项（N）」 | `sync.group.install` `sync.group.uptodate` `sync.group.skipped` `sync.reason.*` `sync.apply` `sync.optout` |
-| applying | 显示「同步中…＋请勿关闭」；**结果在整单结束后一次给出**（v1 无流式进度，契约不再声称逐条实时） | `sync.applying` `sync.applyingHint` `sync.result.ok` `sync.result.failed` |
+| applying | 显示「同步中…＋请勿关闭」，并**逐条**追加已完成的结果（客户端轮询 `GET /plugin-sync/progress`） | `sync.applying` `sync.applyingHint` `sync.result.ok` `sync.result.failed` |
 | done | 汇总「成功 N / 失败 M」+ 复制日志 + 关闭 | `sync.done` |
 
 **「不再提醒」**：ready 状态底部勾选框，写 optout；下次自动打开条件 = 有 install 项 且 该 target 未被静音。

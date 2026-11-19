@@ -243,6 +243,7 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
       '/remote-cr/api/plugin-sync GET|POST',
       '/remote-cr/api/plugin-sync/host POST',
       '/remote-cr/api/plugin-sync/optout GET|POST',
+      '/remote-cr/api/plugin-sync/progress GET',
       '/remote-cr/api/probe POST',
       '/remote-cr/api/projection GET',
       '/remote-cr/api/reconnect POST',
@@ -388,7 +389,7 @@ test('/plugin-sync/host POST：远端是检出 → 拒绝，且**只**读了 pla
   const result = await r.call({ path: '/plugin-sync/host', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET }) })
   const envelope = result.json as { ok: boolean; code?: string; detail?: string }
   assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/plugin-sync-unsupported')
+  assert.equal(envelope.code, 'remote/host-sync-rejected', '拒绝要对应用户能懂的独立码')
   assert.match(String(envelope.detail), /checkout-mode/, '拒绝理由要带原因码，不能只说「不行」')
   assert.equal(calls.length, 1, '拒绝时不许探测 registry，更不许安装')
 })
@@ -398,7 +399,7 @@ test('/plugin-sync/host POST：版本已一致 → 拒绝（不做无意义的�
   const result = await r.call({ path: '/plugin-sync/host', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET }) })
   const envelope = result.json as { ok: boolean; code?: string }
   assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/plugin-sync-unsupported')
+  assert.equal(envelope.code, 'remote/host-sync-rejected')
   assert.equal(calls.length, 1)
 })
 

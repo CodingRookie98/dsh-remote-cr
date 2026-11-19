@@ -482,6 +482,24 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // 逐条进度：POST 还挂着时，已完成的那条必须已经出现在结果列表里（R2-S2）。
+    id: 'sync-progress',
+    label: '插件同步：逐条进度（1/2 已完成）',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-result"]', '[data-remote-cr="sync-applying"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-applying', 'sync-result'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-apply"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-apply"]' },
+      { wait: '[data-remote-cr="sync-result"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
     // 执行结束且**有失败**：必须给「可能半装、重跑安全」这句话，而不是只显示「失败」。
     id: 'sync-done',
     label: '插件同步：完成且有失败（半装提示 + 复制日志）',
@@ -804,6 +822,11 @@ export function sceneFixtures(sceneId) {
       { name: 'dshmarket', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1' },
     ],
     syncOptout: [],
+    // 逐条进度（R2-S2）：POST 被压住时，进度表已经有一条完成。
+    syncProgress:
+      id === 'sync-progress'
+        ? { running: true, done: 1, total: 2, results: [{ name: 'dsh-ops', ok: true }] }
+        : { running: false, done: 0, total: 0, results: [] },
     // 读 plan 就失败（R2-S6：对话框 failed 态原本没有场景）。
     syncPlanError:
       id === 'sync-failed'
@@ -826,7 +849,7 @@ export function sceneFixtures(sceneId) {
           }
         : null,
     // 「同步中」要拍得到：apply 的 POST 慢一点回（0 = 立刻回，其余场景行为不变）。
-    syncDelayMs: id === 'sync-applying' ? 8000 : 0,
+    syncDelayMs: id === 'sync-applying' || id === 'sync-progress' ? 8000 : 0,
     wake: id === 'wsl-failed' ? WAKE_FAILED : WAKE_OK,
     // 「唤醒中」要拍得到：让 /wsl/wake 慢一点回（0 = 立刻回，既有 8 个场景的行为一个字没变）。
     wakeDelayMs: id === 'waking' ? 6000 : 0,
