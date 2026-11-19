@@ -225,6 +225,8 @@ export interface ResidueReportInfo {
 
 /** `POST /maintenance/purge` 的应答体：删了什么、释放多少。 */
 export interface PurgeResultInfo {
+  /** staging 没删时的原因（例如还有驻留实例在用它）；删了就是 null。 */
+  readonly skipped?: 'resident-alive' | null
   readonly removed: readonly {
     readonly kind: 'staging' | 'instance'
     readonly path: string

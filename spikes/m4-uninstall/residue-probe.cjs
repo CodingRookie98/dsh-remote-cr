@@ -76,13 +76,23 @@ async function purgeSandbox(mod) {
   const pids = scanned.instances.files.map((file) => file.pid).filter((pid) => pid !== null)
   const withLive = mod.applyLiveness(scanned, run(mod.buildLivenessScript(pids), root).stdout)
   const plan = mod.planPurge(withLive)
-  expect('P6 计划只含死登记', plan.instances.map((file) => file.name).join(',') === 'dead.json', JSON.stringify({ plan: plan.instances.map((file) => file.name) }))
+  expect('P6a 计划只含死登记', plan.instances.map((file) => file.name).join(',') === 'dead.json', JSON.stringify({ plan: plan.instances.map((file) => file.name) }))
+  expect('P6b 有活实例时不删 staging（P4 Delta P1）', plan.removeStaging === false && plan.skipReason === 'resident-alive', JSON.stringify({ removeStaging: plan.removeStaging, skipReason: plan.skipReason }))
 
   const purge = mod.parsePurge(run(mod.buildPurgeScript('id1', plan), root).stdout)
   const after = run('ls ' + root + '/.dsh-remote-cr/instances 2>/dev/null; test -d ' + root + '/.dsh-remote-cr/staging/id1 && echo STAGING_STILL_THERE', root).stdout
-  expect('P7 staging 被删', after.includes('STAGING_STILL_THERE') === false, JSON.stringify({ after: after.trim() }))
+  expect('P7 staging 被保留', after.includes('STAGING_STILL_THERE') === true, JSON.stringify({ after: after.trim() }))
   expect('P8 活登记保留（含字段乱序的）', after.includes('alive.json') && after.includes('reordered.json') && !after.includes('dead.json'), JSON.stringify({ after: after.trim() }))
   expect('P9 结果无失败项', purge.failures.length === 0, JSON.stringify({ failures: purge.failures }))
+
+  // 第二段：把活登记删掉后，staging 才该被清。
+  run('rm -f ' + root + '/.dsh-remote-cr/instances/alive.json ' + root + '/.dsh-remote-cr/instances/reordered.json')
+  const scanned2 = mod.parseResidue(run(mod.buildResidueScript('id1'), root).stdout, 'sandbox', new Date().toISOString())
+  const plan2 = mod.planPurge(scanned2)
+  expect('P10 没有活实例时 staging 进清理计划', plan2.removeStaging === true && plan2.skipReason === null, JSON.stringify({ removeStaging: plan2.removeStaging }))
+  mod.parsePurge(run(mod.buildPurgeScript('id1', plan2), root).stdout)
+  const after2 = run('test -d ' + root + '/.dsh-remote-cr/staging/id1 && echo STILL || echo GONE', root).stdout.trim()
+  expect('P11 staging 这时才被删', after2 === 'GONE', JSON.stringify({ after2 }))
   run('rm -rf ' + root)
 }
 

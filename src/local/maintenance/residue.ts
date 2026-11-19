@@ -38,6 +38,14 @@ export function stagingIdOf(stagingSuffix: string | undefined): string | null {
   return id
 }
 
+/**
+ * `$HOME` 守卫：没有 HOME（或被设成空/相对）时**直接退出**，别拼出 `/.dsh-remote-cr/...` ——
+ * 若远端以 root 跑且该目录存在，那会把删除打到根下（P4 Delta P2）。
+ */
+function homeGuard(): string {
+  return 'case "$HOME" in /*) ;; *) echo "HOME_INVALID=1"; exit 2 ;; esac'
+}
+
 /** 脚本里用的 staging 引用：永远是 `$HOME` 下的绝对路径，id 已校验。 */
 /** 注意 `undefined` 也要按「整个 staging」处理：调用方从 env 取不到 id 时就是 undefined。 */
 function stagingRef(id: string | null | undefined): string {
@@ -47,6 +55,7 @@ function stagingRef(id: string | null | undefined): string {
 /** 盘点脚本：只读。实例文件原样 `cat` 出来，交给 TS 解析（不在 shell 里猜字段）。 */
 export function buildResidueScript(id: string | null | undefined): string {
   return [
+    homeGuard(),
     'S=' + stagingRef(id),
     'I="$HOME/.dsh-remote-cr/instances"',
     'echo "STAGING="$S',
@@ -157,12 +166,19 @@ export function applyLiveness(report: ResidueReportInfo, stdout: string): Residu
 /** 清理计划：由 TS 决定删什么（不把判断留给 shell）。 */
 export interface PurgePlan {
   readonly removeStaging: boolean
+  /** staging 为什么没被删（null = 没跳过）。 */
+  readonly skipReason: 'resident-alive' | null
   readonly instances: readonly ResidueInstanceFileInfo[]
 }
 
 export function planPurge(report: ResidueReportInfo): PurgePlan {
+  // **有活着的驻留实例时不删 staging**：它的 node/dsh 就在这个目录里，删了进程还在、端口还占着，
+  // 但下次接入再也起不来（P4 Delta P1 实测：sleep 的 inode 变成 (deleted)）。
+  // 用户要真删，先把那台实例「结束远端」（面板已有入口）。
+  const residentAlive = report.instances.files.some((file) => file.alive)
   return {
-    removeStaging: report.staging.exists,
+    removeStaging: report.staging.exists && !residentAlive,
+    skipReason: report.staging.exists && residentAlive ? 'resident-alive' : null,
     // 只删「版本认得出、pid 读得出、且确认已死」的登记；其余一律留着（宁可留垃圾，不删活句柄）。
     instances: report.instances.files.filter((file) => file.version === 1 && file.pid !== null && !file.alive),
   }
@@ -170,7 +186,7 @@ export function planPurge(report: ResidueReportInfo): PurgePlan {
 
 /** 清理脚本：逐条看 `rm` 的退出码，失败要能上报（v1 会无条件 echo「已删除」）。 */
 export function buildPurgeScript(id: string | null | undefined, plan: PurgePlan): string {
-  const lines = ['S=' + stagingRef(id), 'I="$HOME/.dsh-remote-cr/instances"']
+  const lines = [homeGuard(), 'S=' + stagingRef(id), 'I="$HOME/.dsh-remote-cr/instances"']
   if (plan.removeStaging) {
     lines.push('if [ -d "$S" ]; then', '  kb=$(du -sk "$S" 2>/dev/null | cut -f1)', '  if rm -rf "$S"; then echo "REMOVED_STAGING=$S|$kb"; else echo "FAILED_STAGING=$S"; fi', 'fi')
   }

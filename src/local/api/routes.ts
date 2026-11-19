@@ -844,7 +844,15 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
     const target = bodyMaintenanceTarget(body?.target)
     const live = options.projection?.snapshot()
-    if (live !== undefined && live.connected && live.target !== null && sameTarget(live.target, target)) {
+    // WSL 的 staging 是 **distro 级**共享：同一发行版换 remoteRoot 也算「正连着」，否则会删到在用的安装。
+    const sameStagingHome =
+      live?.target !== null &&
+      live?.target !== undefined &&
+      (sameTarget(live.target, target) ||
+        (live.target.backend === 'wsl' &&
+          target.backend === 'wsl' &&
+          live.target.distro.toLowerCase() === target.distro.toLowerCase()))
+    if (live !== undefined && live.connected && live.target !== null && sameStagingHome) {
       throw new RemoteCrError({
         code: 'remote/maintenance-busy',
         detail: '这台远端当前是连着的：清理会把正在用的 node/dsh 删掉',
@@ -882,7 +890,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
           logTail: raw.stderr.slice(-800),
         })
       }
-      sendJson(res, 200, okEnvelope<PurgeResultInfo>({ removed: result.removed, freedKb: result.freedKb }))
+      sendJson(res, 200, okEnvelope<PurgeResultInfo>({ removed: result.removed, freedKb: result.freedKb, skipped: plan.skipReason }))
     } finally {
       releaseWrite(targetId)
     }
@@ -1014,7 +1022,12 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     if (!lock.ok) {
       throw new RemoteCrError({
         code: 'remote/plugin-sync-busy',
-        detail: lock.holder === 'apply' ? '这台远端正在同步插件，等它结束再升级宿主' : '这台远端已经在升级宿主',
+        detail:
+          lock.holder === 'apply'
+            ? '这台远端正在同步插件，等它结束再升级宿主'
+            : lock.holder === 'maintenance'
+              ? '这台远端正在清理残留，等它结束再升级宿主'
+              : '这台远端已经在升级宿主',
         nextActions: ['等当前动作结束', '或先关闭同步面板'],
       })
     }

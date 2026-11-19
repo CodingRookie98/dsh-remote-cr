@@ -292,7 +292,7 @@ test('/projection?target=：没接过的目标要结构化报错，不静默回�
  * 维护面的假执行面：**按脚本内容**回应——盘点、判活、清理是三次不同的 exec，
  * 用一个固定 stdout 糊过去会让「解析判活结果」这条链完全没被测到。
  */
-function maintenanceSync(calls: string[], replies: { residue?: string; alive?: string; purge?: string }): SyncRoutesOptions {
+function maintenanceSync(calls: string[], replies: { residue?: string; alive?: string; purge?: string; aliveCode?: number }): SyncRoutesOptions {
   return {
     optoutFile: 'x',
     localProfileDir: 'y',
@@ -305,7 +305,7 @@ function maintenanceSync(calls: string[], replies: { residue?: string; alive?: s
       stagingSuffix: '.dsh-remote-cr/staging/abc123',
       exec: async (script: string) => {
         calls.push(script)
-        if (script.includes('for p in')) return { code: 0, stdout: replies.alive ?? 'DONE=1', stderr: '' }
+        if (script.includes('for p in')) return { code: replies.aliveCode ?? 0, stdout: replies.alive ?? 'DONE=1', stderr: '' }
         if (script.includes('rm -rf') || script.includes('rm -f')) return { code: 0, stdout: replies.purge ?? 'DONE=1', stderr: '' }
         return { code: 0, stdout: replies.residue ?? 'DONE=1', stderr: '' }
       },
@@ -365,6 +365,60 @@ test('/maintenance/purge：目标正连着时拒绝，且一次 exec 都不发�
   const envelope = result.json as { ok: boolean; code?: string }
   assert.equal(envelope.code, 'remote/maintenance-busy')
   assert.equal(calls.length, 0, '连接中不许动远端文件')
+})
+
+test('/maintenance/purge：别的写者持锁时拒绝，且一次 exec 都不发（N4）', async () => {
+  const calls: string[] = []
+  const lock = acquireWrite('test-target-id', 'host')
+  assert.equal(lock.ok, true)
+  try {
+    const result = await rig({}, { sync: maintenanceSync(calls, {}) }).call({
+      path: '/maintenance/purge',
+      method: 'POST',
+      body: JSON.stringify({ target: SYNC_TARGET, confirm: true }),
+    })
+    const envelope = result.json as { ok: boolean; code?: string }
+    assert.equal(envelope.code, 'remote/maintenance-locked')
+    assert.equal(calls.length, 0)
+  } finally {
+    releaseWrite('test-target-id')
+  }
+})
+
+test('/maintenance/purge：删除失败必须上报，不许报「已清理」（N3）', async () => {
+  const residue = [
+    'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
+    'STAGING_EXISTS=1',
+    'STAGING_KB=2048',
+    'INSTANCES=/home/hui/.dsh-remote-cr/instances',
+    'DONE=1',
+  ].join('\n')
+  const result = await rig({}, { sync: maintenanceSync([], { residue, purge: 'FAILED_STAGING=/s/abc\nDONE=1\n' }) }).call({
+    path: '/maintenance/purge',
+    method: 'POST',
+    body: JSON.stringify({ target: SYNC_TARGET, confirm: true }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.code, 'remote/maintenance-failed')
+})
+
+test('/maintenance/residue：判活 exec 失败时整体失败，不把活登记报成已死（N1）', async () => {
+  const residue = [
+    'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
+    'STAGING_EXISTS=1',
+    'STAGING_KB=1',
+    'INSTANCES=/home/hui/.dsh-remote-cr/instances',
+    'INSTANCE_BEGIN=live.json|4',
+    '{"version":1,"pid":4242}',
+    'INSTANCE_END',
+    'DONE=1',
+  ].join('\n')
+  const result = await rig({}, { sync: maintenanceSync([], { residue, aliveCode: 1 }) }).call({
+    path: '/maintenance/residue',
+    query: { target: JSON.stringify(SYNC_TARGET) },
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.code, 'remote/maintenance-failed')
 })
 
 test('/maintenance/purge：确认且未连接时先盘点再清理，返回删除清单（R4）', async () => {
