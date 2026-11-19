@@ -129,6 +129,15 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 **仍未做（记账）**：探针仍打 `hub.releaseAll` 而非 `/stop` 路由（路由层 await 已由 routes 用例覆盖）；`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
+### hidepid=2 容器判活（未验证项 2）的真机结论（2026-11-19）
+
+取证：WSL 里的 docker，`--privileged` + `mount -o remount,hidepid=2 /proc`（挂载行显示 `hidepid=invisible`）。
+
+- **旧逻辑是错的**：以 alice 身份看 bob 的进程 —— `/proc/<pid>` 不可见、`kill -0` 返回 EPERM，脚本两条都失败且**没有任何输出** → TS 侧读成「已死」→ 清理计划会删掉一个**活着的**登记（甚至 staging）。
+- 修法：判活脚本先看 `/proc/mounts` 有没有 `hidepid`，两者都失败但 hidepid 生效时回 `UNKNOWN=<pid>`；`planPurge` 见到 UNKNOWN 就**失败关闸**（`removeStaging=false`、`skipReason='liveness-unknown'`、拿不准的实例一个都不进计划）。
+- 复测（同一个隐藏 `/proc` 的容器里，跑**修复后**的脚本）：`UNKNOWN=26`，不再静默。
+- 代价如实写：`hidepid=2` 下**所有**非本用户的 pid 都会变 UNKNOWN（连真死的也一样），所以残留清理在这种宿主上会**什么都不删**——这是刻意的保守方向（宁可留垃圾，不删活物）。
+
 ### 本机 WSL sshd 验证环境（2026-11-19 建立）
 
 - 在 WSL `ubuntu_dev` 里装了 `openssh-server`，用**独立配置** `/etc/ssh/sshd_verify.conf` 跑一个验证用 sshd（端口 2223，`PubkeyAuthentication`，`GatewayPorts` 可切）。

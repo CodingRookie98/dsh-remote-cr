@@ -79,8 +79,14 @@ export function buildLivenessScript(pids: readonly number[]): string {
   const safe = pids.filter((pid) => Number.isInteger(pid) && pid > 0)
   if (safe.length === 0) return 'echo DONE=1'
   return [
+    // **hidepid=2 下别人的 pid 在 `/proc` 里看不见、`kill -0` 又是 EPERM** ——
+    // 真机容器实测（hidepid=invisible）：两者都失败，v1 会把**活着的实例判成已死**，
+    // 于是一次 purge 就删掉了在用的登记（甚至 staging）。所以这里必须分出第三种结论 UNKNOWN。
+    'hid=0',
+    'grep -qE "hidepid=(2|invisible)" /proc/mounts 2>/dev/null && hid=1',
     'for p in ' + safe.join(' ') + '; do',
-    '  if [ -d "/proc/$p" ] || kill -0 "$p" 2>/dev/null; then echo "ALIVE=$p"; fi',
+    '  if [ -d "/proc/$p" ] || kill -0 "$p" 2>/dev/null; then echo "ALIVE=$p"',
+    '  elif [ "$hid" = 1 ]; then echo "UNKNOWN=$p"; fi',
     'done',
     'echo DONE=1',
   ].join('\n')
@@ -154,11 +160,17 @@ export function applyLiveness(report: ResidueReportInfo, stdout: string): Residu
     const pid = Number.parseInt(raw, 10)
     if (Number.isInteger(pid)) alive.add(pid)
   }
+  const unknown = new Set<number>()
+  for (const raw of values(stdout).get('UNKNOWN') ?? []) {
+    const pid = Number.parseInt(raw, 10)
+    if (Number.isInteger(pid)) unknown.add(pid)
+  }
   return {
     ...report,
     instances: {
       ...report.instances,
       files: report.instances.files.map((file) => ({ ...file, alive: file.pid !== null && alive.has(file.pid) })),
+      ...(unknown.size === 0 ? {} : { unknown: [...unknown] }),
     },
   }
 }
@@ -167,7 +179,7 @@ export function applyLiveness(report: ResidueReportInfo, stdout: string): Residu
 export interface PurgePlan {
   readonly removeStaging: boolean
   /** staging 为什么没被删（null = 没跳过）。 */
-  readonly skipReason: 'resident-alive' | null
+  readonly skipReason: 'resident-alive' | 'liveness-unknown' | null
   readonly instances: readonly ResidueInstanceFileInfo[]
 }
 
@@ -179,12 +191,27 @@ export function planPurge(report: ResidueReportInfo, stagingId: string | null | 
   // 但下次接入再也起不来（P4 Delta P1 实测：sleep 的 inode 变成 (deleted)）。
   // 用户要真删，先把那台实例「结束远端」（面板已有入口）。
   const residentAlive = report.instances.files.some((file) => file.alive)
+  // **判活拿不准就不动**（P4 hidepid）：hidepid=2 下别人的 pid 看不见也 kill 不到，
+  // 「看不见」不等于「已死」——真机容器实测过，按已死处理会删掉在用的登记。
+  const livenessUnknown = (report.instances.unknown ?? []).length > 0
   return {
-    removeStaging: report.staging.exists && !residentAlive,
-    skipReason: report.staging.exists && residentAlive ? 'resident-alive' : null,
+    removeStaging: report.staging.exists && !residentAlive && !livenessUnknown,
+    skipReason: !report.staging.exists
+      ? null
+      : livenessUnknown
+        ? 'liveness-unknown'
+        : residentAlive
+          ? 'resident-alive'
+          : null,
     // 只删「版本认得出、pid 读得出、且确认已死」的登记；其余一律留着（宁可留垃圾，不删活句柄）。
     instances: report.instances.files.filter(
-      (file) => owned(file.name) && file.version === 1 && file.pid !== null && !file.alive,
+      (file) =>
+        owned(file.name) &&
+        file.version === 1 &&
+        file.pid !== null &&
+        !file.alive &&
+        // 判活拿不准的 pid 同样不许进计划：看不见 ≠ 已死。
+        !(report.instances.unknown ?? []).includes(file.pid),
     ),
   }
 }
