@@ -42,25 +42,17 @@ export declare class ProjectionHub {
     /** 只查不建：`?target=` 指向一台从没接过的机器时不该顺手造一个空引擎。 */
     peek(target: ConnectTarget): ProjectionService | undefined;
     /**
-     * 经容器接入：建/复用引擎 → 记 focus → 引用 +1 → 委托给引擎。
+     * 经容器接入：建/复用引擎 → 委托给引擎 → 成功才记 focus。
      *
-     * **失败要回滚**（P4 B3）：`retain` 在 attach 之前，失败不回滚会让「重试 N 次」变成「要 release N+1 次才回收」，
-     * 远端 dsh 会一直常驻；同机不同目录反复失败还会持续吃池端口。
+     * **失败要回滚**（P4 B3/N3/N4）：失败时先 `dispose()` 再丢 entry（新建或一个工作区都没有时），
+     * 并把 focus 还原——否则远端 dsh 常驻、端口被占，且用户原来的读目标被抹掉。
      */
     attach(target: ConnectTarget, request: AttachRequest, control?: AttachControl): Promise<AttachResult>;
     /**
-     * 释放一个引用：最后一个引用才 `recycle()`（停远端、释放端口），但**保留投影条目**。
-     * 重复释放不抛（与 `ReferenceCounter` 的语义一致）。
-     */
-    release(target: ConnectTarget): {
-        readonly remaining: number;
-        readonly recycled: boolean;
-    };
-    /**
-     * 把某 target 的所有引用一次放掉（「结束远端」用它）。
+     * 结束某 target：`recycle()` + 删 entry + 还端口（「结束远端」与「移走最后一个工作区」都用它）。
      *
-     * 为什么不是 `release` 一次：`references` 是 attach 次数，用户可能对同一台反复接过；
-     * 「结束远端」的语义是「这台我不再用了」，放一次会留下 refs>0 的条目，远端进程也就不会被回收。
+     * 为什么不再维护一个计数器：计数器会与投影表漂移（重复接入、幂等导入、失败回滚都能让它错位），
+     * 而「还剩几个工作区」投影表本来就知道——直接读它，`references` 才不会说谎。
      */
     releaseAll(target: ConnectTarget): {
         readonly released: number;

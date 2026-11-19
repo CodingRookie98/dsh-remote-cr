@@ -174,6 +174,8 @@ export declare function reconnectRemote(fetchImpl?: typeof fetch): Promise<impor
  * 抛掉就只剩一句错误，看不到实际输出。
  */
 export declare function probeRemoteSession(sessionId: string, fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProbeOutcome>;
+/** 移除一个投影工作区（工作区级引用）：移走最后一个会回收这台 target。 */
+export declare function removeWorkspace(workspaceId: string, target?: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo>;
 /** 目标版：会话 / 取证 / 导入（RFC-0007 B2 的客户端半边）。 */
 export declare function createSessionOf(target: RemoteTargetInfo, input: {
     workspaceId: string;

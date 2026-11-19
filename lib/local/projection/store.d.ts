@@ -63,6 +63,12 @@ export declare class ProjectionStore {
      * 返回 `false` 表示投影里没有这条（刷新路径据此不新增——`session/list` 不带 workspaceId）。
      */
     patchSession(session: ProjectedSession): boolean;
+    /**
+     * 移除一个投影工作区，连它的会话一起删（`workspaceId` 属于它的那些）。
+     *
+     * 返回 `false` 表示投影里没有这条——调用方据此报「已经不在列表里」，而不是假装成功。
+     */
+    removeWorkspace(id: string): boolean;
     /** 按远端快照整体重建；远端是唯一真相源，本地不留远端已经删掉的条目。 */
     replaceAll(workspaces: readonly ProjectedWorkspace[], sessions: readonly ProjectedSession[]): void;
     /**

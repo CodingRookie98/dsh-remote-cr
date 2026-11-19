@@ -284,7 +284,15 @@ export declare class ProjectionService {
     /** 把勾选的远端路径逐个投影进来（`workspace/create` 幂等，已有就复用）。 */
     importWorkspaces(paths: readonly string[]): Promise<{
         readonly imported: number;
+        readonly created: number;
     }>;
+    /**
+     * 从投影里移除一个工作区（连同它的会话）。
+     *
+     * 只动本地投影表，**不删远端工作区**：DSH 的 `workspace/create` 是幂等的，远端目录仍可能有会话在跑，
+     * 擅自删远端等于替用户丢数据。要彻底不再用这台，走「结束远端」。
+     */
+    removeWorkspace(workspaceId: string): boolean;
     stopRemote(): Promise<void>;
 }
 /**
