@@ -1,6 +1,6 @@
 # RFC-0004 · 长任务闭环：后台任务可见 / 断线续跑验收 / 多 host 共存
 
-- 状态：**In Review（P0 出口，等 User Nod）**
+- 状态：**Accepted**（2026-11-19 用户认可，进 P1；实现计划见 [plans/2026-11-19-m3-long-task-closure.md](../project/plans/2026-11-19-m3-long-task-closure.md)）
 - 日期：2026-11-19
 - 关联：[milestones.md](../design/milestones.md) §M3、[keep-alive.md](../design/keep-alive.md)、[plans/2026-11-13-m3-long-task.md](../project/plans/2026-11-13-m3-long-task.md)、`src/shared/api.ts#ProjectedSessionInfo`、`src/local/projection/{attach,store,service}.ts`、DSH `packages/api/session-controller`
 - 发起：用户 2026-11-19 P-1 裁决 —— 方向 **C（长任务闭环）**、可见性粒度 **(a) 会话级**、真机 **(a) 本机 WSL `ubuntu_dev` + SSH `syy_wsl_ubuntu_LAN`（192.168.5.6:2222）**
@@ -33,9 +33,13 @@
 - 但 **api 层没有对应 Remote 端点**：在 `packages/api/**` 检索 `archiv` 只命中测试夹具与 `archive` 命名空间示例，`session/list` / `session/control` / `session/projections` 之外没有 `session/archive`。
 - ⇒ 插件若做「归档」，只能：① 本地视图过滤（引入本地状态，与 `architecture.md` §4.2「以远端为准、不双写」冲突）；或 ② 上游提案（等 DSH 暴露端点）。
 
-### 1.4 缺口三：多 host 同时在线没有引用计数
+### 1.4 缺口三：多 host **结构性不支持**（P1 期间修正）
 
-现在只有 SSH 侧的**单实例**登记（`src/local/backend/ssh/instance.ts:7`，`instances/<anchorId>.json`），负责「同一 target 复用驻留实例」；没有跨 host 的端口分配协调与引用计数。两个 host 同时接入时，端口从固定区间各自挑，存在互撞可能（`remote/port-in-use` 是已知表现）。
+P0 时写的「加个引用计数即可」不准确，P1 取证后改写为：
+
+- **`ProjectionService` 是单槽**：`#live` / `#detached` 各一个连接，且 `slots.test.ts:51-60` 用静态断言钉住「槽位直接赋值只允许两处」——第二个 host 接入只能顶掉第一个。
+- 只有 SSH 侧的**单实例**登记（`src/local/backend/ssh/instance.ts:7`，`instances/<anchorId>.json`）负责「同一 target 复用驻留实例」；**没有**端口分配器（`src` 内 `8941|8961|allocatePort` 只在校验夹具里出现）。
+- ⇒ 多 host 的前提是「单槽 → 按 targetId 分槽」的重构，不是加一个计数器。实现计划把它列为**条件批（Batch D）**，开工前需再确认一次（见计划 §3 / §5）。
 
 ### 1.5 口径限制（必须写进来）
 
@@ -99,6 +103,8 @@
 产出：`docs/proposals/upstream-session-archive-rpc.md` 写清需要的端点形状（`session/archive {sessionId, stopActivity?}`）+ 为什么插件侧绕不过去。**不实现、不占本轮工期。**
 
 ### 4.4 G4 多 host 共存（D4）
+
+> **前置（P1 修正）**：先把 `ProjectionService` 从单槽改成 `Map<targetId, slot>`，否则端口与引用计数都无处安放。该重构本身即 HIGH 风险，故列入条件批。
 
 | 项 | 做法 |
 |---|---|

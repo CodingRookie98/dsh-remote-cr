@@ -14,6 +14,7 @@
 | [2026-11-15-remote-cr-rename-i18n-ui.md](./2026-11-15-remote-cr-rename-i18n-ui.md) | remote-cr 改名 + i18n 分层（RFC-0002 / ADR-0006 / ADR-0007） | 已签（八轮对抗审查）；共享层中文常量为已裁定豁免 |
 | [2026-11-18-remote-sync-and-workspace-affordance.md](./2026-11-18-remote-sync-and-workspace-affordance.md) | 远端插件同步 + 工作区区分（RFC-0003） | T1–T7 全部落地；Delta-2 可签，R2 backlog 于 2026-11-19 清零 |
 | [2026-11-18-remote-host-version-alignment.md](./2026-11-18-remote-host-version-alignment.md) | 远端宿主版本对齐（只做 registry 路径） | 已交付（R1 四条阻断修复 → Delta 可签）；真实远端升级未验证 |
+| [2026-11-19-m3-long-task-closure.md](./2026-11-19-m3-long-task-closure.md) | M3 长任务闭环（RFC-0004：新鲜度 / 过滤 / 真机验收 / 多 host 条件批） | **P1 计划已出，等执行后端确认后进 P2/P3** |
 
 ## 约定
 
