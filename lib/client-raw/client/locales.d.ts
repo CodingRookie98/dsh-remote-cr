@@ -19,6 +19,8 @@ export declare const zh: {
     readonly 'panel.diagnosticsChecking': "检查中…";
     readonly 'panel.diagnosticsCopy': "复制报告";
     readonly 'panel.diagnosticsEmpty': "还没有体检结果";
+    readonly 'panel.diagnosticsFailed': "诊断失败";
+    readonly 'panel.diagnosticsAt': "检查于 {time}";
     readonly 'panel.diagnosticOk': "正常";
     readonly 'panel.diagnosticWarn': "警告";
     readonly 'panel.diagnosticFail': "必须修";
