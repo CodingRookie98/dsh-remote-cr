@@ -417,7 +417,7 @@ export declare const zh: {
     readonly 'wizard.close': "关闭";
     readonly 'wizard.cancel': "取消";
     readonly 'wizard.hostAttaching': "正在启动远端 dsh…（首次约 9–18 秒）";
-    readonly 'wizard.hostReady': "远端宿主已就绪：这个工作区的会话会跑在远端";
+    readonly 'wizard.hostReady': "远端宿主已就绪。远端会话在「远端工作台」面板里；侧栏那条目录打开的是本地会话";
     readonly 'wizard.hostFailed': "远端宿主没起来。本地工作区已保留，可以重试";
     readonly 'wizard.hostRetry': "重试接入";
     readonly 'wizard.addFailed': "添加工作区失败";
