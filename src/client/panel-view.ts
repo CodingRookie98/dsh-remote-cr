@@ -14,6 +14,7 @@ import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   DoctorReportInfo,
   HostEntryInfo,
+  RemoteTargetInfo,
   PurgeResultInfo,
   ResidueReportInfo,
   ImportableWorkspaceInfo,
@@ -36,6 +37,7 @@ import {
   loadSources,
   probeRemoteSession,
   readProjection,
+  readProjectionOf,
   readDoctor,
   readResidue,
   purgeResidue,
@@ -419,8 +421,13 @@ export function RemoteCrPanel(): unknown {
   /** 请求序号：连点时只让最后一次落地，避免旧响应覆盖新结果（P4 建议 5）。 */
   const doctorSeq = useRef(0)
 
-  /** 容器里的主机一览（RFC-0007 A2）：只读展示，切换留到下一片。 */
+  /** 容器里的主机一览（RFC-0007 A2）。 */
   const [hosts, setHosts] = useState<readonly HostEntryInfo[]>([])
+  /**
+   * 当前看的是哪一台：null = 跟随服务端的「最近接入那台」。
+   * 点主机行会把它设成显式目标，之后读投影/刷新都带着它（服务端按 target 返回对应引擎的快照）。
+   */
+  const [focusTarget, setFocusTarget] = useState<RemoteTargetInfo | null>(null)
 
   /** 远端残留（RFC-0006 Phase 2）：盘点只读、清理要两步确认。 */
   const [residue, setResidue] = useState<ResidueReportInfo | null>(null)
@@ -615,7 +622,8 @@ export function RemoteCrPanel(): unknown {
   const refresh = useMemo(
     () => async (): Promise<void> => {
       try {
-        const [listed, projected] = await Promise.all([listWorkspaces(), readProjection()])
+        const read = focusTarget === null ? readProjection() : readProjectionOf(focusTarget)
+        const [listed, projected] = await Promise.all([listWorkspaces(), read])
         setRecords(listed)
         setSnapshot(projected)
         setError(null)
@@ -624,7 +632,7 @@ export function RemoteCrPanel(): unknown {
         setError(failureOf(caught))
       }
     },
-    [],
+    [focusTarget],
   )
 
   /**
@@ -638,12 +646,13 @@ export function RemoteCrPanel(): unknown {
     () => async (): Promise<void> => {
       const deadline = Date.now() + 3_000
       try {
-        const current = await readProjection()
+        const scoped = focusTarget === null ? readProjection() : readProjectionOf(focusTarget)
+        const current = await scoped
         setSnapshot(current)
         if (current.attach === null) return
         while (Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 100))
-          const next = await readProjection()
+          const next = focusTarget === null ? await readProjection() : await readProjectionOf(focusTarget)
           setSnapshot(next)
           if (next.attach === null) return
         }
@@ -651,7 +660,7 @@ export function RemoteCrPanel(): unknown {
         setError(failureOf(caught))
       }
     },
-    [],
+    [focusTarget],
   )
 
   // SSH 主机清单：面板一打开就要有，不能等用户点开向导才知道有哪些别名。
@@ -1110,7 +1119,18 @@ export function RemoteCrPanel(): unknown {
           ...hosts.map((host) =>
             h(
               'div',
-              { key: host.key, 'data-remote-cr': 'host-row', 'data-connected': String(host.connected) },
+              {
+                key: host.key,
+                'data-remote-cr': 'host-row',
+                'data-connected': String(host.connected),
+                'data-focused': String(focusTarget !== null && JSON.stringify(focusTarget) === JSON.stringify(host.target)),
+                onClick: () => {
+                  // 点哪台就看哪台：设置显式目标后 `refresh()` 会带 target 重新读投影。
+                  setFocusTarget(host.target)
+                  setResidue(null)
+                  setPurgeArmed(false)
+                },
+              },
               h('span', { 'data-remote-cr': 'host-name' }, host.target.backend === 'wsl' ? host.target.distro : host.target.alias),
               h(
                 'span',
@@ -1321,6 +1341,18 @@ export function RemoteCrPanel(): unknown {
         'div',
         { 'data-remote-cr': 'panel-head-main' },
         h('h2', { 'data-remote-cr': 'panel-title' }, t('panel.title')),
+        // 当前读的是哪一台（RFC-0007 A2）：切换主机后这里会变，L4 用它断言「真的切过去了」。
+        snapshot?.target === null || snapshot?.target === undefined
+          ? null
+          : h(
+              'span',
+              {
+                'data-remote-cr': 'projection-target',
+                'data-target-alias':
+                  snapshot.target.backend === 'wsl' ? snapshot.target.distro : snapshot.target.alias,
+              },
+              snapshot.target.backend === 'wsl' ? snapshot.target.distro : snapshot.target.alias,
+            ),
         flow === undefined ? null : h('span', { 'data-remote-cr': 'panel-flow' }, summary),
         flow === undefined ? null : h('span', { 'data-remote-cr': 'panel-phase' }, phaseLabel(flow.phase)),
         isTerminal(state) ? h('span', { 'data-remote-cr': 'panel-terminal' }, state.step) : null,

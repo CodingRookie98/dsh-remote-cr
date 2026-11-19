@@ -210,6 +210,14 @@ export function readProjection(fetchImpl?: typeof fetch): Promise<import('../sha
   return callApi('/projection', {}, fetchImpl)
 }
 
+/** 读**指定那台**的投影（RFC-0007 A2）：面板切换主机时用它，服务端按 target 返回对应引擎的快照。 */
+export function readProjectionOf(
+  target: RemoteTargetInfo,
+  fetchImpl?: typeof fetch,
+): Promise<import('../shared/api.ts').ProjectionSnapshotInfo> {
+  return callApi('/projection', { query: { target: JSON.stringify(target) } }, fetchImpl)
+}
+
 /**
  * 让宿主半**刷新一次**投影（`POST /projection/refresh`），回来的是最新快照。
  *

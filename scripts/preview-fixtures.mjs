@@ -594,6 +594,21 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // RFC-0007 A2：点第二台主机 → 面板切到那台的投影（`projection-target` 变成 prod）。
+    id: 'panel-host-switch',
+    label: '面板：切换主机后读的是那台的投影',
+    theme: 'light',
+    targets: ['[data-remote-cr="host-row"]', '[data-remote-cr="projection-target"]'],
+    requireMarkers: ['host-row', 'projection-target'],
+    hideFlow: true,
+    steps: [
+      { wait: '[data-remote-cr="host-row"][data-connected="false"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="host-row"][data-connected="false"]' },
+      { wait: '[data-remote-cr="projection-target"][data-target-alias="prod"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
     // RFC-0006 Phase 2：盘点 → 两步确认 → 清理结果。清理按钮第一次点只上膛，第二次才真删。
     id: 'panel-residue',
     label: '面板：远端残留（盘点 + 两步确认清理）',
@@ -894,6 +909,37 @@ export function sceneFixtures(sceneId) {
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 诊断夹具（RFC-0005）：一份含 ok / warn / fail 的报告，用来断言逐条状态渲染。
     doctorFails: id === 'panel-diagnostics-failed',
+    // A2：切到 prod 之后面板读到的那份快照（工作区/会话都与默认那台不同）。
+    projectionB: {
+      stale: false,
+      workspaces: [
+        {
+          id: 'ws-prod-1',
+          localPath: 'C:/anchors/prod',
+          remotePath: '/srv/api',
+          backend: 'ssh',
+          distro: null,
+          title: 'api',
+          availability: 'online',
+        },
+      ],
+      sessions: [
+        {
+          sessionId: 'sess-prod-1',
+          running: false,
+          workspaceId: 'ws-prod-1',
+          title: 'prod session',
+          updatedAt: '2026-11-19T10:00:00Z',
+          availability: 'online',
+        },
+      ],
+      connected: true,
+      target: { backend: 'ssh', alias: 'prod', port: 22, remoteRoot: '/srv/api' },
+      link: 'connected',
+      envPolicy: 'reuse',
+      attach: null,
+      defaults: { port: 8899, remoteRoot: '/home/hui/workspace' },
+    },
     // 多 host 一览（RFC-0007 A2）：两台，一台在线一台离线。
     hosts: [
       {

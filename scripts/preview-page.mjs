@@ -128,6 +128,12 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/flow' || path === '/remote-cr/api/flow/cancel') return { ok: true, value: fixtures.flow };
   if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
   if (path === '/remote-cr/api/projection') {
+    // A2：带 target 时返回那台的快照（面板切主机后读的就是它）。
+    const rawTarget = url.searchParams.get('target');
+    if (rawTarget !== null) {
+      const parsed = JSON.parse(rawTarget);
+      if (parsed && parsed.alias === 'prod' && fixtures.projectionB) return { ok: true, value: fixtures.projectionB };
+    }
     const value = refreshFailed ? { ...fixtures.projection, stale: true } : fixtures.projection;
     return { ok: true, value };
   }
