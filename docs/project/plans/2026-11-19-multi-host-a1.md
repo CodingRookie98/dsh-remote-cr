@@ -6,8 +6,8 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: P3 实现
-- **最后验证**: 起点 `74bf657`（864 tests / 0 fail）
+- **当前阶段**: A1 完成并合并；A2 第一半（主机列表）+ 切换（`?target=` 读 + `projection-target`）已完成；**A3 待开工**
+- **最后验证**（2026-11-19）：`881 tests / 0 fail`；L4 32 场景全绿（新增 `panel-host-switch`）
 
 ## 1. 范围
 
@@ -31,7 +31,8 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 - [ ] P3.1 `src/local/projection/hub.ts`：`ProjectionHub`（`serviceFor` / `peek` / `entries` / `attach` / `snapshotOf` / `disposeAll`）+ 单测（R1/R2/R5）
 - [ ] P3.2 路由：`options.hub`（缺省用单服务适配器，保持旧装配可用）；`/attach` 走 hub；`GET /projection/targets`
-- [ ] P3.3 `/projection`、`/disconnect`、`/reconnect`、`/projection/refresh` 支持 `?target=`（省略时用 focus）
+- [x] P3.3 `/projection?target=` 支持读指定那台（没接过的目标结构化报错）；`/disconnect`、`/reconnect`、`/projection/refresh` 仍只作用 focus（A3 再扩）
+- [x] A2 切换：主机行可点 → 设 focus → `refresh()`/`settleSnapshot()` 按 target 读；头部 `projection-target[data-target-alias]` 标明当前那台；L4 `panel-host-switch` 断言点击后真的切到 prod
 - [ ] P3.4 测试：R1–R6；既有用例只允许「接线方式」变化，断言不许放宽
 
 ## 4. 风险
