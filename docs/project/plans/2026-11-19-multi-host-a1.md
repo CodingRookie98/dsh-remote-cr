@@ -63,6 +63,23 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 **残留（P2，已记录）**：`release` 目前只有探针在调用——UI 没有「关闭工作区」动作，所以 `references` 现阶段等于 attach 次数；接 UI 时要把 release 挂到关闭工作区/结束远端上。
 
+**A3 第二轮 Delta（2026-11-19，判不可签）已修**：
+
+| 编号 | 问题 | 修法 |
+|---|---|---|
+| N1（P0） | `/maintenance/purge` 的「连接中禁止清理」读 `options.projection`（生产恒 undefined）→ 守卫永不触发 | `connectedTargets()`：容器 entries ∪ 单服务注入，按 `sameTarget` / WSL distro 级判定 |
+| N2 | 空容器下 `/projection`、`/stop`、import 报「未接线」（安装错误文案） | 区分「容器在但没接入」→ `remote/disconnected`；`GET /projection` 空容器回空闲快照 |
+| N3 | attach 失败丢 entry 不 dispose → 远端 dsh 常驻且无 UI 回收路径 | 失败先 `dispose()` 再 `#dropEntry` |
+| N4 | 失败 attach 清掉既有 focus | 失败恢复先前 focus |
+| N5 | 客户端只有 3/7 带 target；轮询不带 target 会覆盖回 focus | session / probe / importable / import / `refresh`+`reread` 全按 focusTarget 分流 + 源码门禁 |
+| N8 | 探针端口探测可假绿（`ss` 缺失、非数字输出） | 只认纯数字行；`ss` 缺失 → unknown |
+
+补判据：M3（refs>1 失败不误删）、M5（未知 target 不回落 focus）、M7（drop 必须还端口，两轮×21 压测）。
+
+**探针口径修正（重要）**：WSL 走 stdio 桥**本来没有 TCP 监听**，且本机 `ss` 观测不稳定（多次 connected 但看不到监听）。
+因此 cross-host / same-host 的判据改为 **connected 状态 + 条目生命周期**，监听结果只记录不断言。
+**未验证**：远端进程是否真的在监听/退出；`recycle()` 未 await `connection.dispose()`。
+
 ## 4. 风险
 
 | 项 | 处置 |
