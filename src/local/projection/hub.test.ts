@@ -117,7 +117,7 @@ test('移走最后一个工作区后 releaseAll 才回收这台', async () => {
   assert.equal(service.removeWorkspace('ws:/home/hui/a'), true)
   assert.equal(hub.entries()[0]?.references, 1, '还有一个工作区：这台不能回收')
   assert.equal(service.removeWorkspace('ws:/home/hui/a/other'), true)
-  assert.deepEqual(hub.releaseAll(A), { released: 0, recycled: true })
+  assert.deepEqual(await hub.releaseAll(A), { released: 0, recycled: true })
   assert.equal(hub.entries().length, 0)
 })
 
@@ -139,7 +139,7 @@ test('B3 attach 失败回滚：失败一次 + 成功一次 → 一次 releaseAll
   await assert.rejects(hub.attach(A, { remotePath: '/home/hui/a', localPath: LOCAL }))
   assert.equal(hub.entries().length, 0, '失败的 attach 不该留下 entry / 端口')
   await hub.attach(A, { remotePath: '/home/hui/a', localPath: LOCAL })
-  assert.deepEqual(hub.releaseAll(A), { released: 1, recycled: true }, '一次就回收（没有留账）')
+  assert.deepEqual(await hub.releaseAll(A), { released: 1, recycled: true }, '一次就回收（没有留账）')
 })
 
 test('B3 边界：已有工作区时，失败不得删掉 entry（否则在用引用被孤儿化）', async () => {
@@ -200,7 +200,7 @@ test('M7 端口归还：21 台同时在场 → 全部结束时端口全部归还
   const ports = hub.entries().map((entry) => entry.effective.port)
   assert.equal(ports.length, 21)
   assert.equal(new Set(ports).size, 21, '21 台必须拿到 21 个不同端口')
-  for (const target of first) hub.releaseAll(target)
+  for (const target of first) await hub.releaseAll(target)
   assert.equal(hub.entries().length, 0)
   const again = Array.from({ length: 21 }, (_, index) => ({ ...A, remoteRoot: '/again-' + String(index) }))
   for (const target of again) await hub.attach(target, { remotePath: '/a', localPath: LOCAL })
@@ -213,7 +213,7 @@ test('N7 只建过引擎（0 个工作区）的僵尸：releaseAll 要删 entry 
   hub.serviceFor(A)
   assert.equal(hub.entries().length, 1)
   assert.equal(hub.entries()[0]?.references, 0)
-  assert.deepEqual(hub.releaseAll(A), { released: 0, recycled: true })
+  assert.deepEqual(await hub.releaseAll(A), { released: 0, recycled: true })
   assert.equal(hub.entries().length, 0)
 })
 
@@ -230,8 +230,27 @@ test('recycle 抛错也必须删 entry（否则端口与引用永久卡死）', 
       }) as unknown as ProjectionService,
   )
   await hub.attach(A, { remotePath: '/a', localPath: LOCAL })
-  assert.equal(hub.releaseAll(A).recycled, true)
+  assert.equal((await hub.releaseAll(A)).recycled, true)
   assert.equal(hub.entries().length, 0)
+})
+
+test('recycle 是异步的：releaseAll 会等它结束（不再「先 resolved 再删远端」）', async () => {
+  let finished = false
+  const hub = new ProjectionHub(
+    () =>
+      ({
+        attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+        recycle: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          finished = true
+        },
+        dispose() {},
+        snapshot: () => ({ workspaces: [{}], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+      }) as unknown as ProjectionService,
+  )
+  await hub.attach(A, { remotePath: '/a', localPath: LOCAL })
+  await hub.releaseAll(A)
+  assert.equal(finished, true, 'releaseAll 返回时 recycle 必须已经结束')
 })
 
 test('targetKeyOf / sameHostOf / sameTarget：端口、目录、大小写', () => {

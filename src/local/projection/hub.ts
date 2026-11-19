@@ -148,15 +148,15 @@ export class ProjectionHub {
    * 为什么不再维护一个计数器：计数器会与投影表漂移（重复接入、幂等导入、失败回滚都能让它错位），
    * 而「还剩几个工作区」投影表本来就知道——直接读它，`references` 才不会说谎。
    */
-  releaseAll(target: ConnectTarget): { readonly released: number; readonly recycled: boolean } {
+  async releaseAll(target: ConnectTarget): Promise<{ readonly released: number; readonly recycled: boolean }> {
     const key = targetKeyOf(target)
     const released = this.#workspaceCount(key)
     const entry = this.#services.get(key)
     if (entry === undefined) return { released: 0, recycled: false }
     try {
-      entry.service.recycle()
+      await entry.service.recycle()
     } catch {
-      // recycle 抛错也必须删 entry：留着会让端口永久被算作占用（真机踩过）。
+      // recycle 抛错（`remote/recycle-incomplete`）也必须删 entry：留着会让端口永久被算作占用。
     }
     // **必须删 entry**（P4 B4）：只还端口而留 entry，`#effectiveOf` 的 taken 会一直算上僵尸端口。
     this.#dropEntry(key)

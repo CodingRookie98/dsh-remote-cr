@@ -513,12 +513,27 @@ export class ProjectionService {
    * 只在「用户真的不打算再用这台远端」时调（进程退出、切 target）。
    * 日常的「断开」走 `disconnect()` —— 那条只断传输，进程留着温热。
    */
-  recycle(): void {
+  /**
+   * 与 `dispose()` 的区别：recycle 是「我还想再连这台，但现在先收掉」，所以要等真的收干净——
+   * 不 await 的话调用方拿到 resolved 就以为远端已经退了，接着去删 staging / 重连同端口会撞车。
+   * 失败**不吞**：抛 `remote/recycle-incomplete`，让调用方决定是重试还是报给用户。
+   */
+  async recycle(): Promise<void> {
     const live = this.#live
     this.#setLive(undefined)
     this.#stopDriver()
-    if (live !== undefined) this.#retire(live.connection)
     this.#dropDetached()
+    if (live === undefined) return
+    this.#retired.add(live.connection)
+    try {
+      await live.connection.dispose()
+    } catch (error) {
+      throw new RemoteCrError({
+        code: 'remote/recycle-incomplete',
+        detail: '结束远端时没能确认远端进程已退出：' + (error instanceof Error ? error.message : String(error)),
+        nextActions: ['再点一次「结束远端」', '或到远端手动检查进程'],
+      })
+    }
   }
 
   /** 进程退出：释放连接（不标 offline，因为没人会再看这份内存表）。 */

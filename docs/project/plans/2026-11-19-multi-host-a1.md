@@ -71,6 +71,15 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - 面板每个投影工作区多一个「移除」按钮（`data-remote-cr="remove-workspace"`），经 focusTarget 分流；中英文案齐全。
 - 「结束远端」也改用 `releaseAll`（同一台反复接过时一次放干净）。
 
+**B（远端进程回收）已完成（2026-11-19）**：
+
+- `ProjectionService.recycle()` 改成 **async**：`await connection.dispose()`，失败抛 `remote/recycle-incomplete`（不再「先 resolved 再删远端」）；
+  `hub.releaseAll()` 与 `/stop`、`/workspace/remove` 全部 await 它。
+- 真机取证（`spikes/m4-multi-host/reclaim-probe.cjs`，**3/3**）：
+  ① attach 后远端 `~/.dsh-remote-cr/instances/<id>.json` 里有 pid（复用温热实例时用现存那条）；
+  ② 该 pid 在远端 `/proc/<pid>` 存在；③ `releaseAll` 之后 **pid 消失**（`recycled: true`）。
+- 同时留下一条**如实记录**：pid 死后登记文件仍在（预期——远端用户数据保留，由 RFC-0006 残留清理显式收拾），探针只记录不断言。
+
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：
