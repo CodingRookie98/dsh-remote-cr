@@ -1,6 +1,6 @@
 # RFC-0004 · 长任务闭环：后台任务可见 / 断线续跑验收 / 多 host 共存
 
-- 状态：**Accepted**（2026-11-19 用户认可，进 P1；实现计划见 [plans/2026-11-19-m3-long-task-closure.md](../project/plans/2026-11-19-m3-long-task-closure.md)）
+- 状态：**Implemented（分支 `feat/long-task-closure`，P4 复审可签，待合并 master）**（2026-11-19 用户认可 → P1；实现计划见 [plans/2026-11-19-m3-long-task-closure.md](../project/plans/2026-11-19-m3-long-task-closure.md)）
 - 日期：2026-11-19
 - 关联：[milestones.md](../design/milestones.md) §M3、[keep-alive.md](../design/keep-alive.md)、[plans/2026-11-13-m3-long-task.md](../project/plans/2026-11-13-m3-long-task.md)、`src/shared/api.ts#ProjectedSessionInfo`、`src/local/projection/{attach,store,service}.ts`、DSH `packages/api/session-controller`
 - 发起：用户 2026-11-19 P-1 裁决 —— 方向 **C（长任务闭环）**、可见性粒度 **(a) 会话级**、真机 **(a) 本机 WSL `ubuntu_dev` + SSH `syy_wsl_ubuntu_LAN`（192.168.5.6:2222）**
