@@ -33,6 +33,8 @@ export type SourceReasonId =
   | 'wsl-no-distro'
   | 'wsl-probe-error'
   | 'ssh-no-host'
+  // 历史 id：Docker 后端已于 2026-11-19 取消（ADR-0008）。取值保留——改名属契约漂移，
+  // 且历史夹具/日志里都是旧值；语义现为「暂不支持」。
   | 'docker-planned'
 
 export interface SourceOption {

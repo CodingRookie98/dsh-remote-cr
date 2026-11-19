@@ -329,7 +329,7 @@ export const zh = {
   // 不含 {detail}：宿主原文只进复制日志（Delta-5 U1 残留）。
   'sourceReason.wsl-probe-error': '探测 WSL 失败（原文见复制日志）',
   'sourceReason.ssh-no-host': '~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）',
-  'sourceReason.docker-planned': '计划在 M5',
+  'sourceReason.docker-planned': '暂不支持（Docker 后端已取消）',
   // 服务端给了未知 reasonId（老夹具/老远端）时不能渲染空白行，更不能印出 undefined。
   'sourceReason.unknown': '原因未知（详见复制日志）',
   'linkState.idle': '尚未连接远端',
@@ -712,7 +712,7 @@ export const en: Readonly<Record<RemoteCrKey, string>> = {
   'sourceReason.wsl-no-distro': 'No distro installed (run wsl --install in PowerShell)',
   'sourceReason.wsl-probe-error': 'Probing WSL failed (raw text is in the copied log)',
   'sourceReason.ssh-no-host': 'No usable host in ~/.ssh/config (add a Host block, then refresh)',
-  'sourceReason.docker-planned': 'Planned for M5',
+  'sourceReason.docker-planned': 'Not offered (Docker backend dropped)',
   'sourceReason.unknown': 'Unknown reason (see the copied log)',
   'linkState.idle': 'Not connected to a remote yet',
   'linkState.connected': 'Remote connected',
