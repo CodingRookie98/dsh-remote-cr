@@ -54,10 +54,10 @@ export declare class ProjectionHub {
      * 为什么不再维护一个计数器：计数器会与投影表漂移（重复接入、幂等导入、失败回滚都能让它错位），
      * 而「还剩几个工作区」投影表本来就知道——直接读它，`references` 才不会说谎。
      */
-    releaseAll(target: ConnectTarget): {
+    releaseAll(target: ConnectTarget): Promise<{
         readonly released: number;
         readonly recycled: boolean;
-    };
+    }>;
     /** 最近一次 attach 的引擎（单主机路径的默认读目标）。 */
     focused(): ProjectionService | null;
     snapshotOf(target: ConnectTarget): ProjectionSnapshot | null;
