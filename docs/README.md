@@ -54,6 +54,8 @@
 
 | 文件 | 内容 |
 |---|---|
+| [RFC-0006-uninstall-residue.md](./proposals/RFC-0006-uninstall-residue.md) | **卸载干净（In Review）**：残留三类边界（自动删 / 显式 purge / 永不删）、Phase 1 真机零残留证据、Phase 2 的 residue+purge 契约 |
+| [RFC-0005-diagnostics-center.md](./proposals/RFC-0005-diagnostics-center.md) | **诊断中心（Delivered）**：`GET /doctor` + 面板诊断区（逐条状态 / 复制报告 / 重新检查）；红队两轮闭环 |
 | [RFC-0004-long-task-closure.md](./proposals/RFC-0004-long-task-closure.md) | **长任务闭环（P0，In Review，等 User Nod）**：会话级「运行中」的新鲜度（按需刷新 + 轻轮询）、面板内标题过滤、多 host 引用计数；归档因远端无端点转上游提案 |
 | [RFC-0003-plugin-sync-and-remote-workspace-affordance.md](./proposals/RFC-0003-plugin-sync-and-remote-workspace-affordance.md) | **远端插件同步 + 远端工作区可视化区分**：ADR-0004 落地（首次连接提示差额、面板同步入口）+ 远端工作区图标/离线灰显/原位重连；含上游 hole 提案与决策台账 D1–D7 |
 | [RFC-0001-add-workspace-ui-v2.md](./proposals/RFC-0001-add-workspace-ui-v2.md) | **添加工作区双栏重做 + WSL 启动失败可见化**：契约增量（`WslDiagnosis` / `WslWakeResult` / `POST /wsl/wake`）、状态机变更、失败态矩阵、交互与视觉规范、断言面清单 |

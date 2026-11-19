@@ -1,0 +1,21 @@
+{
+  "mode": "wsl",
+  "target": "ubuntu_dev",
+  "port": 8951,
+  "passed": 4,
+  "failed": 0,
+  "failures": [],
+  "measurements": [
+    {
+      "name": "U1",
+      "ok": true,
+      "ms": 16732
+    },
+    {
+      "name": "U2",
+      "ok": true,
+      "ms": 777
+    }
+  ],
+  "at": "2026-11-19T05:55:30.217Z"
+}

@@ -14,7 +14,9 @@
 | [2026-11-15-remote-cr-rename-i18n-ui.md](./2026-11-15-remote-cr-rename-i18n-ui.md) | remote-cr 改名 + i18n 分层（RFC-0002 / ADR-0006 / ADR-0007） | 已签（八轮对抗审查）；共享层中文常量为已裁定豁免 |
 | [2026-11-18-remote-sync-and-workspace-affordance.md](./2026-11-18-remote-sync-and-workspace-affordance.md) | 远端插件同步 + 工作区区分（RFC-0003） | T1–T7 全部落地；Delta-2 可签，R2 backlog 于 2026-11-19 清零 |
 | [2026-11-18-remote-host-version-alignment.md](./2026-11-18-remote-host-version-alignment.md) | 远端宿主版本对齐（只做 registry 路径） | 已交付（R1 四条阻断修复 → Delta 可签）；真实远端升级未验证 |
-| [2026-11-19-m3-long-task-closure.md](./2026-11-19-m3-long-task-closure.md) | M3 长任务闭环（RFC-0004：新鲜度 / 过滤 / 真机验收 / 多 host 条件批） | **P1 计划已出，等执行后端确认后进 P2/P3** |
+| [2026-11-19-m3-long-task-closure.md](./2026-11-19-m3-long-task-closure.md) | M3 长任务闭环（RFC-0004：新鲜度 / 过滤 / 真机验收 / 多 host 条件批） | 已合并（合并提交 `8f6a9ed`；Batch D 未开工） |
+| [2026-11-19-m3-diagnostics-center.md](./2026-11-19-m3-diagnostics-center.md) | M3 诊断中心（RFC-0005：面板内 doctor） | 已交付（红队两轮，最终可签） |
+| [2026-11-19-m4-uninstall-residue.md](./2026-11-19-m4-uninstall-residue.md) | M4 卸载干净（RFC-0006 Phase 1：零残留验证 + 边界契约） | Phase 1 完成；Phase 2（residue/purge）待开工 |
 
 ## 约定
 

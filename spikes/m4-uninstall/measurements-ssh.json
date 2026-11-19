@@ -1,0 +1,21 @@
+{
+  "mode": "ssh",
+  "target": "syy_wsl_ubuntu_LAN",
+  "port": 8952,
+  "passed": 5,
+  "failed": 0,
+  "failures": [],
+  "measurements": [
+    {
+      "name": "U1",
+      "ok": true,
+      "ms": 5230
+    },
+    {
+      "name": "U2",
+      "ok": true,
+      "ms": 273
+    }
+  ],
+  "at": "2026-11-19T05:55:45.297Z"
+}

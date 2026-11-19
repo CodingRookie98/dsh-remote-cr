@@ -45,6 +45,18 @@
 **为什么**：`DSH_TELEPORT_*` 与 `DSH_REMOTE_CR_*` 同时存在且值不同——我们**不替你选**。
 **怎么办**：删掉旧名（推荐），或让两者值一致。
 
+## 卸载后还有残留吗（RFC-0006）
+
+分三类，**边界是写死的**：
+
+| 类别 | 内容 | 处置 |
+|---|---|---|
+| 本地进程 | 我们 spawn 的 `wsl.exe` / `ssh` 子进程、隧道 | **自动回收**：插件卸载时 `projection.dispose()` 触发两级 dispose（杀句柄 → 宽限 → 强杀）；真机探针 `spikes/m4-uninstall/probe.cjs` 断言 dispose 后 3 s 内远端端口关闭（WSL 实测 777 ms、SSH 272 ms） |
+| 本地文件 | `~/.dsh-remote-cr/`（anchors、sync-optout）、旧根 `~/.dsh-teleport/` | **属用户数据，不自动删**。确认不再使用后手删：`rm -rf ~/.dsh-remote-cr ~/.dsh-teleport`（Windows：`Remove-Item -Recurse -Force $env:USERPROFILE\.dsh-remote-cr, $env:USERPROFILE\.dsh-teleport`） |
+| 远端文件 | `~/.dsh-remote-cr/staging/<hash>`（node + dsh，百 MB～GB 级）、`~/.dsh-remote-cr/instances/<id>.json` | **不会自动删**。确认远端不再需要后手删：`ssh <host> 'rm -rf ~/.dsh-remote-cr/staging ~/.dsh-remote-cr/instances'`。显式的面板/CLI `purge` 属 RFC-0006 Phase 2，尚未交付 |
+
+**自检**：跑 `pnpm doctor` 看 `state-root` / `legacy-root` 两项；远端是否还有 dsh 在跑：`ssh <host> 'ss -ltnp | grep 894'`。
+
 ## 复制日志怎么看
 
 **看到**：面板上的错误只有一句话，想贴给他人。
