@@ -23,6 +23,14 @@ export interface DoctorOptions {
 }
 export declare function runDoctor(options: DoctorOptions): DoctorCheck[];
 export declare function formatDoctorReport(checks: readonly DoctorCheck[]): string;
+/**
+ * 本插件安装目录（包根）。
+ *
+ * 这个文件编译后在 `lib/local/doctor.js`，上两级就是包根（`package.json` 所在处）；
+ * 面板的「诊断」区没必要让用户填路径，也不需要读 `process.cwd()`（那可能是任意目录）。
+ * 仍保留注入口：路由测试传临时目录，不碰真实安装。
+ */
+export declare function installedRoot(): string;
 /** CLI：`node lib/local/doctor.js`（也可 `pnpm doctor`）。 */
 export declare function doctorMain(argv: readonly string[]): number;
 //# sourceMappingURL=doctor.d.ts.map

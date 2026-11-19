@@ -46,6 +46,8 @@ export declare function callApi<T>(path: string, init?: {
     /** 取消信号：只有「用户在等的东西」才需要（唤醒探测），其它读接口留着不管。 */
     signal?: AbortSignal;
 }, fetchImpl?: typeof fetch): Promise<T>;
+/** `/doctor` 的答复：检查项 + 与 CLI 同款的报告文本（RFC-0005）。 */
+export declare function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo>;
 /** `/sources` 的答复：探测结果 + 四选一的展示状态。 */
 export interface SourcesPayload {
     readonly wslAvailable: boolean;

@@ -14,6 +14,14 @@
 /** 简体中文字典（键集真相源）。 */
 export declare const zh: {
     readonly 'panel.title': "远端工作台";
+    readonly 'panel.diagnosticsTitle': "诊断";
+    readonly 'panel.diagnosticsRerun': "重新检查";
+    readonly 'panel.diagnosticsChecking': "检查中…";
+    readonly 'panel.diagnosticsCopy': "复制报告";
+    readonly 'panel.diagnosticsEmpty': "还没有体检结果";
+    readonly 'panel.diagnosticOk': "正常";
+    readonly 'panel.diagnosticWarn': "警告";
+    readonly 'panel.diagnosticFail': "必须修";
     readonly 'panel.icon': "远";
     readonly 'panel.hostsTitle': "主机";
     readonly 'panel.projectedTitle': "已投影";

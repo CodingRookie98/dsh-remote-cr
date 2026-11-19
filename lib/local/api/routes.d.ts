@@ -84,6 +84,14 @@ export interface RouteOptions {
      */
     readonly sync?: SyncRoutesOptions;
     /**
+     * 诊断区（RFC-0005）的注入口：只给测试换掉包根 / home，生产走 `installedRoot()` 与 `homeDir`。
+     * 做成注入而不是让用户填路径——面板上的「检查一下」不该要求用户知道插件装在哪。
+     */
+    readonly doctor?: {
+        readonly rootDir?: string;
+        readonly homeDir?: string;
+    };
+    /**
      * SSH 目标的「本地锚点路径」落实器（建目录 + 写 map.json，见 `ssh/anchor-runtime.ts`）。
      *
      * WSL 不需要它：UNC 路径由 `toUnc` 直接推出来，且 UNC 路径不需要预先存在。
