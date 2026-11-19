@@ -530,15 +530,18 @@ export class ProjectionService {
     const detached = this.#dropDetached()
     // 两条都要收：live 先失败就不收 detached 的话，那条连接对象会泄漏（不进任何槽位，也没人 dispose）。
     let first: unknown
-    try {
-      await this.#reclaim(live?.connection)
-    } catch (error) {
-      first = error
-    }
-    try {
-      await this.#reclaim(detached)
-    } catch (error) {
-      first ??= error
+    for (const connection of [live?.connection, detached]) {
+      if (connection === undefined) continue
+      try {
+        await this.#reclaim(connection)
+      } catch (error) {
+        // **失败要能重试**（P4 P2-2）：把它放回 `#detached`，下一次「结束远端」还能再收一次。
+        // 否则槽位已清、再点一次 `/stop` 会「什么都不做还回 200」——假成功比报错更糟。
+        this.#retired.delete(connection)
+        const known = this.#lastTarget
+        if (known !== undefined) this.#setDetached({ target: known, connection })
+        first ??= error
+      }
     }
     if (first !== undefined) throw first
   }

@@ -119,7 +119,15 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 **Delta-4 签收（2026-11-19）**：P1-C / P1-D 均闭合，**P1 清零**。复审另在 `%TEMP%` 跑 13 条复现全绿、真机 `reclaim-probe` 3/3，并确认 `#reclaim` 的 `stopRemote` 优先分支被真实走过。
 顺带带走复审的两条 P2：`/stop` 的挂点从「hub 在不在」改成「**entry 在不在容器里**」（原来注入式装配 + entry 不在容器时会静默 no-op，已补用例），计划文档两行旧语义也改正。
 
-**剩余 P2 台账（不阻断）**：探针判据收紧（改打 `/stop`、去恒真项、cmdline 防 pid 复用）、`/stop` 失败后的可重试性、复用分支 `stopRemote` 恒 `return true`（clean 通道名义存在但不做二次确认）。
+**三条 P2 已清（2026-11-19）**：
+
+| P2 | 修法 | 判据 |
+|---|---|---|
+| 探针判据 | 去掉 `recycled===true` 恒真项；`/proc/<pid>` 之外再查 `cmdline` 含 `dsh`（防 pid 复用读成「还活着」，`OTHER` 也算不是我们的）；不再盲取 `after[0]`，改取**本次仍属我们的**那条 | 真机 3/3（pid 16119） |
+| `/stop` 失败可重试 | 失败时把连接放回 `#detached`（`#retired` 撤回），第二次「结束远端」会真的再收一次 | service 用例：第一次 false、第二次 true，`attempts === 2` |
+| 复用分支 clean | 新增 `buildKillAndVerifyScript`：`kill -9` 后轮询 `/proc`，回 `PID_GONE` / `PID_ALIVE`；`live` 据 `PID_GONE` 决定 clean | instance 用例（脚本含 `/proc` 与两种标记）+ 真机 |
+
+**仍未做（记账）**：探针仍打 `hub.releaseAll` 而非 `/stop` 路由（路由层 await 已由 routes 用例覆盖）；`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 

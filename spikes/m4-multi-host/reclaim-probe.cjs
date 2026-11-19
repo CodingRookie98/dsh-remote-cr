@@ -51,7 +51,18 @@ function readPids() {
   return pids
 }
 
-const alive = (pid) => ssh('[ -d /proc/' + String(pid) + ' ] && echo yes || echo no').out === 'yes'
+/**
+ * pid 是否**还是我们要的那个进程**：只看 `/proc/<pid>` 存在会把 pid 复用误判成「还活着」。
+ * cmdline 里必须出现 staging 路径（远端 dsh 的启动行带它）。
+ */
+function status(pid) {
+  const out = ssh(
+    'if [ ! -d /proc/' + String(pid) + ' ]; then echo GONE; ' +
+    'elif tr "\\0" " " < /proc/' + String(pid) + '/cmdline | grep -q "dsh"; then echo OURS; ' +
+    'else echo OTHER; fi',
+  ).out
+  return out === 'OURS' || out === 'GONE' || out === 'OTHER' ? out : 'UNKNOWN'
+}
 
 async function main() {
   const liveMod = await load('src/local/projection/live.ts')
@@ -79,11 +90,12 @@ async function main() {
   expect('R1', error === undefined && after.length >= 1,
     JSON.stringify({ before: before.length, after: after.length, error: error && (error.code ?? error.message) }))
 
-  // 复用温热实例时不会有「新 pid」——那就用现存的这条作为观测对象。
-  const fresh = after.filter((entry) => !before.some((old) => old.pid === entry.pid))
-  if (fresh.length === 0 && after.length > 0) fresh.push(after[0])
+  // 复用温热实例时不会有「新 pid」：取**本次 attach 之后仍然 OURS 的那条**，而不是盲取 after[0]
+  // （多 anchor 时 after[0] 可能是别人的实例，会让 R3 盯着一个不相干的 pid 空转通过——P4 P2-9）。
+  const ours = after.filter((entry) => status(entry.pid) === 'OURS')
+  const fresh = ours.length > 0 ? [ours[ours.length - 1]] : after.filter((entry) => !before.some((old) => old.pid === entry.pid))
   console.log('==> R2 那个 pid 在远端活着')
-  const aliveBefore = fresh.length > 0 ? alive(fresh[0].pid) : false
+  const aliveBefore = fresh.length > 0 ? status(fresh[0].pid) === 'OURS' : false
   expect('R2', aliveBefore, JSON.stringify({ fresh }))
 
   console.log('==> R3 releaseAll 之后 pid 消失、登记也消失')
@@ -92,12 +104,15 @@ async function main() {
   let aliveAfter = aliveBefore
   while (Date.now() < deadline && aliveAfter) {
     await sleep(500)
-    aliveAfter = fresh.length > 0 ? alive(fresh[0].pid) : false
+    // `OTHER` 也算「不是我们的进程了」：pid 被复用时不能把它读成「还活着」。
+    aliveAfter = fresh.length > 0 && status(fresh[0].pid) === 'OURS'
   }
   const left = readPids().filter((entry) => fresh.some((gone) => gone.pid === entry.pid))
   // 判据只看**进程**：结束远端后 pid 必须消失。
   // 残留的登记文件是**预期**的（远端用户数据保留，由 RFC-0006 的残留清理显式收拾），所以只记录不断言。
-  expect('R3', released.recycled === true && !aliveAfter, JSON.stringify({ released, aliveAfter, staleRegistrations: left }))
+  // **去掉 `recycled === true` 这个恒真项**（P4 P2-9）：它只会让 R3 看起来有两条判据。
+  // 真正要证的是「那个 pid 不再是我们的进程了」。
+  expect('R3', !aliveAfter, JSON.stringify({ released, aliveAfter, staleRegistrations: left }))
 
   hub.disposeAll()
   mkdirSync('spikes/m4-multi-host', { recursive: true })

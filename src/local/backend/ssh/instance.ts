@@ -88,3 +88,17 @@ export function isInstanceExpired(instance: RemoteInstance, nowMs: number, ttlMs
 export function buildKillInstanceScript(pid: number): string {
   return 'kill -9 ' + String(Math.trunc(pid)) + ' 2>/dev/null || true'
 }
+
+/**
+ * 杀完之后**确认 pid 真的没了**：`kill -9` 返回 0 只说明信号发出去了。
+ * 打 `PID_GONE` / `PID_ALIVE` 两种标记，调用方据此决定要不要报 `remote/recycle-incomplete`（P4 P2-3）。
+ */
+export function buildKillAndVerifyScript(pid: number): string {
+  const safe = Math.max(1, Math.trunc(pid))
+  return [
+    'kill -9 ' + String(safe) + ' 2>/dev/null || true',
+    // 给内核一点时间收尸，最多等 2s。
+    'i=0; while [ "$i" -lt 20 ]; do [ -d /proc/' + String(safe) + ' ] || { echo PID_GONE; exit 0; }; i=$((i+1)); sleep 0.1; done',
+    'echo PID_ALIVE',
+  ].join('; ')
+}

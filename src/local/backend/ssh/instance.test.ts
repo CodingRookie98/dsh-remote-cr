@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   DEFAULT_INSTANCE_TTL_MS,
   INSTANCE_VERSION,
+  buildKillAndVerifyScript,
   buildKillInstanceScript,
   buildReadInstanceScript,
   buildWriteInstanceScript,
@@ -59,6 +60,14 @@ test('buildWriteInstanceScript：先建目录、写临时文件再 mv（不做�
   assert.match(script, /\.tmp/)
   assert.match(script, /mv /)
   assert.ok(script.includes(JSON.stringify(INSTANCE)), 'JSON 必须原样写进去')
+})
+
+test('buildKillAndVerifyScript：杀完必须回 PID_GONE / PID_ALIVE，不能只发信号（P4 P2-3）', () => {
+  const script = buildKillAndVerifyScript(117362.9)
+  assert.match(script, /kill -9 117362/)
+  assert.match(script, /\[ -d \/proc\/117362 \]/, '必须去看 /proc 才知道死没死')
+  assert.match(script, /echo PID_GONE/)
+  assert.match(script, /echo PID_ALIVE/)
 })
 
 test('buildReadInstanceScript / buildKillInstanceScript：只读不删、pid 取整', () => {

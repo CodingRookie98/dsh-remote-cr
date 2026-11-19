@@ -32,7 +32,7 @@ import type { RemoteDshHandle } from '../backend/handle.ts'
 import { type SshTarget, readSshConfig, resolveSshTarget } from '../backend/ssh/config.ts'
 import { resolveAnchorPath } from '../backend/ssh/anchor-runtime.ts'
 import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
-import { INSTANCE_VERSION, buildKillInstanceScript, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
+import { INSTANCE_VERSION, buildKillAndVerifyScript, buildKillInstanceScript, buildReadInstanceScript, buildWriteInstanceScript, instancePath, isInstanceExpired, parseInstanceOutput, type RemoteInstance } from '../backend/ssh/instance.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
 import { launchSshDsh, openSshTunnel } from '../backend/ssh/launch.ts'
 import { resolveRemoteDsh, type RemoteDshRuntime, type ResolveRemoteDshRequest } from '../backend/ssh/runtime.ts'
@@ -353,17 +353,18 @@ async function connectSsh(
         // 「结束远端」：复用连接只关隧道的话，驻留实例会永远留着 —— 必须按登记 pid 真杀。
         // 返回值语义同 `dispose()`：`false` = 没能确认进程退出（P4 P1-B）。
         stopRemote: async (): Promise<boolean> => {
-          await runSsh({
+          const killed = await runSsh({
             target: sshTarget,
             knownHostsFile: knownHostsPath(ssh.homeDir),
             auth,
-            command: ['sh', '-c', shellQuote(buildKillInstanceScript(known.instance.pid))],
+            command: ['sh', '-c', shellQuote(buildKillAndVerifyScript(known.instance.pid))],
             allowFailure: true,
             deadlineMs: 15_000,
             ...(ssh.sshExecutable === undefined ? {} : { sshExecutable: ssh.sshExecutable }),
           })
           await tunnel.dispose()
-          return true
+          // 真的看见 `PID_GONE` 才算收干净：只发 kill 不发问，会把「没死」报成成功（P4 P2-3）。
+          return killed.stdout.includes('PID_GONE')
         },
       }
     }
