@@ -102,17 +102,16 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 - [ ] **P3.2 服务与路由**：`ProjectionService.refreshSessions()`（只打 `session/list`，不动 workspace）；`POST /projection/refresh`（target 编码同 attach；未接入时给结构化码）。
   - 涉及：`service.ts`、`api/routes.ts`、`shared/api.ts`（`stale`）
   - 验收：`node --test "src/local/api/routes.test.ts" "src/local/projection/service.test.ts"`
-- [ ] **P3.3 客户端轮询**：可见时 5 s、`document.visibilityState` 隐藏即停、失败退避、终态后停；同一 target 不叠请求。
-  - 涉及：`src/client/state.ts`、`panel-view.ts`、`locales.ts`（`panel.stale` 文案 zh/en）
-  - 验收：`node --test "src/client/state.test.ts"`
+- [x] **P3.3 客户端轮询**（已交付）：`src/client/poll.ts` 的 `createRefreshScheduler`（注入 run/isVisible/timer；隐藏不跑只重排、失败翻倍封顶 30 s、单飞、`stop` 真清定时器、`kick` 用于回到可见/重试）；面板挂载起链、卸载收链、`visibilitychange` 补一次。
+  - Lead 变异反证：去掉可见性判断 → 1 红；退避改定值 → 2 红；`stop` 去掉 `clearPending` → **首轮全绿**（用例先 `take()` 了定时器，断言成了空断言）→ 补 `⑥b stop 在还有排队定时器时必须 clearTimeout` 后该变异转红。
+  - Lead 追加决策：刷新失败后**立刻读一次 `/projection`**（纯本地读）把宿主置的 `stale=true` 拿到手；否则徽标要等下一轮（失败后退避到 10–30 s）才亮，等于把「刚刚失败」藏起来。
 
 ### Batch B · 过滤（本轮承诺）
 
 - [ ] **P3.4 纯函数**：`filterSessions(sessions, query)`（标题子串、大小写不敏感、trim）。
   - 涉及：`src/client/filter.ts`、`filter.test.ts`
-- [ ] **P3.5 面板接线**：搜索框 + 空态（`panel-filter-empty` 标记），不改变行排序语义。
-  - 涉及：`panel-view.ts`、`components.ts`、`styles.ts`、`locales.ts`
-  - L4：新增场景 `panel-filter-empty`，并给既有 `panel` 场景加 `requireMarkers`。
+- [x] **P3.5 面板接线**（已交付）：`session-filter` 输入框 + `filter-empty` 空态；过滤用 `filterSessions`，只筛不排；`panel-stale` 徽标贴在会话区标题行右侧（贴着它描述的区块，不让人读成「远端离线」）。
+  - L4（真 Chrome，27 场景全绿）：新增 `panel-stale`（夹具 `stale:true` → 徽标）与 `panel-filter-empty`（`fill` 步进输入无匹配串 → 空态）；harness 为此新增 `fill` 步进（原生 setter + input 事件，React 受控输入才生效）。
 
 ### Batch C · 真机验收（本轮承诺）
 

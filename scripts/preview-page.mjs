@@ -328,6 +328,14 @@ async function runStep(step) {
       await sleep(40);
     }
   }
+  if (step.fill !== undefined) {
+    const target = await waitFor(step.fill.selector, step.timeoutMs);
+    // React 受控输入：必须走原生 setter 再派发 input，直接改 value 不会触发 onChange。
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(target, step.fill.value);
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    return 'fill ' + step.fill.selector + ' = ' + JSON.stringify(step.fill.value);
+  }
   if (step.sleep !== undefined) {
     await sleep(step.sleep);
     return 'sleep ' + step.sleep;
