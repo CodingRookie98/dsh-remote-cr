@@ -610,12 +610,26 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
         snapshot.attach === null
           ? null
           : { phase: snapshot.attach.phase, startedAt: snapshot.attach.startedAt },
+      // 新鲜度与连通性是两件事：掉线不代表表是旧的（断连时表刚被标 offline），刷新失败
+      // 也不代表掉线。两条都原样交给面板，别在这里合并成一个笼统的「状态」。
+      stale: snapshot.stale,
       defaults: readDefaults(),
     }
   }
 
   mount('/projection', ['GET'], async (_req, res) => {
     sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(requireProjection())))
+  })
+
+  // 刷新：读一次离远端，把 `running` 这类会变的事实贴回投影表（R1）。
+  // **不改 /projection 的语义**：读面板仍是纯本地快照，用户没点刷新就不打远端 ——
+  // 把远端 RPC 藏进「读面板」，会让每次打开面板都变成一次远端往返。
+  mount('/projection/refresh', ['POST'], async (_req, res) => {
+    const service = requireProjection()
+    // 失败**不吞**：`refreshSessions()` 已把 stale 置 true 并原样抛原错误，信封带的仍是
+    // 原始 code —— 面板据此区分「远端拒了」与「隧道断了」，两种下一步完全不同。
+    await service.refreshSessions()
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(service)))
   })
 
   // ── 插件同步（RFC-0003）─────────────────────────────────────────────────

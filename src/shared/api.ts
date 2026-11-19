@@ -213,6 +213,17 @@ export interface ProjectionSnapshotInfo {
    */
   readonly attach: { readonly phase: AttachPhase; readonly startedAt: number } | null
   /**
+   * **最近一次刷新失败、表里仍是旧帧**。
+   *
+   * 不是「远端离线」——那件事归 `link` 与各条目的 `availability`：通道可能好着、
+   * 远端也答话，只是某一次刷新被拒了。这条只回答「这份会话列表有多新」：
+   * 刷新成功（或刚接入过）是 `false`，刷新失败是 `true`，且失败时旧帧原样留着（不清表）。
+   *
+   * 必填而不是可选：「没填」与「不是旧的」在语义上是两件事，可选会让漏填悄悄退化成
+   * 「看起来是新的」。宿主半 `snapshotInfo()` 每次都填，浏览器半的夹具也必须显式给值。
+   */
+  readonly stale: boolean
+  /**
    * 接入默认值（端口 + 远端检出根）。
    *
    * 跟着快照一起给：面板要靠它判断「现在能不能接入」，分两次请求只会多一个

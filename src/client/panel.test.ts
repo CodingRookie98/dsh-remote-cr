@@ -127,6 +127,7 @@ function snapshot(overrides: Partial<ProjectionSnapshotInfo> = {}): ProjectionSn
     link: 'idle',
     envPolicy: null,
     attach: null,
+    stale: false,
     defaults: DEFAULTS,
     ...overrides,
   }
