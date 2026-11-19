@@ -31,6 +31,11 @@
 - [x] P3.4 面板诊断区 + locales + styles（`panel-diagnostics` / `panel-diagnostic[data-status]` / `diagnostics-copy` / `diagnostics-rerun`）
 - [x] P3.5 预览：`/doctor` 夹具 + `panel-diagnostics` 场景（81 标记）；顺带把「区块标题数」门禁从 3 改成 4（面板真的多了一个区）
 
-## 4. 修订历史
+## 4. 过程偏差（记录在案）
+
+- **本片直接提交到了 `master`，没有开功能分支**：与 goal-loop 不变式「分支隔离」不符。原因是本轮在 `master` 上继续了小步实现，事后才意识。
+  已推送的提交不做历史重写；后续切片恢复「先切分支、P4 放行后合并」的流程。
+
+## 5. 修订历史
 
 - **2026-11-19**：创建。
