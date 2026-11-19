@@ -107,7 +107,7 @@ async function crossHost(hub) {
     JSON.stringify({ wsIds }))
 
   console.log('==> M4 释放一台：只回收那台')
-  const released = hub.release(wsl)
+  const released = await hub.releaseAll(wsl)
   // 判据：WSL 的 entry 被移除、SSH 仍在（connected 且 entry 还在）；监听探测只记录。
   const wslEntryGone = hub.peek(wsl) === undefined
   const sshStill = hub.peek(ssh) !== undefined && sshEntry?.service.connected === true
@@ -124,7 +124,7 @@ async function crossHost(hub) {
     JSON.stringify({ released, wslEntryGone, sshStill, wslListeningAfter, remoteProcCount }))
 
   console.log('==> M5 释放另一台：两台都关')
-  hub.release(ssh)
+  await hub.releaseAll(ssh)
   const sshEntryGone = hub.peek(ssh) === undefined
   expect('M5', sshEntryGone && hub.entries().length === 0, JSON.stringify({ sshEntryGone, entries: hub.entries().length }))
   return { ports: [wslP, sshP], wsIds }
@@ -154,14 +154,14 @@ async function sameHost(hub) {
   expect('S2', firstConnected && !secondConnected, JSON.stringify({ ports, firstConnected, secondConnected }))
 
   console.log('==> S3 释放已连那台：entry 被移除、引用归零；未连那台释放不报错')
-  const releasedFirst = hub.release(first)
+  const releasedFirst = await hub.releaseAll(first)
   // 不写 `recycled ? 0 : -1` 这种同义反复：断言看得到的事实（entry 消失 + 另一台仍在册）。
   const firstGone = hub.peek(first) === undefined
   const secondStill = hub.peek(second) !== undefined
-  const releasedSecond = hub.release(second)
+  const releasedSecond = await hub.releaseAll(second)
   const secondGone = hub.peek(second) === undefined
   expect('S3',
-    releasedFirst.recycled === true && firstGone && secondStill && releasedSecond.recycled === false && secondGone,
+    releasedFirst.recycled === true && firstGone && secondStill && releasedSecond.recycled === true && secondGone,
     JSON.stringify({ releasedFirst, firstGone, secondStill, releasedSecond, secondGone }))
   return { ports, adjusted, firstGone, secondGone }
 }

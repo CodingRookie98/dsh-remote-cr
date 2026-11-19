@@ -127,7 +127,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 | `/stop` 失败可重试 | 失败时把连接放回 `#detached`（`#retired` 撤回），第二次「结束远端」会真的再收一次 | service 用例：第一次 false、第二次 true，`attempts === 2` |
 | 复用分支 clean | 新增 `buildKillAndVerifyScript`：`kill -9` 后轮询 `/proc`，回 `PID_GONE` / `PID_ALIVE`；`live` 据 `PID_GONE` 决定 clean | instance 用例（脚本含 `/proc` 与两种标记）+ 真机 |
 
-**仍未做（记账）**：探针仍打 `hub.releaseAll` 而非 `/stop` 路由（路由层 await 已由 routes 用例覆盖）；`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
+**仍未做（记账）**：恢复探针打的是 `hub.releaseAll`（与 `/stop` 现在走同一条路径），没有经过 HTTP 路由层——路由层的 await/错误传播由 `routes.test.ts` 覆盖。`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
 ### hidepid=2 容器判活（未验证项 2）的真机结论（2026-11-19）
 
@@ -151,7 +151,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 取证：`spikes/m4-multi-host/cross-backend-probe.cjs`（**6/6**）。
 
 - **本机环境里 WSL 与 SSH 不是同一台机器**：`machine-id` 分别为 `1ab08868…`（WSL `CodingRookie`，10.19.121.234）与 `716bddce…`（SSH `LAPTOP-0BNDLS3J`，192.168.5.6:2222）。
-  因此「跨后端同机导致端口互撞」这个场景**在本环境无法复现**，维持**未验证**，不做推断。
+  ~~因此该场景在本环境无法复现~~ → **已复现并修复（见下「本机 WSL sshd 验证环境」）**：把 SSH 指向本机 WSL 的 sshd 后两端 `machine-id` 一致，第二个 target 确实撞 `remote/port-in-use`；修法是「端口被占就换池内端口重试一次」。
 - **同后端同机（SSH 同别名、同端口）避让是真的**：目标 A 用 8953 → 目标 B 也要 8953 → B 被顺延到 **8941**，`portAdjusted=true`，两台都 attach 成功。这是 A3 端口避让逻辑的第一份**真机**证据（此前只有 fake-connect 单测）。
 - 顺带一条观测：SSH 后端的 target 端口是**本地隧道口**，远端 dsh 的监听口不必然等于它（实测 `8953=0 / 8941=1`）。所以「监听数」只记录、不断言——写成断言就是赌一个未验证的映射。
 
@@ -172,7 +172,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 **探针口径修正（重要）**：WSL 走 stdio 桥**本来没有 TCP 监听**，且本机 `ss` 观测不稳定（多次 connected 但看不到监听）。
 因此 cross-host / same-host 的判据改为 **connected 状态 + 条目生命周期**，监听结果只记录不断言。
-**未验证（本机反复尝试仍拿不到）**：远端进程是否真的监听/退出。试过两条判据都不成立：`ss` 观测不稳定（connected 但看不到监听）；`pgrep` 按进程名与按检出路径在本机都数到 0（WSL 侧进程在 `wsl.exe --exec` 会话外不可见，或 attach 复用了热实例）。因此「结束远端真的杀掉远端进程」**没有可靠证据**，只有条目/端口层证据；`recycle()` 也未 await `connection.dispose()`。
+**已解决（2026-11-19）**：远端进程是否真的退出，改用远端自己写的 `instances/<id>.json` 里的 pid + `/proc`（不再依赖 `ss`）。`spikes/m4-multi-host/reclaim-probe.cjs` 真机 **3/3**：attach 后 pid 在 `/proc` 里、`releaseAll` 后 pid 消失（最近一次 pid 16119）。此前那次失败尝试的记录：`ss` 观测不稳定（connected 但看不到监听）；`pgrep` 按进程名与按检出路径在本机都数到 0（WSL 侧进程在 `wsl.exe --exec` 会话外不可见，或 attach 复用了热实例）。因此「结束远端真的杀掉远端进程」**没有可靠证据**，只有条目/端口层证据；`recycle()` 也未 await `connection.dispose()`。
 
 **A3 第三轮 Delta（判不可签）已修**：
 - N2 死分支：`GET /projection` 判 `service === undefined`，而 `hub.focused()` 返回 **null** → 空闲快照分支永不进入（面板首开仍报 disconnected）。改为同时判 null，并补用例。
@@ -185,8 +185,8 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 遗留（不阻断交付，下个维护窗口补）：
 - P2：N7 用例的「归还端口」半句此前对 `#ports.release` 不敏感（已重做为「同主机先占 8941 → 僵尸被顺延 → release 后必须拿回该池端口」）；
-- P3：`connectedTargets()` 用 effective 端口比 `sameTarget`，SSH 同别名被顺延的 target 若传请求端口会漏判 busy（UI 走 snapshot 的 effective，不受影响）；
-- P3：`sameTarget` 仍大小写敏感，而 `targetKeyOf` 已归一；`target-wiring` 是文本门禁，注释可绕过；
+- ~~P3：`connectedTargets()` 用 effective 端口比 `sameTarget`~~ → **已改成按主机身份 `sameHostOf`**，并补了用例（同别名不同端口/目录仍判 busy）；
+- ~~P3：`sameTarget` 仍大小写敏感~~ → **已与 `targetKeyOf` 对齐**（别名/发行版都按小写比），并有用例；剩 `target-wiring` 是文本门禁（注释可绕过），真实行为靠 L4；
 - P3：`remoteProcCount` 自匹配已修（改用 `node.*dsh` + 排除 pgrep），但仍是「只记录不断言」。
 
 **口径更正（第三次）**：Delta-3 提交信息写 902 tests，实测 **905 / 0 fail**（901 + 2 路由 + 2 hub）。三次都是先写提交信息后跑门禁；规矩已记在本文件，仍复发一次，说明要改的是**流程顺序**而不是提醒。
