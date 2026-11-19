@@ -26,6 +26,7 @@
 |---|---|
 | [requirements.md](./design/requirements.md) | 需求、用户故事、验收标准、非目标 |
 | [architecture.md](./design/architecture.md) | 总体架构、嵌入路线、后端抽象、凭据代理、安装器、后端矩阵（§14） |
+| [plugin-capability-boundary.md](./design/plugin-capability-boundary.md) | **不改内核时插件能做什么/不能做什么**：127 个 slot 的可用面、服务能否被替换（cordis 实测）、12 项能力矩阵、自绘侧栏的上界评估 |
 | [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、「远端工作台」面板、添加工作区（§4 四选一已被 §10 双栏工作台取代）、状态视觉映射、同步面板 |
 | [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M4；**M5 Docker 已取消**，见 ADR-0008） |
 | [keep-alive.md](./design/keep-alive.md) | **驻留模式**：`keepAlive` 控制行、实例登记、TTL、与 A7「不留孤儿」的冲突 |
