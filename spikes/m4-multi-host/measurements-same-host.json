@@ -12,7 +12,8 @@
       false,
       true
     ],
-    "closedFirst": 0
+    "firstGone": true,
+    "secondGone": true
   },
-  "at": "2026-11-19T08:19:03.142Z"
+  "at": "2026-11-19T08:35:53.846Z"
 }

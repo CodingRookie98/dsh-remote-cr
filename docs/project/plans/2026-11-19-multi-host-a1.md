@@ -80,6 +80,13 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 因此 cross-host / same-host 的判据改为 **connected 状态 + 条目生命周期**，监听结果只记录不断言。
 **未验证**：远端进程是否真的在监听/退出；`recycle()` 未 await `connection.dispose()`。
 
+**A3 第三轮 Delta（判不可签）已修**：
+- N2 死分支：`GET /projection` 判 `service === undefined`，而 `hub.focused()` 返回 **null** → 空闲快照分支永不进入（面板首开仍报 disconnected）。改为同时判 null，并补用例。
+- M7 假绿：原「两轮 21 次 attach+release」每轮都立即释放，`taken` 恒空、`reserveAvoiding` 从未走到。改为 **21 台同时在场** → 21 个不同端口 → 全释放 → 第二轮仍能拿满；变异（去掉端口归还）已验证会让它红。
+- N1/N3/N4 补行为判据：hub 装配下 purge 连接中拒绝、失败 attach 必须 `dispose()`、失败不清 focus（三条各自做了变异验证）。
+- N7：`release` 对 refs=0 的僵尸 entry 直接删除并归还端口（同 distro 顺延场景会制造这种 entry）。
+- 探针去掉同义反复（`closedFirst = recycled ? 0 : -1`），S3 改为断言 entry 消失；远端进程计数只记录不断言。
+
 ## 4. 风险
 
 | 项 | 处置 |

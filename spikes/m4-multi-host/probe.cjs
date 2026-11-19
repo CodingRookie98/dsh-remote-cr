@@ -111,9 +111,12 @@ async function crossHost(hub) {
   // 判据：WSL 的 entry 被移除、SSH 仍在（connected 且 entry 还在）；监听探测只记录。
   const wslEntryGone = hub.peek(wsl) === undefined
   const sshStill = hub.peek(ssh) !== undefined && sshEntry?.service.connected === true
+  // 远端进程是否真退出：**只记录不断言**（本机 `ss`/进程观测不稳定，不能当判据）。
   const wslListeningAfter = wslP === undefined ? 'unknown' : wslPort(wslP)
+  const remoteProcs = spawnSync('wsl.exe', ['-d', WSL_DISTRO, '--exec', 'sh', '-c', "pgrep -fc 'dsh' || true"], { windowsHide: true })
+  const remoteProcCount = Buffer.from(remoteProcs.stdout ?? []).toString('utf8').trim()
   expect('M4', released.recycled === true && wslEntryGone && sshStill,
-    JSON.stringify({ released, wslEntryGone, sshStill, wslListeningAfter }))
+    JSON.stringify({ released, wslEntryGone, sshStill, wslListeningAfter, remoteProcCount }))
 
   console.log('==> M5 释放另一台：两台都关')
   hub.release(ssh)
@@ -145,13 +148,17 @@ async function sameHost(hub) {
   const secondConnected = entries[1]?.service.connected === true
   expect('S2', firstConnected && !secondConnected, JSON.stringify({ ports, firstConnected, secondConnected }))
 
-  console.log('==> S3 释放已连那台：引用归零即回收；未连那台释放不报错')
+  console.log('==> S3 释放已连那台：entry 被移除、引用归零；未连那台释放不报错')
   const releasedFirst = hub.release(first)
-  const closedFirst = releasedFirst.recycled ? 0 : -1
+  // 不写 `recycled ? 0 : -1` 这种同义反复：断言看得到的事实（entry 消失 + 另一台仍在册）。
+  const firstGone = hub.peek(first) === undefined
+  const secondStill = hub.peek(second) !== undefined
   const releasedSecond = hub.release(second)
-  expect('S3', releasedFirst.recycled === true && closedFirst >= 0 && releasedSecond.recycled === false,
-    JSON.stringify({ releasedFirst, closedFirst, releasedSecond }))
-  return { ports, adjusted, closedFirst }
+  const secondGone = hub.peek(second) === undefined
+  expect('S3',
+    releasedFirst.recycled === true && firstGone && secondStill && releasedSecond.recycled === false && secondGone,
+    JSON.stringify({ releasedFirst, firstGone, secondStill, releasedSecond, secondGone }))
+  return { ports, adjusted, firstGone, secondGone }
 }
 
 async function main() {

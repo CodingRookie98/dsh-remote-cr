@@ -174,34 +174,65 @@ test('B3 边界：还有别的引用时，失败不得删掉 entry（否则在�
   assert.notEqual(hub.peek(A), undefined)
 })
 
-test('B4 变体：drop 时必须还端口（否则第二轮会假池满）', async () => {
+test('M7 端口归还：21 台同时在场 → 全部释放 → 再来一轮仍能分配（原来那版是假绿）', async () => {
   const hub = new ProjectionHub(() => stubService())
-  for (let round = 0; round < 2; round += 1) {
-    for (let index = 0; index < 21; index += 1) {
-      const target = { ...A, remoteRoot: '/r' + String(round) + '-' + String(index) }
-      await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
-      hub.release(target)
-    }
-    assert.equal(hub.entries().length, 0)
-  }
+  const first = Array.from({ length: 21 }, (_, index) => ({ ...A, remoteRoot: '/sim-' + String(index) }))
+  // **同时在场**才会真正走到 `reserveAvoiding`：逐个 attach+release 时 taken 恒空，测不到分配器。
+  for (const target of first) await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  const ports = hub.entries().map((entry) => entry.effective.port)
+  assert.equal(ports.length, 21)
+  assert.equal(new Set(ports).size, 21, '21 台必须拿到 21 个不同端口')
+  for (const target of first) hub.release(target)
+  assert.equal(hub.entries().length, 0)
+  // 第二轮：端口必须全部归还，否则这里会抛 PortPoolExhausted。
+  const again = Array.from({ length: 21 }, (_, index) => ({ ...A, remoteRoot: '/again-' + String(index) }))
+  for (const target of again) await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  assert.equal(hub.entries().length, 21, '第二轮同样能拿满 21 个')
 })
 
-test('B4 端口不随僵尸条目泄漏：21 次 attach+release 后第 22 个仍能分配', async () => {
-  let made = 0
-  const hub = new ProjectionHub(() => {
-    made += 1
-    return stubService()
-  })
-  for (let index = 0; index < 21; index += 1) {
-    const target = { ...A, remoteRoot: '/home/hui/w' + String(index) }
-    await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
-    hub.release(target)
-  }
-  assert.equal(hub.entries().length, 0, '释放后不留 entry')
-  const extra = { ...A, remoteRoot: '/home/hui/w-last' }
-  await hub.attach(extra, { remotePath: '/a', localPath: 'C:/a' })
-  assert.equal(hub.entries().length, 1, '第 22 个不该被假池满挡住')
-  assert.ok(made >= 22)
+test('N7 只建过引擎（refs=0）的僵尸：release 要删 entry 并归还端口', async () => {
+  const hub = new ProjectionHub(() => stubService())
+  hub.serviceFor(A)
+  assert.equal(hub.entries().length, 1)
+  assert.deepEqual(hub.release(A), { remaining: 0, recycled: false })
+  assert.equal(hub.entries().length, 0, '僵尸 entry 不许留下（会把端口一直算作占用）')
+  // 端口归还的直接判据：同一 target 再建一次能拿回原端口。
+  hub.serviceFor(A)
+  assert.equal(hub.entries()[0]?.effective.port, A.port)
+})
+
+test('N3 失败 attach 必须 dispose（否则远端 dsh 常驻、UI 无路径回收）', async () => {
+  let disposed = 0
+  const hub = new ProjectionHub(
+    () =>
+      ({
+        attach: async () => {
+          throw new Error('boom')
+        },
+        dispose: () => {
+          disposed += 1
+        },
+        recycle() {},
+        snapshot: () => ({ workspaces: [], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+      }) as unknown as ProjectionService,
+  )
+  await assert.rejects(hub.attach(A, { remotePath: '/a', localPath: 'C:/a' }))
+  assert.equal(disposed, 1, '失败必须先 dispose 再丢句柄')
+})
+
+test('N4 失败接入不清掉已连主机的读目标', async () => {
+  let fail = false
+  const hub = new ProjectionHub(() =>
+    stubService(async () => {
+      if (fail) throw new Error('boom')
+      return { created: true, workspace: {}, sessions: [] }
+    }),
+  )
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  const focusedBefore = hub.focused()
+  fail = true
+  await assert.rejects(hub.attach({ ...A, remoteRoot: '/other' }, { remotePath: '/o', localPath: 'C:/o' }))
+  assert.equal(hub.focused(), focusedBefore, '失败不能把已连主机从默认读路径上抹掉')
 })
 
 test('sameHostOf：WSL 与 SSH 别名都大小写不敏感（P4 B6）', () => {

@@ -147,8 +147,14 @@ export class ProjectionHub {
   release(target: ConnectTarget): { readonly remaining: number; readonly recycled: boolean } {
     const key = targetKeyOf(target)
     const entry = this.#services.get(key)
+    const had = this.#refs.count(key)
     const outcome = this.#refs.release(key)
     if (entry === undefined) return { remaining: outcome.remaining, recycled: false }
+    // refs 本来就是 0（只建过引擎、从没 attach 成功）：这是僵尸，直接删掉并归还端口（P4 N7）。
+    if (had === 0) {
+      this.#dropEntry(key)
+      return { remaining: 0, recycled: false }
+    }
     if (!outcome.recycle) return { remaining: outcome.remaining, recycled: false }
     entry.service.recycle()
     // **必须删 entry**（P4 B4）：只回收端口而留 entry，`#effectiveOf` 的 taken 会一直算上僵尸端口，

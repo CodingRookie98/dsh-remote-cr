@@ -335,6 +335,38 @@ test('/disconnect 的未知 target：结构化报错，不许静默回落到 foc
   assert.deepEqual(calls, [], '未知 target 不许把请求打到 focus 上')
 })
 
+test('/projection：容器在但一台都没接入时回空闲快照（不是安装错误，P4 N2）', async () => {
+  const hub = new ProjectionHub(() => ({}) as unknown as ProjectionService)
+  const result = await rig({}, { hub }).call({ path: '/projection' })
+  const envelope = result.json as { ok: boolean; value?: { connected: boolean; link: string; workspaces: unknown[] } }
+  assert.equal(envelope.ok, true)
+  assert.equal(envelope.value?.connected, false)
+  assert.equal(envelope.value?.link, 'idle')
+  assert.deepEqual(envelope.value?.workspaces, [])
+})
+
+test('/maintenance/purge：hub 装配下目标连着也要拒绝（N1 的行为判据，不靠注入 projection）', async () => {
+  const target: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }
+  const stub = {
+    attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+    snapshot: () => ({ workspaces: [], sessions: [], connected: true, target, link: 'connected', envPolicy: null, attach: null, stale: false }),
+    get connected() {
+      return true
+    },
+  } as unknown as ProjectionService
+  const hub = new ProjectionHub(() => stub)
+  await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  const calls: string[] = []
+  const result = await rig({}, { hub, sync: maintenanceSync(calls, {}) }).call({
+    path: '/maintenance/purge',
+    method: 'POST',
+    body: JSON.stringify({ target, confirm: true }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.code, 'remote/maintenance-busy')
+  assert.equal(calls.length, 0)
+})
+
 test('/projection/targets：没有容器时给空数组（不是 404、也不是 null）', async () => {
   const result = await rig().call({ path: '/projection/targets' })
   const envelope = result.json as { ok: boolean; value?: unknown[] }
