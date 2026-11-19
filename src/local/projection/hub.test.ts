@@ -158,6 +158,34 @@ test('B3 attach 失败回滚：失败一次 + 成功一次 → 一次 release �
   assert.deepEqual(hub.release(A), { remaining: 0, recycled: true }, '一次 release 就该回收（引用没有留账）')
 })
 
+test('B3 边界：还有别的引用时，失败不得删掉 entry（否则在用引用被孤儿化）', async () => {
+  let failNext = false
+  const hub = new ProjectionHub(() =>
+    stubService(async () => {
+      if (failNext) throw new Error('boom')
+      return { created: true, workspace: {}, sessions: [] }
+    }),
+  )
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  failNext = true
+  await assert.rejects(hub.attach(A, { remotePath: '/a', localPath: 'C:/a' }))
+  assert.equal(hub.entries().length, 1, '还有 1 个引用在用，entry 必须留着')
+  assert.equal(hub.entries()[0]?.references, 1)
+  assert.notEqual(hub.peek(A), undefined)
+})
+
+test('B4 变体：drop 时必须还端口（否则第二轮会假池满）', async () => {
+  const hub = new ProjectionHub(() => stubService())
+  for (let round = 0; round < 2; round += 1) {
+    for (let index = 0; index < 21; index += 1) {
+      const target = { ...A, remoteRoot: '/r' + String(round) + '-' + String(index) }
+      await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+      hub.release(target)
+    }
+    assert.equal(hub.entries().length, 0)
+  }
+})
+
 test('B4 端口不随僵尸条目泄漏：21 次 attach+release 后第 22 个仍能分配', async () => {
   let made = 0
   const hub = new ProjectionHub(() => {

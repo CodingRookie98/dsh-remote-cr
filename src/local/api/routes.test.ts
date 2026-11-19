@@ -313,6 +313,28 @@ test('/disconnect?target=：只断开指定那台，不动 focus（P4 A3-B2）',
 })
 
 
+test('/disconnect 的未知 target：结构化报错，不许静默回落到 focus（P4 M5）', async () => {
+  const calls: string[] = []
+  const hub = new ProjectionHub(
+    () =>
+      ({
+        attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+        disconnect: () => calls.push('x'),
+        snapshot: () => ({ workspaces: [], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+      }) as unknown as ProjectionService,
+  )
+  await hub.attach({ backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }, { remotePath: '/a', localPath: 'C:/a' })
+  const result = await rig({}, { hub }).call({
+    path: '/disconnect',
+    method: 'POST',
+    body: JSON.stringify({ target: { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/never' } }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.ok, false)
+  assert.equal(envelope.code, 'remote/unknown')
+  assert.deepEqual(calls, [], '未知 target 不许把请求打到 focus 上')
+})
+
 test('/projection/targets：没有容器时给空数组（不是 404、也不是 null）', async () => {
   const result = await rig().call({ path: '/projection/targets' })
   const envelope = result.json as { ok: boolean; value?: unknown[] }

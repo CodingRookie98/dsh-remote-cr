@@ -41,10 +41,15 @@ import {
   disconnectRemoteOf,
   reconnectRemoteOf,
   stopRemoteOf,
+  refreshProjectionOf,
   readDoctor,
   readResidue,
   purgeResidue,
   readHosts,
+  createSessionOf,
+  probeRemoteSessionOf,
+  listImportableOf,
+  importWorkspacesOf,
   reconnectRemote,
   refreshProjection,
   stopRemote,
@@ -479,13 +484,14 @@ export function RemoteCrPanel(): unknown {
     () =>
       createRefreshRunner<PanelFailure>({
         current: () => liveSnapshot.current,
-        refresh: refreshProjection,
-        reread: readProjection,
+        // 轮询也要带 focus：不带的话切到 A 后每 5 s 就被服务端 focus（B）覆盖回去（P4 N5）。
+        refresh: () => (focusTarget === null ? refreshProjection() : refreshProjectionOf(focusTarget)),
+        reread: () => (focusTarget === null ? readProjection() : readProjectionOf(focusTarget)),
         applySnapshot: (next) => setSnapshot(next),
         applyError: (update) => setError(update),
         shape: (caught) => refreshFailureOf(caught),
       }),
-    [],
+    [focusTarget],
   )
 
   /**
@@ -772,7 +778,10 @@ export function RemoteCrPanel(): unknown {
   const onCreateSession = async (workspaceId: string): Promise<void> => {
     setBusy('session:' + workspaceId)
     try {
-      const created = await createRemoteSession({ workspaceId })
+      const created =
+        focusTarget === null
+          ? await createRemoteSession({ workspaceId })
+          : await createSessionOf(focusTarget, { workspaceId })
       setError(null)
       setActiveSession(created.sessionId)
       await refresh()
@@ -816,7 +825,7 @@ export function RemoteCrPanel(): unknown {
   const onLoadImportable = async (): Promise<void> => {
     setBusy('import-list')
     try {
-      const listed = await listImportable()
+      const listed = focusTarget === null ? await listImportable() : await listImportableOf(focusTarget)
       setImportable(listed.workspaces)
       setImportPick([])
     } catch (caught) {
@@ -830,7 +839,8 @@ export function RemoteCrPanel(): unknown {
     if (importPick.length === 0) return
     setBusy('import')
     try {
-      await importWorkspaces(importPick)
+      if (focusTarget === null) await importWorkspaces(importPick)
+      else await importWorkspacesOf(focusTarget, importPick)
       setImportable(null)
       setImportPick([])
       await refresh()
@@ -859,7 +869,8 @@ export function RemoteCrPanel(): unknown {
   const onProbe = async (sessionId: string): Promise<void> => {
     setBusy('probe:' + sessionId)
     try {
-      const outcome = await probeRemoteSession(sessionId)
+      const outcome =
+        focusTarget === null ? await probeRemoteSession(sessionId) : await probeRemoteSessionOf(focusTarget, sessionId)
       setProbe(outcome)
       setActiveSession(sessionId)
       setError(null)

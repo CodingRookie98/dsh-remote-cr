@@ -340,6 +340,38 @@ export function probeRemoteSession(
   return callApi('/probe', { method: 'POST', body: { sessionId } }, fetchImpl)
 }
 
+/** 目标版：会话 / 取证 / 导入（RFC-0007 B2 的客户端半边）。 */
+export function createSessionOf(
+  target: RemoteTargetInfo,
+  input: { workspaceId: string; agentPreset?: string | undefined },
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly sessionId: string; readonly agentPreset?: string | undefined }> {
+  return callApi('/session', { method: 'POST', body: { ...input, target } }, fetchImpl)
+}
+
+export function probeRemoteSessionOf(
+  target: RemoteTargetInfo,
+  sessionId: string,
+  fetchImpl?: typeof fetch,
+): Promise<import('../shared/api.ts').ProbeOutcome> {
+  return callApi('/probe', { method: 'POST', body: { sessionId, target } }, fetchImpl)
+}
+
+export function listImportableOf(
+  target: RemoteTargetInfo,
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly workspaces: readonly ImportableWorkspaceInfo[] }> {
+  return callApi('/workspace/importable', { query: { target: JSON.stringify(target) } }, fetchImpl)
+}
+
+export function importWorkspacesOf(
+  target: RemoteTargetInfo,
+  paths: readonly string[],
+  fetchImpl?: typeof fetch,
+): Promise<{ readonly imported: number }> {
+  return callApi('/workspace/import', { method: 'POST', body: { paths, target } }, fetchImpl)
+}
+
 /** ── 插件同步（RFC-0003 需求①）──────────────────────────────────────────── */
 
 /** 同步只需要目标身份（后端 + 名字 + 端口 + 远端根），不需要 remotePath/localPath。 */

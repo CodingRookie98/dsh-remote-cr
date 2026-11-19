@@ -102,17 +102,30 @@ export class ProjectionHub {
   async attach(target: ConnectTarget, request: AttachRequest, control: AttachControl = {}): Promise<AttachResult> {
     const key = targetKeyOf(target)
     const existed = this.#services.has(key)
+    const previousFocus = this.#focus
     const service = this.serviceFor(target)
     const entry = this.#services.get(key)
     if (entry === undefined) throw new Error('hub: service missing after serviceFor')
-    this.#focus = key
     this.#refs.retain(key)
     try {
-      return await service.attach(entry.effective, request, control)
+      const result = await service.attach(entry.effective, request, control)
+      this.#focus = key
+      return result
     } catch (error) {
       const outcome = this.#refs.release(key)
       // 本次新建、或这条引用是最后一个：把 entry 与端口一起还回去，避免僵尸端口。
-      if (!existed || outcome.recycle) this.#dropEntry(key)
+      // **先 dispose 再丢**（P4 N3）：非取消失败时 service 可能已经起了远端 dsh，
+      // 直接丢句柄会让它常驻、端口被占，而生产没有「释放」入口能再回收它。
+      if (!existed || outcome.recycle) {
+        try {
+          await service.dispose()
+        } catch {
+          // dispose 失败也要把 entry 清掉：留着只会让端口一直被算作占用
+        }
+        this.#dropEntry(key)
+        // 失败不该抹掉用户原来的读目标（P4 N4）。
+        this.#focus = previousFocus
+      }
       throw error
     }
   }
