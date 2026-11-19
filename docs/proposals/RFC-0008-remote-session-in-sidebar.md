@@ -25,10 +25,19 @@
 
 ## 3. 三条路径
 
+### 3.1 P2 也要动内核（2026-11-19 补证）
+
+P2 的隐含前提是「本地能创建一条会话，但它的 agent 是转发到远端的代理」。查证结果：
+
+- `session-controller` 的 `create` 走 `composeAgent(presetId)` → `ApiSessionComposition`，而该类型**没有导出**、`setup` 由 `agentPresets` 决定（`src/agent.ts:56-80`、`:261`、`:342`）；
+- 也就是说插件只能选 **preset**，不能注入自己的 agent/turn 实现。
+
+→ P2 不是「纯插件 + companion」的活，它和 P1 一样要改内核（把 agent/transport 变成可插拔）。`README` 第 5 节的时间估计只算了 companion 侧，**低估了内核依赖**。
+
 | 路径 | 做法 | 影响面 | 成本 | 风险 |
 |---|---|---|---|---|
 | **P1 内核多 host**（推荐提给上游） | `api-gateway` 支持注册额外 remote endpoint；Client 侧按 host 路由 session/workspace namespace | DSH 内核 + 本插件 | 上游排期不可控 | 中：需要同时改 gateway / remotes / session-controller 的装配契约 |
-| **P2 companion 全量会话代理** | 远端 companion 暴露 `session/list|get|send|stream`，本地建**只读镜像会话**，发送走代理 | 本插件 + companion | 2–3 周 | 高：与 `architecture.md` §4.2「不双写、以远端为准」正面冲突，需要重写禁令；镜像与真实状态的漂移要单独设计 |
+| **P2 companion 全量会话代理** | 远端 companion 暴露 `session/list|get|send|stream`，本地建镜像会话，发送走代理 | 本插件 + companion **+ 内核**（见下） | 2–3 周 | 高：与 `architecture.md` §4.2「不双写、以远端为准」正面冲突；**且本地会话的 agent 不可替换**（见 §3.1），必须改内核 |
 | **P3 整机切换（桌面端形态）** | 本地 GUI 以 remote 模式连到远端 host（Tauri 已实现），放弃混排 | 产品形态 | 低（复用官方装配） | 高：A1「混排」不再成立；一台机器只能看一个 host |
 
 ## 4. 本轮已落地的替代（B）
