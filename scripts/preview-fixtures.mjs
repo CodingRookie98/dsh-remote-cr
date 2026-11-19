@@ -948,6 +948,9 @@ export function sceneFixtures(sceneId) {
         connected: true,
         workspaces: 2,
         sessions: 30,
+        port: 8899,
+        portAdjusted: false,
+        references: 1,
       },
       {
         key: 'ssh:prod|22|/srv/api',
@@ -955,6 +958,9 @@ export function sceneFixtures(sceneId) {
         connected: false,
         workspaces: 1,
         sessions: 4,
+        port: 8942,
+        portAdjusted: true,
+        references: 0,
       },
     ],
     // 远端残留（RFC-0006 Phase 2）：一份含「活着的实例 + 已死登记」的盘点结果。

@@ -1137,6 +1137,14 @@ export function RemoteCrPanel(): unknown {
                 { 'data-remote-cr': 'host-counts' },
                 t('panel.hostCounts', { workspaces: String(host.workspaces), sessions: String(host.sessions) }),
               ),
+              h(
+                'span',
+                { 'data-remote-cr': 'host-port', 'data-adjusted': String(host.portAdjusted) },
+                t(host.portAdjusted ? 'panel.hostPortAdjusted' : 'panel.hostPort', {
+                  port: String(host.port),
+                  refs: String(host.references),
+                }),
+              ),
             ),
           ),
         )
