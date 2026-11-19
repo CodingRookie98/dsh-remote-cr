@@ -66,6 +66,20 @@ export interface PlanRequest {
 }
 /** GET /plugin-sync 的内核：远端只读一次，不写任何东西。 */
 export declare function buildSyncPlan(request: PlanRequest): Promise<SyncPlanView>;
+/**
+ * 逐条进度（R2-S2）：POST 本身仍是一次普通 JSON 响应，但执行过程中每完成一条就把结果
+ * 写进这张表；客户端在 applying 态轮询 `GET /plugin-sync/progress` 就能真的「逐条显示」。
+ *
+ * 为什么不做流式响应：宿主路由全是 `{ok,value}` 信封 + `sendJson`，改成 NDJSON/SSE 会波及
+ * 所有调用方与预览 harness；轮询是最小改动里唯一不撒谎的方案。
+ */
+export interface SyncProgressView {
+    readonly running: boolean;
+    readonly done: number;
+    readonly total: number;
+    readonly results: readonly SyncResult[];
+}
+export declare function readSyncProgress(targetId: string): SyncProgressView;
 export interface ApplyRequest {
     readonly backend: SyncBackend;
     /** 计划里探明的远端运行时；缺了就用 backend 兜底（测试用）。 */

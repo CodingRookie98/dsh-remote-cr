@@ -164,6 +164,13 @@ export declare function applyHostUpgrade(target: SyncTargetLike, fetchImpl?: typ
 export declare function applySyncRequest(target: SyncTargetLike, names: readonly string[], fetchImpl?: typeof fetch): Promise<{
     readonly results: readonly import('../shared/plugin-sync.ts').SyncResult[];
 }>;
+/** 逐条进度（applying 态轮询；POST 完成后 running=false）。 */
+export declare function readSyncProgress(target: SyncTargetLike, fetchImpl?: typeof fetch): Promise<{
+    readonly running: boolean;
+    readonly done: number;
+    readonly total: number;
+    readonly results: readonly import('../shared/plugin-sync.ts').SyncResult[];
+}>;
 /** 「不再提醒」的本地清单。 */
 export declare function readSyncOptout(fetchImpl?: typeof fetch): Promise<{
     readonly targets: readonly string[];
