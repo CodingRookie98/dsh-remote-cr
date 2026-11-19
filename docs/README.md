@@ -55,6 +55,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [RFC-0007-multi-host.md](./proposals/RFC-0007-multi-host.md) | **多 host（In Review，等 User Nod）**：现状是单槽（第二台会顶掉第一台）；三条路 A 真并发分槽 / B 多登记 + 单活 / C 维持现状，推荐 B 并把里程碑口径一并改掉 |
 | [RFC-0006-uninstall-residue.md](./proposals/RFC-0006-uninstall-residue.md) | **卸载干净（In Review）**：残留三类边界（自动删 / 显式 purge / 永不删）、Phase 1 真机零残留证据、Phase 2 的 residue+purge 契约 |
 | [RFC-0005-diagnostics-center.md](./proposals/RFC-0005-diagnostics-center.md) | **诊断中心（Delivered）**：`GET /doctor` + 面板诊断区（逐条状态 / 复制报告 / 重新检查）；红队两轮闭环 |
 | [RFC-0004-long-task-closure.md](./proposals/RFC-0004-long-task-closure.md) | **长任务闭环（P0，In Review，等 User Nod）**：会话级「运行中」的新鲜度（按需刷新 + 轻轮询）、面板内标题过滤、多 host 引用计数；归档因远端无端点转上游提案 |
