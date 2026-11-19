@@ -78,7 +78,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 **探针口径修正（重要）**：WSL 走 stdio 桥**本来没有 TCP 监听**，且本机 `ss` 观测不稳定（多次 connected 但看不到监听）。
 因此 cross-host / same-host 的判据改为 **connected 状态 + 条目生命周期**，监听结果只记录不断言。
-**未验证**：远端进程是否真的在监听/退出；`recycle()` 未 await `connection.dispose()`。
+**未验证（本机反复尝试仍拿不到）**：远端进程是否真的监听/退出。试过两条判据都不成立：`ss` 观测不稳定（connected 但看不到监听）；`pgrep` 按进程名与按检出路径在本机都数到 0（WSL 侧进程在 `wsl.exe --exec` 会话外不可见，或 attach 复用了热实例）。因此「结束远端真的杀掉远端进程」**没有可靠证据**，只有条目/端口层证据；`recycle()` 也未 await `connection.dispose()`。
 
 **A3 第三轮 Delta（判不可签）已修**：
 - N2 死分支：`GET /projection` 判 `service === undefined`，而 `hub.focused()` 返回 **null** → 空闲快照分支永不进入（面板首开仍报 disconnected）。改为同时判 null，并补用例。

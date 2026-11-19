@@ -1,21 +1,14 @@
 {
-  "mode": "cross-host",
-  "passed": 5,
-  "failed": 0,
-  "failures": [],
+  "mode": "stop",
+  "passed": 0,
+  "failed": 1,
+  "failures": [
+    "T1"
+  ],
   "result": {
-    "ports": [
-      8960,
-      8961
-    ],
-    "wsIds": [
-      [
-        "70aa0df3-8e6f-44d1-881c-edde4ba6e3fc"
-      ],
-      [
-        "25ba2dc8-cd3d-4347-a9c8-a7c5c5bc1fa6"
-      ]
-    ]
+    "before": 0,
+    "afterAttach": 0,
+    "after": 0
   },
-  "at": "2026-11-19T08:43:10.917Z"
+  "at": "2026-11-19T08:54:20.191Z"
 }
