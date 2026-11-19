@@ -7,8 +7,8 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: Phase 1 完成（探针 + 文档）→ Phase 2（residue/purge）待开工
-- **最后验证**: `852 tests / 0 fail`；真机 WSL 4/4、SSH 5/5
+- **当前阶段**: **Phase 2 完成**（residue / purge / 面板区），待 P4 定向红队
+- **最后验证**（2026-11-19）：`863 tests / 0 fail`；真机：卸载探针 WSL 4/4、SSH 5/5；残留盘点 SSH 4/4（真实 1.18 GB staging）、WSL 4/4；**沙箱清理 4/4**
 
 ## 1. 范围
 
@@ -32,7 +32,16 @@ Phase 2 = G3：`GET /maintenance/residue` 与 `POST /maintenance/purge`（两步
 - [x] `spikes/m4-uninstall/probe.cjs`（两模式、5 条断言、按模式落盘）
 - [x] `docs/troubleshooting.md` 新增「卸载后还有残留吗」：三类边界 + 手删命令 + 自检
 - [x] 真机取证（WSL + SSH）
-- [ ] Phase 2：residue / purge（另行开工，destructive 面单独审查）
+- [x] Phase 2：`GET /maintenance/residue`（只读盘点）+ `POST /maintenance/purge`（confirm + 连接中拒绝）+ 面板「远端残留」区（两步确认）+ 预览场景 `panel-residue`
+
+## 3.5 Phase 2 真机发现（两条会伤人的）
+
+| 发现 | 证据 | 修法 |
+|---|---|---|
+| `sed` 反引用在远端被吞（`invalid reference \\1`），pid 解析静默失败 → 登记一律被读成「已死」 | SSH 目标盘点 stderr | pid 提取改 `cut -d, -f2 | tr -cd 0-9`（不在内层引号里写正则） |
+| **`kill -0` 对别人的进程返回 EPERM**，被当成「已死」→ purge 会删掉活着的驻留登记 | 沙箱用例 P7 首跑红：alive.json 与 dead.json 一起被删 | 判活改 `[ -d /proc/$pid ] || kill -0`；pid 读不出来时绝不删 |
+
+两条都是「实现看起来对、真 shell 一跑就露」的类型；沙箱用例（`residue-probe --purge-sandbox`）是这两条的护栏。
 
 ## 4. 风险与未验证
 

@@ -63,6 +63,7 @@
     "check:errors": "node scripts/gen-error-index.mjs --check",
     "check:docs": "node scripts/check-doc-images.mjs",
     "check:boot": "node scripts/check-boot-constraints.mjs",
+    "check:compat": "node scripts/check-compat.mjs",
     "doctor": "node lib/local/doctor.js",
     "coverage": "node --test --experimental-test-coverage \"src/**/*.test.ts\"",
     "release:notes": "node scripts/extract-release-notes.mjs",

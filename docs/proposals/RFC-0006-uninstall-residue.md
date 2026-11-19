@@ -1,6 +1,6 @@
 # RFC-0006 · 卸载干净：残留清单、自动清理边界与显式 purge
 
-- 状态：**In Review（P0 出口）**
+- 状态：**Delivered（Phase 1 + Phase 2 均已合并 master，2026-11-19）**
 - 日期：2026-11-19
 - 关联：`docs/design/milestones.md` §M4「卸载干净」、`src/index.ts`（`ctx.effect` 生命周期）、`src/local/backend/wsl/children.ts`、`src/local/backend/ssh/{bootstrap,instance}.ts`、`docs/troubleshooting.md`
 - 发起：用户 2026-11-19「按你评估的顺序开始」→ 第 2 顺位
