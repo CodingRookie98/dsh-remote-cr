@@ -31,6 +31,7 @@ export declare const zh: {
     readonly 'panel.residueStaging': "staging：{exists} · {kb} KB";
     readonly 'panel.residueInstances': "实例登记 {count} 个（pid 已死 {dead} 个）";
     readonly 'panel.residuePurgeDone': "已清理 {count} 项，释放 {kb} KB";
+    readonly 'panel.residueSkipped': "staging 仍被驻留实例使用，已保留（先「结束远端」再清理）";
     readonly 'panel.residueYes': "存在";
     readonly 'panel.residueNo': "不存在";
     readonly 'panel.diagnosticOk': "正常";

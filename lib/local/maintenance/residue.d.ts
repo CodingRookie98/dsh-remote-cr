@@ -43,7 +43,7 @@ export interface PurgePlan {
     readonly skipReason: 'resident-alive' | null;
     readonly instances: readonly ResidueInstanceFileInfo[];
 }
-export declare function planPurge(report: ResidueReportInfo): PurgePlan;
+export declare function planPurge(report: ResidueReportInfo, stagingId?: string | null | undefined): PurgePlan;
 /** 清理脚本：逐条看 `rm` 的退出码，失败要能上报（v1 会无条件 echo「已删除」）。 */
 export declare function buildPurgeScript(id: string | null | undefined, plan: PurgePlan): string;
 /** 解析清理输出：`failures` 非空表示「报了成功的地方其实没删掉」。 */
