@@ -66,7 +66,7 @@
 ## 错误码索引
 
 <!-- BEGIN GENERATED: error-codes -->
-<!-- 由 scripts/gen-error-index.mjs 生成，共 78 条；不要手改。 -->
+<!-- 由 scripts/gen-error-index.mjs 生成，共 79 条；不要手改。 -->
 
 | 错误码 | 中文文案 | English | 下一步 |
 |---|---|---|---|
@@ -130,6 +130,7 @@
 | `remote/ssh-missing` | 本机没有 ssh 客户端 | No ssh client on this machine | 安装 OpenSSH 客户端 · 确认 ssh 在 PATH 里 |
 | `remote/ssh-target-unresolved` | ssh 配置里没有这个主机 | That host is not in the ssh config | 在 ~/.ssh/config 里写一个 Host 块 · 刷新主机列表 |
 | `remote/startup-failed` | 远端 dsh 启动失败 | The remote dsh failed to start | 看复制的日志定位 · 重试一次 · 换一个端口 |
+| `remote/tunnel-exposed` | 反向代理隧道没有只绑回环（远端 GatewayPorts 放宽了它） | The reverse tunnel is not bound to loopback only (the remote GatewayPorts widened it) | 在远端设 GatewayPorts no 后重连 · 或换一台策略正确的远端 |
 | `remote/tunnel-unavailable` | 隧道建不起来 | The tunnel could not be established | 确认 sshd 允许转发 · 换一条连接重试 |
 | `remote/unknown` | 未知错误 | Unknown error | 复制日志贴进 issue · 重试一次 |
 | `remote/upload-failed` | 往远端写文件失败 | Writing files to the remote failed | 确认目录可写 · 检查磁盘剩余空间 · 用 cat 管道重试 |

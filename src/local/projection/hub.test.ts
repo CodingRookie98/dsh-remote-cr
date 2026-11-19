@@ -159,6 +159,35 @@ test('B3 边界：已有工作区时，失败不得删掉 entry（否则在用�
   assert.equal(hub.entries()[0]?.references, 1)
 })
 
+test('端口被远端占用时换一个端口重试（真机跨后端同机的修法，P4）', async () => {
+  let attempts = 0
+  const hub = new ProjectionHub(
+    () =>
+      ({
+        async attach(_target: ConnectTarget) {
+          attempts += 1
+          // 第一次撞端口，第二次（换了端口）成功。
+          if (attempts === 1) {
+            throw Object.assign(new Error('port taken'), { code: 'remote/port-in-use' })
+          }
+          return { created: true, workspace: {}, sessions: [] }
+        },
+        recycle() {},
+        dispose() {},
+        removeWorkspace: () => true,
+        snapshot: () => ({ workspaces: [], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+        get connected() {
+          return false
+        },
+      }) as unknown as ProjectionService,
+  )
+  await hub.attach(A, { remotePath: '/a', localPath: LOCAL })
+  assert.equal(attempts, 2, '撞端口后必须换端口再试一次')
+  const entry = hub.entries()[0]
+  assert.notEqual(entry?.effective.port, A.port, '重试必须换到别的端口')
+  assert.equal(entry?.portAdjusted, true)
+})
+
 test('N4 失败接入不清掉已连主机的读目标', async () => {
   let fail = false
   const hub = new ProjectionHub(

@@ -1,15 +1,15 @@
 {
-  "sameMachine": false,
+  "sameMachine": true,
   "wslId": "1ab08868bc8f4ef7a7bd3e99e88046f4",
-  "sshId": "716bddce8ae9408ea94c48d888c65c11",
+  "sshId": "1ab08868bc8f4ef7a7bd3e99e88046f4",
   "sameHost": false,
   "ports": [
     8953,
-    8953
+    8941
   ],
-  "listeners": "1",
+  "listeners": "2",
   "aOn": "0",
-  "bOn": "1",
+  "bOn": "2",
   "sameBackendAvoid": [
     8953,
     8941
@@ -17,5 +17,5 @@
   "passed": 6,
   "failed": 0,
   "failures": [],
-  "at": "2026-11-19T10:37:19.649Z"
+  "at": "2026-11-19T10:58:44.126Z"
 }

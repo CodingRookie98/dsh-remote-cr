@@ -106,9 +106,31 @@ export class ProjectionHub {
     const entry = this.#services.get(key)
     if (entry === undefined) throw new Error('hub: service missing after serviceFor')
     try {
-      const result = await service.attach(entry.effective, request, control)
-      this.#focus = key
-      return result
+      try {
+        const result = await service.attach(entry.effective, request, control)
+        this.#focus = key
+        return result
+      } catch (error) {
+        // **端口被占就换一个再试一次**（P4 真机：跨后端同机时 `sameHostOf` 判不出同机，
+        // 第二个 target 会拿到同一个端口并被远端拒绝）。这比「先猜同机」可靠：
+        // 它同时覆盖「同机不同后端」和「那个端口被别人的 dsh 占着」两种来源。
+        if ((error as { code?: string }).code !== 'remote/port-in-use') throw error
+        const retried = this.#services.get(key)
+        if (retried === undefined) throw error
+        const taken = [...this.#services.values()]
+          .filter((candidate) => candidate !== retried && sameHostOf(candidate.effective, retried.effective))
+          .map((candidate) => candidate.effective.port)
+        // 跨后端时 `sameHostOf` 恒 false，taken 会是空的 —— 那就把**所有**在册端口都避开。
+        const avoid = taken.length > 0 ? taken : [...this.#services.values()].map((candidate) => candidate.effective.port)
+        // 当前端口**必须**在避让集合里：它就是刚被远端拒掉的那个。
+        const port = this.#ports.reserveAvoiding([...avoid, retried.effective.port])
+        this.#ports.release(retried.effective.port)
+        const shifted = { ...retried, effective: { ...retried.effective, port } }
+        this.#services.set(key, shifted)
+        const result = await service.attach(shifted.effective, request, control)
+        this.#focus = key
+        return result
+      }
     } catch (error) {
       const outcome = { recycle: service.snapshot().workspaces.length === 0 }
       // 本次新建、或这条引用是最后一个：把 entry 与端口一起还回去，避免僵尸端口。

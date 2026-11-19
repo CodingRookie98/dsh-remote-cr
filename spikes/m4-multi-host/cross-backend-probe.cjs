@@ -75,8 +75,10 @@ async function main() {
   const ports = hub.entries().map((entry) => entry.effective.port)
   console.log('      sshErr=' + (sshError && (sshError.code ?? sshError.message)) +
     ' wslErr=' + (wslError && (wslError.code ?? wslError.message)) + ' ports=' + JSON.stringify(ports))
-  expect('X3', ports.length === 2 && new Set(ports).size === 1,
-    JSON.stringify({ ports, sameMachine, note: '跨后端不避让 → 同一个端口数字是预期' }))
+  // 修好之后的行为：跨后端同机时第二个 target 会被远端拒绝一次（同机撞端口），
+  // 容器**换端口重试**后成功 → 两个 target 都在册、端口不同、无错误。
+  expect('X3', ports.length === 2 && new Set(ports).size === 2 && wslError === undefined,
+    JSON.stringify({ ports, sameMachine, wslErr: wslError && (wslError.code ?? wslError.message) }))
 
   console.log('==> X4 真机上那个端口有几个 dsh 在监听（同机撞端口的真实代价）')
   const listeners = sshRun("ss -ltn 2>/dev/null | grep -c ':" + PORT + " ' || true").out
