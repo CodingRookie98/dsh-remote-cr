@@ -174,6 +174,21 @@ export declare function reconnectRemote(fetchImpl?: typeof fetch): Promise<impor
  * 抛掉就只剩一句错误，看不到实际输出。
  */
 export declare function probeRemoteSession(sessionId: string, fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProbeOutcome>;
+/** 目标版：会话 / 取证 / 导入（RFC-0007 B2 的客户端半边）。 */
+export declare function createSessionOf(target: RemoteTargetInfo, input: {
+    workspaceId: string;
+    agentPreset?: string | undefined;
+}, fetchImpl?: typeof fetch): Promise<{
+    readonly sessionId: string;
+    readonly agentPreset?: string | undefined;
+}>;
+export declare function probeRemoteSessionOf(target: RemoteTargetInfo, sessionId: string, fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProbeOutcome>;
+export declare function listImportableOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<{
+    readonly workspaces: readonly ImportableWorkspaceInfo[];
+}>;
+export declare function importWorkspacesOf(target: RemoteTargetInfo, paths: readonly string[], fetchImpl?: typeof fetch): Promise<{
+    readonly imported: number;
+}>;
 /** ── 插件同步（RFC-0003 需求①）──────────────────────────────────────────── */
 /** 同步只需要目标身份（后端 + 名字 + 端口 + 远端根），不需要 remotePath/localPath。 */
 export interface SyncTargetLike {
