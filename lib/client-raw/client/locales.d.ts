@@ -308,7 +308,7 @@ export declare const zh: {
     readonly 'sourceReason.wsl-no-distro': "没有已安装的发行版（在 PowerShell 里跑 wsl --install）";
     readonly 'sourceReason.wsl-probe-error': "探测 WSL 失败（原文见复制日志）";
     readonly 'sourceReason.ssh-no-host': "~/.ssh/config 里没有可用的主机（写一个 Host 块后刷新）";
-    readonly 'sourceReason.docker-planned': "计划在 M5";
+    readonly 'sourceReason.docker-planned': "暂不支持（Docker 后端已取消）";
     readonly 'sourceReason.unknown': "原因未知（详见复制日志）";
     readonly 'linkState.idle': "尚未连接远端";
     readonly 'linkState.connected': "远端已连接";
