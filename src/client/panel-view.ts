@@ -53,6 +53,7 @@ import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
 import { filterSessions } from './filter.ts'
 import { applyPollState, createRefreshScheduler, type RefreshScheduler } from './poll.ts'
 import { createRefreshRunner } from './refresh-runner.ts'
+import { nextPurgeClick } from './purge-arming.ts'
 import { lastSessionActionFailure, subscribeSessionActions } from './session-actions.ts'
 import {
   beginApply,
@@ -527,6 +528,17 @@ export function RemoteCrPanel(): unknown {
 
   /** 远端残留的盘点目标：只有「接过的这个 target」才有意义（没接过就不知道该清谁）。 */
   const residueTarget = snapshot?.target ?? null
+  /** target 的稳定串：切换目标时据此清掉旧报告（否则会拿 A 的报告去清理 B）。 */
+  // 注意不能只判「非 null」——断线后 `snapshot.target` 会回落到上一次的目标。
+  const residueTargetKey = residueTarget === null ? '' : JSON.stringify(residueTarget)
+
+  // 目标一变就把残留面清空：报告是「这台机器」的，跨机器复用会把按钮变成误删另一台。
+  useEffect(() => {
+    setResidue(null)
+    setPurgeArmed(false)
+    setPurgeResult(null)
+    setResidueError(null)
+  }, [residueTargetKey])
 
   const checkResidue = async (): Promise<void> => {
     if (residueTarget === null) return
@@ -547,7 +559,10 @@ export function RemoteCrPanel(): unknown {
   /** 两步确认：第一次点只「上膛」，第二次才真删（RFC-0006 D2）。 */
   const purge = async (): Promise<void> => {
     if (residueTarget === null) return
-    if (!purgeArmed) {
+    // 两步确认的判定在纯函数里（有单测）：第一次只上膛，第二次才发请求。
+    const click = nextPurgeClick({ armed: purgeArmed, hasReport: residue !== null, busy: residueBusy })
+    if (click === 'noop') return
+    if (click === 'arm') {
       setPurgeArmed(true)
       return
     }
@@ -559,6 +574,9 @@ export function RemoteCrPanel(): unknown {
       setResidue(null)
       setResidueError(null)
     } catch (caught) {
+      // 失败也要把旧报告清掉：留着它会让「清理」按钮继续指向一份过期的清单。
+      setResidue(null)
+      setPurgeArmed(false)
       setResidueError(failureOf(caught).detail)
     } finally {
       setResidueBusy(false)

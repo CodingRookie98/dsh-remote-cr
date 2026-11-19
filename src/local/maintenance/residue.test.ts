@@ -1,68 +1,97 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildPurgeScript, buildResidueScript, parsePurge, parseResidue } from './residue.ts'
+import {
+  applyLiveness,
+  buildLivenessScript,
+  buildPurgeScript,
+  buildResidueScript,
+  parsePurge,
+  parseResidue,
+  planPurge,
+  stagingIdOf,
+} from './residue.ts'
 
 const SAMPLE = [
   'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
   'STAGING_EXISTS=1',
   'STAGING_KB=204800',
   'INSTANCES=/home/hui/.dsh-remote-cr/instances',
-  'INSTANCE=abc123.json|4|4242|1',
-  'INSTANCE=dead.json|4|999999|0',
+  'INSTANCE_BEGIN=live.json|4',
+  '{"version":1,"pid":4242,"port":8941,"token":"t"}',
+  'INSTANCE_END',
+  'INSTANCE_BEGIN=dead.json|4',
+  '{"version":1,"pid":999999,"port":8942,"token":"t"}',
+  'INSTANCE_END',
+  'INSTANCE_BEGIN=broken.json|4',
+  'not json at all',
+  'INSTANCE_END',
   'DONE=1',
 ].join('\n')
 
-test('parseResidue：staging 与 instances 都按远端报的原样落进结构', () => {
-  const report = parseResidue(SAMPLE, 'wsl:ubuntu_dev', '2026-11-19T00:00:00.000Z')
-  assert.equal(report.targetId, 'wsl:ubuntu_dev')
-  assert.deepEqual(report.staging, { path: '/home/hui/.dsh-remote-cr/staging/abc123', exists: true, kb: 204800 })
-  assert.equal(report.instances.path, '/home/hui/.dsh-remote-cr/instances')
-  assert.equal(report.instances.files.length, 2)
-  assert.deepEqual(report.instances.files[0], { name: 'abc123.json', kb: 4, pid: 4242, alive: true })
-  assert.equal(report.instances.files[1]?.alive, false, 'pid 已死的登记要能看出来（purge 依据）')
+test('stagingIdOf：只认 .dsh-remote-cr/staging/<id>，其余一律抛（不猜路径）', () => {
+  assert.equal(stagingIdOf('.dsh-remote-cr/staging/a5ee8a633c91470f'), 'a5ee8a633c91470f')
+  assert.equal(stagingIdOf(undefined), null, 'undefined = 整个 staging（WSL）')
+  assert.throws(() => stagingIdOf('.dsh-remote-cr/staging/../x'), /不是/, '`..` 必须被拒')
+  assert.throws(() => stagingIdOf('.dsh-remote-cr/staging/'), /不是/)
+  assert.throws(() => stagingIdOf('random/path'), /不是/)
 })
 
-test('parseResidue：认不出的行跳过，不编造字段', () => {
-  const report = parseResidue('noise\nSTAGING_EXISTS=0\nSTAGING_KB=x\n', 'ssh:a', 't')
-  assert.equal(report.staging.exists, false)
-  assert.equal(report.staging.kb, 0, '非数字按 0，不报 NaN')
-  assert.deepEqual(report.instances.files, [])
+test('buildResidueScript：路径只由 $HOME 拼，脚本里没有外部绝对路径', () => {
+  const script = buildResidueScript('abc123')
+  assert.ok(script.includes('"$HOME/.dsh-remote-cr/staging/abc123"'), script)
+  assert.ok(script.includes('"$HOME/.dsh-remote-cr/instances"'), script)
+  assert.equal(/\/home\//.test(script), false, '不许把任何具体 home 写进脚本（v1 的 N0 就出在这）')
 })
 
-test('buildResidueScript：POSIX 路径 + 引号，不出现反斜杠', () => {
-  const script = buildResidueScript('/home/hui', 'abc123')
-  assert.ok(script.includes("'/home/hui/.dsh-remote-cr/staging/abc123'"), script)
-  assert.equal(script.includes('\\\\'), false, '远端 bash 会把反斜杠当转义符')
-  assert.ok(script.includes('STAGING_EXISTS'), '盘点必须显式报告存在与否')
+test('buildResidueScript：id 为 null 或 undefined 都盘整个 staging（WSL 的 distro 级目录）', () => {
+  for (const empty of [null, undefined]) {
+    const script = buildResidueScript(empty)
+    assert.ok(script.includes('"$HOME/.dsh-remote-cr/staging"'), script)
+    assert.equal(script.includes('staging/undefined'), false, 'undefined 不许拼进路径（真机踩到过）')
+  }
 })
 
-test('buildResidueScript：没有 stagingSuffix 时盘整个 staging 目录（WSL）', () => {
-  const script = buildResidueScript('/home/hui', undefined)
-  assert.ok(script.includes("'/home/hui/.dsh-remote-cr/staging'"), script)
+test('parseResidue：JSON 在 TS 里解析，坏 JSON 的 pid 记 null', () => {
+  const report = parseResidue(SAMPLE, 'ssh:a', '2026-11-19T00:00:00.000Z')
+  assert.equal(report.staging.path, '/home/hui/.dsh-remote-cr/staging/abc123')
+  assert.equal(report.staging.kb, 204800)
+  assert.equal(report.instances.files.length, 3)
+  assert.deepEqual(report.instances.files[0], { name: 'live.json', kb: 4, pid: 4242, version: 1, alive: false })
+  assert.equal(report.instances.files[2]?.pid, null, '坏 JSON 的 pid 必须是 null（purge 据此不删）')
 })
 
-test('buildPurgeScript：只删 staging 与「pid 已死」的登记', () => {
-  const script = buildPurgeScript('/home/hui', 'abc123')
-  assert.ok(script.includes('rm -rf'), 'staging 整目录删除')
-  assert.ok(script.includes('/proc/$pid'), '判活要先看 /proc：kill -0 对别人的进程是 EPERM，会误判成已死')
-  assert.ok(script.includes('cut -d,'), 'pid 用 cut/tr 取：不需要在内层引号里写正则，最不易被远端 shell 吃字')
-  assert.ok(script.includes('[ -z "$pid" ]'), 'pid 读不出来时必须不删（宁可留垃圾也不删活实例）')
-  assert.ok(script.includes('continue'), '活着就 continue，不能落到 rm')
-  assert.ok(script.includes("'/home/hui/.dsh-remote-cr/instances'"), script)
+test('applyLiveness：只把脚本报的 ALIVE pid 标活', () => {
+  const report = parseResidue(SAMPLE, 'ssh:a', 't')
+  const merged = applyLiveness(report, 'ALIVE=4242\nDONE=1\n')
+  assert.equal(merged.instances.files[0]?.alive, true)
+  assert.equal(merged.instances.files[1]?.alive, false)
 })
 
-test('parsePurge：按 kind 汇总并累加释放量', () => {
-  const result = parsePurge('REMOVED_STAGING=/s/abc|204800\nREMOVED_INSTANCE=dead.json|4\nDONE=1\n')
-  assert.deepEqual(result.removed, [
-    { kind: 'staging', path: '/s/abc', kb: 204800 },
-    { kind: 'instance', path: 'dead.json', kb: 4 },
-  ])
-  assert.equal(result.freedKb, 204804)
+test('planPurge：只删「version=1 且 pid 非空且已死」的登记', () => {
+  const report = applyLiveness(parseResidue(SAMPLE, 'ssh:a', 't'), 'ALIVE=4242\nDONE=1\n')
+  const plan = planPurge(report)
+  assert.equal(plan.removeStaging, true)
+  assert.deepEqual(plan.instances.map((file) => file.name), ['dead.json'], '活的、坏 JSON 的都不许进清理计划')
 })
 
-test('parsePurge：什么都没删时给空清单而不是 undefined', () => {
-  const result = parsePurge('DONE=1\n')
-  assert.deepEqual(result.removed, [])
-  assert.equal(result.freedKb, 0)
+test('buildPurgeScript：逐条 rm 并检查退出码，失败要能上报', () => {
+  const script = buildPurgeScript('abc123', { removeStaging: true, instances: [{ name: 'dead.json', kb: 4, pid: 999999, version: 1, alive: false }] })
+  assert.ok(script.includes('if rm -rf "$S"; then echo "REMOVED_STAGING'), script)
+  assert.ok(script.includes('else echo "FAILED_STAGING='), 'rm 失败必须走 FAILED 分支，不能无条件报成功')
+  assert.ok(script.includes('rm -f "$I/dead.json"'), script)
+})
+
+test('parsePurge：失败行单独收集，不进 removed', () => {
+  const result = parsePurge('REMOVED_STAGING=/s/abc|204800\nFAILED_INSTANCE=dead.json\nDONE=1\n')
+  assert.equal(result.removed.length, 1)
+  assert.equal(result.freedKb, 204800)
+  assert.deepEqual(result.failures, ['instance:dead.json'])
+})
+
+test('buildLivenessScript：只接受正整数 pid，其余过滤掉', () => {
+  const script = buildLivenessScript([42, Number.NaN, -1, 0])
+  assert.ok(script.includes('for p in 42;'), script)
+  assert.ok(script.includes('[ -d "/proc/$p" ]'), '先看 /proc（权限无关），再退回 kill -0')
+  assert.equal(buildLivenessScript([]), 'echo DONE=1')
 })

@@ -52,6 +52,7 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/maintenance-unavailable': 'probe',
   'remote/maintenance-confirm-required': 'probe',
   'remote/maintenance-busy': 'probe',
+  'remote/maintenance-locked': 'probe',
   'remote/maintenance-failed': 'probe',
   'remote/env-conflict': 'probe',
   'remote/cancelled': 'probe',

@@ -43,6 +43,18 @@ Phase 2 = G3：`GET /maintenance/residue` 与 `POST /maintenance/purge`（两步
 
 两条都是「实现看起来对、真 shell 一跑就露」的类型；沙箱用例（`residue-probe --purge-sandbox`）是这两条的护栏。
 
+**P4 红队（destructive 面）判不可签，3 条 P0 已修（v2）**：
+
+| 阻断 | 实测 | 修法 |
+|---|---|---|
+| N0 路径错位：生产 wiring 的 `SyncBackend.homeDir` 是**空串** | SSH 拼出永不存在的嵌套路径（空转）；WSL 拼成相对路径（`wsl.exe --exec` 继承宿主 cwd）→ 会删工作目录下同名树 | 路径全部改成远端 `$HOME` 相对；只接受校验过的 anchor id（`stagingIdOf` 拒绝 `..`/空串/异形） |
+| N1 `cut -d, -f2` 猜 pid | 字段乱序时取到 port → **删掉活登记** | JSON 在 TS 里解析；`version=1` 且 `pid` 为正整数才算候选；判活失败**整体失败**，不降级成「已死」 |
+| N2 无路径白名单 / N3 rm 失败仍报成功 / N4 无锁 | `..` 能删整棵树；`rm` 失败照样 echo「已删除」；purge 与 apply 并发半删半装 | id/文件名正则白名单；逐条 `if rm ... then REMOVED else FAILED` 并由路由报错；purge 取 `acquireWrite(..., 'maintenance')` |
+
+N5（面板两步确认 0 覆盖 + target 漂移）：抽出 `nextPurgeClick` 纯函数 + 3 条用例；残留面按 targetKey 重置，失败时清旧报告。
+
+v2 真机：沙箱 **5/5**（死登记删掉、活登记与字段乱序的活登记都保留、无失败项）；只读盘点 WSL **4/4**、SSH **4/4**（1.18 GB staging 正确解析）。
+
 ## 4. 风险与未验证
 
 | 项 | 说明 |

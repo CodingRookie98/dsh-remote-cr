@@ -202,6 +202,8 @@ export interface ResidueInstanceFileInfo {
   readonly pid: number | null
   /** 登记里的 pid 现在是否还活着：活着 = 驻留模式在用的资产，不是垃圾。 */
   readonly alive: boolean
+  /** 登记文件的 schema 版本（读不出为 null；purge 只认 version=1）。 */
+  readonly version: number | null
 }
 
 /** `GET /maintenance/residue` 的应答体。 */

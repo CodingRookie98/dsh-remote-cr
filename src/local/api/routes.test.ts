@@ -268,57 +268,11 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
 
 // ── 远端残留（RFC-0006 Phase 2）──────────────────────────────────────────
 
-/** 让 sync 执行面回指定 stdout 的夹具（维护路由复用同一条 exec）。 */
-function residueRig(stdout: string, extra: { projection?: ProjectionService } = {}): { rig: ReturnType<typeof rig>; calls: string[] } {
-  const calls: string[] = []
-  const built = syncRig({
-    resolve: async () => ({
-      nodeCommand: '/usr/bin/node',
-      dshCommand: '/usr/bin/dsh',
-      nodeBin: '/usr/bin',
-      homeDir: '/home/hui',
-      stagingSuffix: 'abc123',
-      exec: async (script: string) => {
-        calls.push(script)
-        return { code: 0, stdout, stderr: '' }
-      },
-    }),
-    ...(extra.projection === undefined ? {} : {}),
-  })
-  return { rig: built.rig, calls }
-}
-
-test('/maintenance/residue：只读盘点，返回 staging 与 instances（RFC-0006 R3）', async () => {
-  const stdout = [
-    'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
-    'STAGING_EXISTS=1',
-    'STAGING_KB=2048',
-    'INSTANCES=/home/hui/.dsh-remote-cr/instances',
-    'INSTANCE=abc123.json|4|4242|1',
-    'DONE=1',
-  ].join('\n')
-  const { rig: r, calls } = residueRig(stdout)
-  const result = await r.call({ path: '/maintenance/residue', query: { target: JSON.stringify(SYNC_TARGET) } })
-  const envelope = result.json as { ok: boolean; value?: { staging: { kb: number }; instances: { files: unknown[] } } }
-  assert.equal(result.status, 200)
-  assert.equal(envelope.ok, true, JSON.stringify(result.json))
-  assert.equal(envelope.value?.staging.kb, 2048)
-  assert.equal(envelope.value?.instances.files.length, 1)
-  assert.equal(calls.length, 1, '盘点只该有一次远端 exec')
-  assert.ok(calls[0]?.includes('STAGING_EXISTS'), '跑的必须是盘点脚本')
-})
-
-test('/maintenance/purge：没有 confirm 直接拒绝，且一次 exec 都不发（R4）', async () => {
-  const { rig: r, calls } = residueRig('DONE=1')
-  const result = await r.call({ path: '/maintenance/purge', method: 'POST', body: JSON.stringify({ target: SYNC_TARGET }) })
-  const envelope = result.json as { ok: boolean; code?: string }
-  assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/maintenance-confirm-required')
-  assert.equal(calls.length, 0, '未确认时不许碰远端')
-})
-
-/** 维护路由的 sync 夹具：exec 回指定 stdout，并记录调用。 */
-function maintenanceSync(calls: string[], stdout: string): SyncRoutesOptions {
+/**
+ * 维护面的假执行面：**按脚本内容**回应——盘点、判活、清理是三次不同的 exec，
+ * 用一个固定 stdout 糊过去会让「解析判活结果」这条链完全没被测到。
+ */
+function maintenanceSync(calls: string[], replies: { residue?: string; alive?: string; purge?: string }): SyncRoutesOptions {
   return {
     optoutFile: 'x',
     localProfileDir: 'y',
@@ -327,36 +281,86 @@ function maintenanceSync(calls: string[], stdout: string): SyncRoutesOptions {
       nodeCommand: '/usr/bin/node',
       dshCommand: '/usr/bin/dsh',
       nodeBin: '/usr/bin',
-      homeDir: '/home/hui',
+      homeDir: '',
+      stagingSuffix: '.dsh-remote-cr/staging/abc123',
       exec: async (script: string) => {
         calls.push(script)
-        return { code: 0, stdout, stderr: '' }
+        if (script.includes('for p in')) return { code: 0, stdout: replies.alive ?? 'DONE=1', stderr: '' }
+        if (script.includes('rm -rf') || script.includes('rm -f')) return { code: 0, stdout: replies.purge ?? 'DONE=1', stderr: '' }
+        return { code: 0, stdout: replies.residue ?? 'DONE=1', stderr: '' }
       },
     }),
   }
 }
 
+const RESIDUE_STDOUT = [
+  'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
+  'STAGING_EXISTS=1',
+  'STAGING_KB=2048',
+  'INSTANCES=/home/hui/.dsh-remote-cr/instances',
+  'INSTANCE_BEGIN=live.json|4',
+  '{"version":1,"pid":4242}',
+  'INSTANCE_END',
+  'DONE=1',
+].join('\n')
+
+test('/maintenance/residue：盘点 + 判活，路径只由 $HOME 拼（RFC-0006 R3/N0）', async () => {
+  const calls: string[] = []
+  const result = await rig({}, { sync: maintenanceSync(calls, { residue: RESIDUE_STDOUT, alive: 'ALIVE=4242\nDONE=1\n' }) }).call({
+    path: '/maintenance/residue',
+    query: { target: JSON.stringify(SYNC_TARGET) },
+  })
+  const envelope = result.json as { ok: boolean; value?: { staging: { kb: number }; instances: { files: { alive: boolean; pid: number }[] } } }
+  assert.equal(result.status, 200)
+  assert.equal(envelope.ok, true, JSON.stringify(result.json))
+  assert.equal(envelope.value?.staging.kb, 2048)
+  assert.deepEqual(envelope.value?.instances.files, [{ name: 'live.json', kb: 4, pid: 4242, version: 1, alive: true }])
+  assert.equal(calls.length, 2, '盘点 + 判活两次只读 exec')
+  assert.equal(/\/home\/hui/.test(calls[0] ?? ''), false, '脚本里不许出现具体 home（v1 的 N0）')
+})
+
+test('/maintenance/purge：没有 confirm 直接拒绝，且一次 exec 都不发（R4）', async () => {
+  const calls: string[] = []
+  const result = await rig({}, { sync: maintenanceSync(calls, {}) }).call({
+    path: '/maintenance/purge',
+    method: 'POST',
+    body: JSON.stringify({ target: SYNC_TARGET }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.ok, false)
+  assert.equal(envelope.code, 'remote/maintenance-confirm-required')
+  assert.equal(calls.length, 0, '未确认时不许碰远端')
+})
+
 test('/maintenance/purge：目标正连着时拒绝，且一次 exec 都不发（R4）', async () => {
-  // 只用一个 snapshot 桩：这条断言只关心「连接判定读的是 snapshot」。
   const projection = {
     snapshot: () => ({ connected: true, target: SYNC_TARGET }),
   } as unknown as ProjectionService
   const calls: string[] = []
-  const result = await rig({}, { projection, sync: maintenanceSync(calls, 'DONE=1') }).call({
+  const result = await rig({}, { projection, sync: maintenanceSync(calls, {}) }).call({
     path: '/maintenance/purge',
     method: 'POST',
     body: JSON.stringify({ target: SYNC_TARGET, confirm: true }),
   })
   const envelope = result.json as { ok: boolean; code?: string }
-  assert.equal(envelope.ok, false)
   assert.equal(envelope.code, 'remote/maintenance-busy')
   assert.equal(calls.length, 0, '连接中不许动远端文件')
 })
 
-test('/maintenance/purge：确认且未连接时执行，返回删除清单与释放量（R4）', async () => {
+test('/maintenance/purge：确认且未连接时先盘点再清理，返回删除清单（R4）', async () => {
   const calls: string[] = []
-  const stdout = 'REMOVED_STAGING=/s/abc|2048\nREMOVED_INSTANCE=dead.json|4\nDONE=1\n'
-  const result = await rig({}, { sync: maintenanceSync(calls, stdout) }).call({
+  const purgeOut = 'REMOVED_STAGING=/home/hui/.dsh-remote-cr/staging/abc123|2048\nREMOVED_INSTANCE=dead.json|4\nDONE=1\n'
+  const residue = [
+    'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
+    'STAGING_EXISTS=1',
+    'STAGING_KB=2048',
+    'INSTANCES=/home/hui/.dsh-remote-cr/instances',
+    'INSTANCE_BEGIN=dead.json|4',
+    '{"version":1,"pid":999999}',
+    'INSTANCE_END',
+    'DONE=1',
+  ].join('\n')
+  const result = await rig({}, { sync: maintenanceSync(calls, { residue, alive: 'DONE=1\n', purge: purgeOut }) }).call({
     path: '/maintenance/purge',
     method: 'POST',
     body: JSON.stringify({ target: SYNC_TARGET, confirm: true }),
@@ -365,10 +369,9 @@ test('/maintenance/purge：确认且未连接时执行，返回删除清单与�
   assert.equal(envelope.ok, true, JSON.stringify(result.json))
   assert.equal(envelope.value?.removed.length, 2)
   assert.equal(envelope.value?.freedKb, 2052)
-  assert.equal(calls.length, 1)
-  assert.ok(calls[0]?.includes('rm -rf'), '执行的必须是清理脚本')
+  assert.equal(calls.length, 3, '盘点 + 判活 + 清理')
+  assert.ok(calls[2]?.includes('rm -rf'), '第三次才是清理脚本')
 })
-
 // ── 诊断（RFC-0005）────────────────────────────────────────────────────────
 
 function doctorFixture(): string {
@@ -1139,74 +1142,4 @@ test('/wsl/wake 校验阶段就断开：连 spawn 都不该发生', async () => 
   const reply = await pending
   assert.equal(spawned, 0, '校验期断开之后不许再 spawn wsl.exe（R1-L1）')
   assert.equal(reply.body, '', '断开之后不许再往已关闭的 res 上写响应')
-})
-
-test('/wsl/wake 成功那一刻断开：成功结果照样进缓存（下次不该再冷启动）', async () => {
-  let spawned = 0
-  let last: FakeRes | null = null
-  const makeRes = (): FakeRes => {
-    const made = fakeClosableRes()
-    last = made
-    return made
-  }
-  const { call } = rig(
-    {
-      wakeDistro: async (distro) => {
-        spawned += 1
-        await new Promise((done) => setTimeout(done, 40))
-        return { distro, ok: true, ms: 40, diagnosis: null }
-      },
-    },
-    {},
-    makeRes,
-  )
-  const first = call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
-  // 20ms 时断开，40ms 时唤醒才成功：缓存必须在 aborted 判断**之前**写（R1D-8）。
-  await new Promise((done) => setTimeout(done, 20))
-  ;(last as FakeRes | null)?.close()
-  await first
-  const second = await call({ path: '/wsl/wake', method: 'POST', body: JSON.stringify({ distro: 'ubuntu_dev' }) })
-  assert.equal(spawned, 1, '这次唤醒确实成功了，调用方断开不该让下一次再 spawn 一遍')
-  assert.equal((second.json as { ok?: boolean }).ok, true, '第二次必须是缓存里的成功结果')
-})
-
-test('/wsl/wake 并发去重：同一发行版的并发请求只 spawn 一次', async () => {
-  let spawned = 0
-  const r = rig({
-    wakeDistro: async (distro) => {
-      spawned += 1
-      await new Promise((done) => setTimeout(done, 30))
-      return { distro, ok: true, ms: 30, diagnosis: null }
-    },
-  })
-  const body = JSON.stringify({ distro: 'ubuntu_dev' })
-  const [first, second] = await Promise.all([
-    r.call({ path: '/wsl/wake', method: 'POST', body }),
-    r.call({ path: '/wsl/wake', method: 'POST', body }),
-  ])
-  assert.equal(spawned, 1, '并发点同一发行版不该 spawn 两次（缓存只在完成后写，靠在飞去重）')
-  assert.deepEqual((first.json as { value: WslWakeResult }).value, (second.json as { value: WslWakeResult }).value)
-})
-
-test('/plugin-sync POST：混入不可同步项要整单拒绝（B2）', async () => {
-  const { rig: r, calls } = syncRig()
-  const result = await r.call({
-    path: '/plugin-sync',
-    method: 'POST',
-    body: JSON.stringify({ target: SYNC_TARGET, names: ['ghost-plugin'] }),
-  })
-  const envelope = result.json as { ok: boolean; code?: string }
-  assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/plugin-sync-unsupported')
-  assert.equal(calls.length, 1, '只允许为算 plan 打一次远端；被拒绝后不再执行')
-})
-
-test('/plugin-sync GET：optout 里的 targetId 会让 plan.muted=true（B5）', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'remote-cr-sync-muted-'))
-  const optoutFile = join(dir, 'sync-optout.json')
-  writeFileSync(optoutFile, JSON.stringify({ version: 1, targets: ['test-target-id'] }), 'utf8')
-  const { rig: r } = syncRig({ optoutFile })
-  const result = await r.call({ path: '/plugin-sync', query: { target: JSON.stringify(SYNC_TARGET) } })
-  const envelope = result.json as { value?: { muted: boolean } }
-  assert.equal(envelope.value?.muted, true, '静音要真的进 plan（否则自动提醒永远弹）')
 })

@@ -8,7 +8,7 @@
  * 语义刻意做成**互斥而不是计数**：拿到锁的人就是 holder，第二个人拿到 `{ok:false, holder}`，
  * 由调用方按 holder 给出**具体**原因（「正在升级宿主」/「正在同步插件」），而不是一句笼统的「忙」。
  */
-export type WriteKind = 'apply' | 'host'
+export type WriteKind = 'apply' | 'host' | 'maintenance'
 
 const holders = new Map<string, WriteKind>()
 
