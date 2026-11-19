@@ -871,7 +871,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
     try {
       const report = await inspectResidue(backend, stagingId, targetId)
-      const plan = planPurge(report)
+      const plan = planPurge(report, stagingId)
       const raw = await backend.exec(buildPurgeScript(stagingId, plan), 60_000)
       if (raw.code !== 0) {
         throw new RemoteCrError({

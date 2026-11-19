@@ -64,7 +64,8 @@ async function purgeSandbox(mod) {
     'mkdir -p ' + root + '/.dsh-remote-cr/staging/id1',
     'mkdir -p ' + root + '/.dsh-remote-cr/instances',
     'echo payload > ' + root + '/.dsh-remote-cr/staging/id1/marker',
-    'printf %s \'{"version":1,"pid":999999,"port":1}\' > ' + root + '/.dsh-remote-cr/instances/dead.json',
+    // 名字必须等于 anchor id：instances 目录跨 anchor 共享，purge 只碰本 anchor 的那份。
+    'printf %s \'{"version":1,"pid":999999,"port":1}\' > ' + root + '/.dsh-remote-cr/instances/id1.json',
     // pid 1 一定存在且属于 root：靠 /proc 判定应当保留（kill -0 会 EPERM）。
     'printf %s \'{"version":1,"pid":1,"port":2}\' > ' + root + '/.dsh-remote-cr/instances/alive.json',
     // 字段顺序被打乱、pid 是活着的：v1 的 cut -d, -f2 会取到 port 然后删掉它。
@@ -75,20 +76,20 @@ async function purgeSandbox(mod) {
   const scanned = mod.parseResidue(run(mod.buildResidueScript('id1'), root).stdout, 'sandbox', new Date().toISOString())
   const pids = scanned.instances.files.map((file) => file.pid).filter((pid) => pid !== null)
   const withLive = mod.applyLiveness(scanned, run(mod.buildLivenessScript(pids), root).stdout)
-  const plan = mod.planPurge(withLive)
-  expect('P6a 计划只含死登记', plan.instances.map((file) => file.name).join(',') === 'dead.json', JSON.stringify({ plan: plan.instances.map((file) => file.name) }))
+  const plan = mod.planPurge(withLive, 'id1')
+  expect('P6a 计划只含本 anchor 的死登记', plan.instances.map((file) => file.name).join(',') === 'id1.json', JSON.stringify({ plan: plan.instances.map((file) => file.name) }))
   expect('P6b 有活实例时不删 staging（P4 Delta P1）', plan.removeStaging === false && plan.skipReason === 'resident-alive', JSON.stringify({ removeStaging: plan.removeStaging, skipReason: plan.skipReason }))
 
   const purge = mod.parsePurge(run(mod.buildPurgeScript('id1', plan), root).stdout)
   const after = run('ls ' + root + '/.dsh-remote-cr/instances 2>/dev/null; test -d ' + root + '/.dsh-remote-cr/staging/id1 && echo STAGING_STILL_THERE', root).stdout
   expect('P7 staging 被保留', after.includes('STAGING_STILL_THERE') === true, JSON.stringify({ after: after.trim() }))
-  expect('P8 活登记保留（含字段乱序的）', after.includes('alive.json') && after.includes('reordered.json') && !after.includes('dead.json'), JSON.stringify({ after: after.trim() }))
+  expect('P8 活登记保留（含字段乱序的）', after.includes('alive.json') && after.includes('reordered.json') && !after.includes('id1.json'), JSON.stringify({ after: after.trim() }))
   expect('P9 结果无失败项', purge.failures.length === 0, JSON.stringify({ failures: purge.failures }))
 
   // 第二段：把活登记删掉后，staging 才该被清。
   run('rm -f ' + root + '/.dsh-remote-cr/instances/alive.json ' + root + '/.dsh-remote-cr/instances/reordered.json')
   const scanned2 = mod.parseResidue(run(mod.buildResidueScript('id1'), root).stdout, 'sandbox', new Date().toISOString())
-  const plan2 = mod.planPurge(scanned2)
+  const plan2 = mod.planPurge(scanned2, 'id1')
   expect('P10 没有活实例时 staging 进清理计划', plan2.removeStaging === true && plan2.skipReason === null, JSON.stringify({ removeStaging: plan2.removeStaging }))
   mod.parsePurge(run(mod.buildPurgeScript('id1', plan2), root).stdout)
   const after2 = run('test -d ' + root + '/.dsh-remote-cr/staging/id1 && echo STILL || echo GONE', root).stdout.trim()

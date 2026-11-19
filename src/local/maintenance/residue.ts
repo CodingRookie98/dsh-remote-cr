@@ -171,7 +171,10 @@ export interface PurgePlan {
   readonly instances: readonly ResidueInstanceFileInfo[]
 }
 
-export function planPurge(report: ResidueReportInfo): PurgePlan {
+export function planPurge(report: ResidueReportInfo, stagingId: string | null | undefined = null): PurgePlan {
+  // instances 目录是**跨 anchor 共享**的：按本 target 的 id 精确匹配，别去删别台的死登记（RFC D3）。
+  // WSL 是 distro 级（id=null），此时才允许清全部死登记。
+  const owned = (name: string): boolean => stagingId === null || stagingId === undefined || name === stagingId + '.json'
   // **有活着的驻留实例时不删 staging**：它的 node/dsh 就在这个目录里，删了进程还在、端口还占着，
   // 但下次接入再也起不来（P4 Delta P1 实测：sleep 的 inode 变成 (deleted)）。
   // 用户要真删，先把那台实例「结束远端」（面板已有入口）。
@@ -180,7 +183,9 @@ export function planPurge(report: ResidueReportInfo): PurgePlan {
     removeStaging: report.staging.exists && !residentAlive,
     skipReason: report.staging.exists && residentAlive ? 'resident-alive' : null,
     // 只删「版本认得出、pid 读得出、且确认已死」的登记；其余一律留着（宁可留垃圾，不删活句柄）。
-    instances: report.instances.files.filter((file) => file.version === 1 && file.pid !== null && !file.alive),
+    instances: report.instances.files.filter(
+      (file) => owned(file.name) && file.version === 1 && file.pid !== null && !file.alive,
+    ),
   }
 }
 

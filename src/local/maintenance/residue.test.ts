@@ -79,6 +79,36 @@ test('planPurge：只删「version=1 且 pid 非空且已死」的登记', () =>
   assert.deepEqual(plan.instances.map((file) => file.name), ['dead.json'], '活的、坏 JSON 的、version≠1 的都不许进清理计划')
 })
 
+test('buildResidueScript/Purge：$HOME 不是绝对路径时脚本自己退出（P4 Delta P2）', () => {
+  for (const script of [buildResidueScript(null), buildPurgeScript(null, { removeStaging: true, skipReason: null, instances: [] })]) {
+    assert.ok(script.includes('HOME_INVALID=1'), script)
+    assert.ok(script.includes('exit 2'), '守卫必须真的退出，而不是继续往下删')
+  }
+})
+
+test('planPurge：只碰本 anchor 的 instances/<id>.json（instances 目录是跨 anchor 共享的）', () => {
+  const sample = [
+    'STAGING=/h/.dsh-remote-cr/staging/abc123',
+    'STAGING_EXISTS=1',
+    'STAGING_KB=1',
+    'INSTANCES=/h/.dsh-remote-cr/instances',
+    'INSTANCE_BEGIN=abc123.json|4',
+    '{"version":1,"pid":999991}',
+    'INSTANCE_END',
+    'INSTANCE_BEGIN=other-anchor.json|4',
+    '{"version":1,"pid":999992}',
+    'INSTANCE_END',
+    'DONE=1',
+  ].join('\n')
+  const report = parseResidue(sample, 'ssh:a', 't')
+  assert.deepEqual(planPurge(report, 'abc123').instances.map((file) => file.name), ['abc123.json'])
+  assert.deepEqual(
+    planPurge(report, null).instances.map((file) => file.name),
+    ['abc123.json', 'other-anchor.json'],
+    'WSL 是 distro 级：没有 id 时才允许清全部死登记',
+  )
+})
+
 test('planPurge：只要有活着的驻留实例就不删 staging（P4 Delta P1）', () => {
   const report = applyLiveness(parseResidue(SAMPLE, 'ssh:a', 't'), 'ALIVE=4242\nDONE=1\n')
   const plan = planPurge(report)

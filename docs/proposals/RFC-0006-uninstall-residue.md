@@ -37,7 +37,7 @@ M4 要求「卸载后无残留（远端用户数据可保留）」。现状分�
 |---|---|---|---|
 | D1 | 本地侧只做**验证**，不加自动删除 | 本地清理已由 `ctx.effect` + 两级 dispose 承担；再加一层自动删会把用户数据风险放大 | 需要真机探针兜住回归 |
 | D2 | 远端清理**必须显式触发**（面板按钮 + `pnpm purge`），且先列清单再执行 | 远端文件不可逆；用户必须先看到「将删除哪些路径、占用多少」 | 两步操作 |
-| D3 | purge 只碰两类路径：本次 target 的 `staging/<hash>`、`instances/<id>.json`；其余一律不碰 | 与 `bootstrap.ts:233` `stagingDirFor` / `instance.ts:34` 同一份路径推导，不另写一套 | 不清理用户其它目录 |
+| D3 | purge 只碰两类路径：本次 target 的 `staging/<hash>`、`instances/<id>.json`（**instances 是跨 anchor 共享目录**，按本 target 的 anchor id 精确匹配；WSL 无 anchor id，此时按 distro 级处理）；其余一律不碰 | 与 `bootstrap.ts:233` `stagingDirFor` / `instance.ts:34` 同一份路径推导，不另写一套 | 不清理用户其它目录 |
 | D4 | 连接**进行中**时拒绝 purge | 边跑边删会把正在用的 node/dsh 删掉 | 需要先断开 |
 
 ## 4. 验收

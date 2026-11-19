@@ -1172,6 +1172,9 @@ export function RemoteCrPanel(): unknown {
           'div',
           { 'data-remote-cr': 'residue-result' },
           t('panel.residuePurgeDone', { count: String(purgeResult.removed.length), kb: String(purgeResult.freedKb) }),
+          purgeResult.skipped === 'resident-alive'
+            ? h('div', { 'data-remote-cr': 'residue-skipped' }, t('panel.residueSkipped'))
+            : null,
         ),
   )
 

@@ -421,6 +421,44 @@ test('/maintenance/residue：判活 exec 失败时整体失败，不把活登记
   assert.equal(envelope.code, 'remote/maintenance-failed')
 })
 
+test('/maintenance/purge：同 distro 不同 remoteRoot 也算「正连着」（WSL 的 staging 是 distro 级）', async () => {
+  const CONNECTED_WSL = { backend: 'wsl' as const, distro: 'Ubuntu-24.04', port: 8899, remoteRoot: '/home/hui/a' }
+  const OTHER_WSL = { backend: 'wsl' as const, distro: 'ubuntu-24.04', port: 8899, remoteRoot: '/home/hui/b' }
+  const projection = { snapshot: () => ({ connected: true, target: CONNECTED_WSL }) } as unknown as ProjectionService
+  const calls: string[] = []
+  const result = await rig({}, { projection, sync: maintenanceSync(calls, {}) }).call({
+    path: '/maintenance/purge',
+    method: 'POST',
+    body: JSON.stringify({ target: OTHER_WSL, confirm: true }),
+  })
+  const envelope = result.json as { ok: boolean; code?: string }
+  assert.equal(envelope.code, 'remote/maintenance-busy')
+  assert.equal(calls.length, 0, '同 distro 换目录也不许删 distro 级 staging')
+})
+
+test('/maintenance/purge：有活驻留实例时应答带 skipped，且清理脚本里没有 rm -rf（P1 的路由层判据）', async () => {
+  const residue = [
+    'STAGING=/home/hui/.dsh-remote-cr/staging/abc123',
+    'STAGING_EXISTS=1',
+    'STAGING_KB=2048',
+    'INSTANCES=/home/hui/.dsh-remote-cr/instances',
+    'INSTANCE_BEGIN=abc123.json|4',
+    '{"version":1,"pid":4242}',
+    'INSTANCE_END',
+    'DONE=1',
+  ].join('\n')
+  const calls: string[] = []
+  const result = await rig({}, { sync: maintenanceSync(calls, { residue, alive: 'ALIVE=4242\nDONE=1\n' }) }).call({
+    path: '/maintenance/purge',
+    method: 'POST',
+    body: JSON.stringify({ target: SYNC_TARGET, confirm: true }),
+  })
+  const envelope = result.json as { ok: boolean; value?: { skipped?: string } }
+  assert.equal(envelope.ok, true, JSON.stringify(result.json))
+  assert.equal(envelope.value?.skipped, 'resident-alive')
+  assert.equal((calls[2] ?? '').includes('rm -rf'), false, '有活实例时清理脚本里不该出现 rm -rf')
+})
+
 test('/maintenance/purge：确认且未连接时先盘点再清理，返回删除清单（R4）', async () => {
   const calls: string[] = []
   const purgeOut = 'REMOVED_STAGING=/home/hui/.dsh-remote-cr/staging/abc123|2048\nREMOVED_INSTANCE=dead.json|4\nDONE=1\n'
