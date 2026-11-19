@@ -55,7 +55,7 @@ Most remote plugins in the DSH marketplace are **type A (remote execution)**: th
 - Session filter above the list (case-insensitive substring) with an explicit empty state — filtering never reorders rows
 
 **Diagnostics**
-- The panel runs the same `runDoctor` as `pnpm doctor` and shows every check (`package` / `entry` / `exports` / `client-bundle` / `patch` / `engines` / `state-root` / `legacy-root`) with its status
+- The panel runs the same `runDoctor` as `pnpm run doctor` and shows every check (`package` / `entry` / `exports` / `client-bundle` / `patch` / `engines` / `state-root` / `legacy-root`) with its status
 - "Copy report" copies the exact CLI report text; failures are shown inside the diagnostics block, never in the shared error slot
 
 **Remote residue (uninstall hygiene)**
@@ -148,7 +148,8 @@ pnpm check:cjk                     # UI-copy gate: no hard-coded Chinese in clie
 pnpm check:boot                    # boot fragility: patch row id / dsh manifest / legacy names
 pnpm check:errors                  # error-code index matches the dictionaries
 pnpm check:docs                    # doc images: exist, real PNG, minimum size
-pnpm doctor                        # can the installed package load (entries/exports/client/patch/state root)
+pnpm run doctor                    # can the installed package load (entries/exports/client/patch/state root)
+                                   # note: bare `pnpm doctor` is pnpm's own command, not this oneate root)
 pnpm build && pnpm build:client    # lib/ is committed; rebuild after touching sources
 ```
 

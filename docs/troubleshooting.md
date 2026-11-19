@@ -55,7 +55,7 @@
 | 本地文件 | `~/.dsh-remote-cr/`（anchors、sync-optout）、旧根 `~/.dsh-teleport/` | **属用户数据，不自动删**。确认不再使用后手删：`rm -rf ~/.dsh-remote-cr ~/.dsh-teleport`（Windows：`Remove-Item -Recurse -Force $env:USERPROFILE\.dsh-remote-cr, $env:USERPROFILE\.dsh-teleport`） |
 | 远端文件 | `~/.dsh-remote-cr/staging/<hash>`（node + dsh，百 MB～GB 级）、`~/.dsh-remote-cr/instances/<id>.json` | **不会自动删**。确认远端不再需要后手删：`ssh <host> 'rm -rf ~/.dsh-remote-cr/staging ~/.dsh-remote-cr/instances'`。显式的面板/CLI `purge` 属 RFC-0006 Phase 2，尚未交付 |
 
-**自检**：跑 `pnpm doctor` 看 `state-root` / `legacy-root` 两项；远端是否还有 dsh 在跑：`ssh <host> 'ss -ltnp | grep 894'`。
+**自检**：跑 `pnpm run doctor` 看 `state-root` / `legacy-root` 两项（裸的 `pnpm doctor` 是 pnpm 自带命令，不是本插件的体检）；远端是否还有 dsh 在跑：`ssh <host> 'ss -ltnp | grep 894'`。
 
 ## 复制日志怎么看
 

@@ -23,7 +23,7 @@
 
 ```bash
 pnpm check:compat     # 读 engines.dsh 与本机宿主版本，判断是否在区间内
-pnpm doctor           # 装出来的包能不能被宿主加载（入口/补丁/导出/状态根）
+pnpm run doctor       # 装出来的包能不能被宿主加载（入口/补丁/导出/状态根）
 ```
 
 `check:compat` 只回答「版本对不对得上」，**不等于**功能验证；功能验证看 `spikes/` 里的真机探针。
@@ -39,7 +39,7 @@ pnpm doctor           # 装出来的包能不能被宿主加载（入口/补丁/
 ## 5. 升级宿主的 checklist
 
 1. 更新 `engines.dsh`（若有区间变化）并跑 `pnpm check:compat`；
-2. `pnpm doctor` 确认装出来的包可加载；
+2. `pnpm run doctor` 确认装出来的包可加载；
 3. 跑一次 `spikes/m4-uninstall/probe.cjs --wsl` 与 `--ssh <alias>`（最便宜的真机回归）；
 4. 跑一次 `node scripts/preview-wizard.mjs --no-build`（面板渲染回归）；
 5. 把新版本追加到 §2 的表里，写清「真机 / 未验证」。

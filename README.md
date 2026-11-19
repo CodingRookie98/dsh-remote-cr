@@ -133,7 +133,8 @@ pnpm check:boot                    # 启动脆弱性：补丁行 id / dsh 三件
 pnpm check:errors                  # 错误码索引与字典一致（改了字典要 pnpm gen:errors）
 pnpm check:docs                    # 文档图片：存在、真 PNG、尺寸下限
 pnpm build && pnpm build:client    # lib/ 是入库产物，改源码后必须重建
-pnpm doctor                        # 装好的包能不能加载（入口/导出/浏览器半/补丁/状态根）
+pnpm run doctor                    # 装好的包能不能加载（入口/导出/浏览器半/补丁/状态根）
+                                   # 注意：`pnpm doctor` 是 pnpm 自带命令，会跑它自己的体检
 ```
 
 浏览器侧验收需要真 Chrome，**不进 CI**，本地跑（17 个场景 + 键盘链路）：

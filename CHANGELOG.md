@@ -10,7 +10,7 @@
 ### 新增
 
 - **会话新鲜度（RFC-0004）**：面板可见且已连接时每 5 s 重读一次 `session/list` 并**原地**贴回投影（不删、不增、不重排）；隐藏或断连立即停链；失败退避 5 → 30 s 封顶并保留旧帧、标 `stale`（「数据已过期」）。会话标题过滤 + 空态。
-- **诊断中心（RFC-0005）**：面板内跑与 `pnpm doctor` 同一个 `runDoctor`，逐项显示状态，「复制报告」与 CLI 文本逐字一致；诊断失败只在诊断区内报错，不占用共享错误槽。
+- **诊断中心（RFC-0005）**：面板内跑与 `pnpm run doctor` 同一个 `runDoctor`（`pnpm doctor` 是 pnpm 自带命令，会跑它自己的体检），逐项显示状态，「复制报告」与 CLI 文本逐字一致；诊断失败只在诊断区内报错，不占用共享错误槽。
 - **远端残留盘点与清理（RFC-0006）**：只读盘点 `staging/<id>` 与 `instances/<id>.json`；清理需两步确认、目标未连接、进程内互斥，且**有活驻留实例时保留 staging**，逐条删除失败会上报。
 - **多 host 容器（RFC-0007 A1）**：`ProjectionHub` 按 target 持有多个投影引擎；新增 `GET /projection/targets`，`GET /projection?target=` 可读指定那台；面板列出已登记主机。
 - **兼容自检**：`pnpm check:compat` 读 `engines.dsh` 与本机宿主版本给出 `ok / out-of-range / unknown`，口径见 `docs/release/compatibility-matrix.md`。
