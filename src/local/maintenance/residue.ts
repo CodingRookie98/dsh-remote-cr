@@ -37,9 +37,13 @@ export function buildResidueScript(homeDir: string, stagingSuffix: string | unde
     '    [ -e "$f" ] || continue',
     '    name=$(basename "$f")',
     '    kb=$(du -sk "$f" 2>/dev/null | cut -f1)',
-    '    pid=$(sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\\1/p" "$f" | head -n1)',
+    // pid 用 `grep -o` 取：部分远端 sed 对 `s///\1` 报 invalid reference，pid 静默解析失败，
+    // 进而被读成「已死」——purge 就会删掉活着的登记（真机 SSH 目标踩到过）。
+        '    pid=$(cut -d, -f2 "$f" 2>/dev/null | tr -cd 0-9)',
     '    alive=0',
-    '    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then alive=1; fi',
+    // 判活必须**权限无关**：`kill -0` 对「别人的进程」返回 EPERM，会被读成「已死」。
+    // /proc/<pid> 存在即活（Linux/WSL 一律有），再退回 kill -0 兼顾没有 /proc 的系统。
+    '    if [ -n "$pid" ] && { [ -d "/proc/$pid" ] || kill -0 "$pid" 2>/dev/null; }; then alive=1; fi',
     '    echo "INSTANCE=$name|$kb|$pid|$alive"',
     '  done',
     'fi',
@@ -111,8 +115,12 @@ export function buildPurgeScript(homeDir: string, stagingSuffix: string | undefi
     'if [ -d "$I" ]; then',
     '  for f in "$I"/*.json; do',
     '    [ -e "$f" ] || continue',
-    '    pid=$(sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\\1/p" "$f" | head -n1)',
-    '    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then continue; fi',
+    // pid 用 `grep -o` 取：部分远端 sed 对 `s///\1` 报 invalid reference，pid 静默解析失败，
+    // 进而被读成「已死」——purge 就会删掉活着的登记（真机 SSH 目标踩到过）。
+        '    pid=$(cut -d, -f2 "$f" 2>/dev/null | tr -cd 0-9)',
+    // pid 读不出来时**绝不删**：宁可留一条垃圾，也不能删掉可能还活着的驻留实例。
+    '    if [ -z "$pid" ]; then continue; fi',
+    '    if [ -d "/proc/$pid" ] || kill -0 "$pid" 2>/dev/null; then continue; fi',
     '    kb=$(du -sk "$f" 2>/dev/null | cut -f1)',
     '    name=$(basename "$f")',
     '    rm -f "$f"',

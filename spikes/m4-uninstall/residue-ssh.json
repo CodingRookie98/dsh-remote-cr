@@ -1,0 +1,28 @@
+{
+  "mode": "ssh",
+  "target": "syy_wsl_ubuntu_LAN",
+  "report": {
+    "targetId": "ssh:probe",
+    "staging": {
+      "path": "/home/hui/.dsh-remote-cr/staging",
+      "exists": true,
+      "kb": 1184316
+    },
+    "instances": {
+      "path": "/home/hui/.dsh-remote-cr/instances",
+      "files": [
+        {
+          "name": "740a891b059aab62.json",
+          "kb": 4,
+          "pid": 3980,
+          "alive": false
+        }
+      ]
+    },
+    "checkedAt": "2026-11-19T06:09:51.957Z"
+  },
+  "passed": 4,
+  "failed": 0,
+  "failures": [],
+  "at": "2026-11-19T06:09:51.960Z"
+}

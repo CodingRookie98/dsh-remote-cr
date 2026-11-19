@@ -1,0 +1,21 @@
+{
+  "mode": "wsl",
+  "target": "ubuntu_dev",
+  "report": {
+    "targetId": "wsl:probe",
+    "staging": {
+      "path": "/home/hui/.dsh-remote-cr/staging",
+      "exists": false,
+      "kb": 0
+    },
+    "instances": {
+      "path": "/home/hui/.dsh-remote-cr/instances",
+      "files": []
+    },
+    "checkedAt": "2026-11-19T06:08:59.970Z"
+  },
+  "passed": 4,
+  "failed": 0,
+  "failures": [],
+  "at": "2026-11-19T06:08:59.974Z"
+}

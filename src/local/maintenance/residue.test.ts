@@ -45,7 +45,9 @@ test('buildResidueScript：没有 stagingSuffix 时盘整个 staging 目录（WS
 test('buildPurgeScript：只删 staging 与「pid 已死」的登记', () => {
   const script = buildPurgeScript('/home/hui', 'abc123')
   assert.ok(script.includes('rm -rf'), 'staging 整目录删除')
-  assert.ok(script.includes('kill -0'), '活着的实例必须跳过')
+  assert.ok(script.includes('/proc/$pid'), '判活要先看 /proc：kill -0 对别人的进程是 EPERM，会误判成已死')
+  assert.ok(script.includes('cut -d,'), 'pid 用 cut/tr 取：不需要在内层引号里写正则，最不易被远端 shell 吃字')
+  assert.ok(script.includes('[ -z "$pid" ]'), 'pid 读不出来时必须不删（宁可留垃圾也不删活实例）')
   assert.ok(script.includes('continue'), '活着就 continue，不能落到 rm')
   assert.ok(script.includes("'/home/hui/.dsh-remote-cr/instances'"), script)
 })
