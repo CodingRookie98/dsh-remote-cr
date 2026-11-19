@@ -29,13 +29,17 @@ export function targetKeyOf(target: ConnectTarget): string {
 }
 
 /** 同一台远端主机（不含端口/目录）：端口冲突只发生在同一台主机上。 */
+/**
+ * 同一台远端主机（不含端口/目录）：端口冲突只发生在同一台主机上。
+ *
+ * 已知边界（写进 RFC-0007 未验证清单）：**跨后端同机**（WSL + 从宿主 sshd 进同一 distro）这里判不出来；
+ * WSL2 不同发行版是否共享网络命名空间也未验证——判成「不同主机」是保守方向（宁可撞端口报错，也不误删）。
+ */
 export function sameHostOf(left: ConnectTarget, right: ConnectTarget): boolean {
   if (left.backend !== right.backend) return false
-  return left.backend === 'wsl' && right.backend === 'wsl'
-    ? left.distro.toLowerCase() === right.distro.toLowerCase()
-    : left.backend === 'ssh' && right.backend === 'ssh'
-      ? left.alias === right.alias
-      : false
+  if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro.toLowerCase() === right.distro.toLowerCase()
+  if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias.toLowerCase() === right.alias.toLowerCase()
+  return false
 }
 
 export interface HubEntry {
@@ -89,15 +93,37 @@ export class ProjectionHub {
     return this.#services.get(targetKeyOf(target))?.service
   }
 
-  /** 经容器接入：建/复用引擎 → 记 focus → 引用 +1 → 委托给引擎。 */
+  /**
+   * 经容器接入：建/复用引擎 → 记 focus → 引用 +1 → 委托给引擎。
+   *
+   * **失败要回滚**（P4 B3）：`retain` 在 attach 之前，失败不回滚会让「重试 N 次」变成「要 release N+1 次才回收」，
+   * 远端 dsh 会一直常驻；同机不同目录反复失败还会持续吃池端口。
+   */
   async attach(target: ConnectTarget, request: AttachRequest, control: AttachControl = {}): Promise<AttachResult> {
-    this.serviceFor(target)
     const key = targetKeyOf(target)
+    const existed = this.#services.has(key)
+    const service = this.serviceFor(target)
     const entry = this.#services.get(key)
     if (entry === undefined) throw new Error('hub: service missing after serviceFor')
     this.#focus = key
     this.#refs.retain(key)
-    return await entry.service.attach(entry.effective, request, control)
+    try {
+      return await service.attach(entry.effective, request, control)
+    } catch (error) {
+      const outcome = this.#refs.release(key)
+      // 本次新建、或这条引用是最后一个：把 entry 与端口一起还回去，避免僵尸端口。
+      if (!existed || outcome.recycle) this.#dropEntry(key)
+      throw error
+    }
+  }
+
+  /** 移除一条 entry 并归还它占的端口（幂等）。 */
+  #dropEntry(key: string): void {
+    const entry = this.#services.get(key)
+    if (entry === undefined) return
+    this.#services.delete(key)
+    this.#ports.release(entry.effective.port)
+    if (this.#focus === key) this.#focus = undefined
   }
 
   /**
@@ -111,7 +137,9 @@ export class ProjectionHub {
     if (entry === undefined) return { remaining: outcome.remaining, recycled: false }
     if (!outcome.recycle) return { remaining: outcome.remaining, recycled: false }
     entry.service.recycle()
-    this.#ports.release(entry.effective.port)
+    // **必须删 entry**（P4 B4）：只回收端口而留 entry，`#effectiveOf` 的 taken 会一直算上僵尸端口，
+    // 同主机第 22 个 target 就会假池满（实测）。
+    this.#dropEntry(key)
     return { remaining: 0, recycled: true }
   }
 
@@ -148,6 +176,7 @@ export class ProjectionHub {
       this.#ports.release(value.effective.port)
     }
     this.#services.clear()
+    this.#refs.clear()
     this.#focus = undefined
   }
 }

@@ -1,0 +1,23 @@
+{
+  "mode": "cross-host",
+  "passed": 5,
+  "failed": 0,
+  "failures": [],
+  "result": {
+    "ports": [
+      8960,
+      8961
+    ],
+    "wslClosedIn": 783,
+    "sshClosedIn": 284,
+    "wsIds": [
+      [
+        "70aa0df3-8e6f-44d1-881c-edde4ba6e3fc"
+      ],
+      [
+        "25ba2dc8-cd3d-4347-a9c8-a7c5c5bc1fa6"
+      ]
+    ]
+  },
+  "at": "2026-11-19T07:46:48.071Z"
+}

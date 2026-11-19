@@ -31,4 +31,9 @@ export class ReferenceCounter {
   count(key: string): number {
     return this.#counts.get(key) ?? 0
   }
+
+  /** 全清（`disposeAll` 用）：先清计数，重建后一次 release 才能正常回收。 */
+  clear(): void {
+    this.#counts.clear()
+  }
 }

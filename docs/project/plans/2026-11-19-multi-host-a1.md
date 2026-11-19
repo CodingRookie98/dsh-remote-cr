@@ -44,8 +44,24 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 | 容器接线 | `ProjectionHub.attach` 引用 +1、`release` 归零才 `recycle()`；同主机同端口的第二个 target 自动顺延并标 `portAdjusted` | hub 3 条新用例（顺延 / 引用 / 未知 target） |
 | 对外可见 | `GET /projection/targets` 增加 `port` / `portAdjusted` / `references` | 类型 + 路由映射 |
 
-**真机（`spikes/m4-multi-host/probe.cjs`）5/5**：WSL 8960 + SSH 8961 同时 attach 都 connected；投影各自 1 个工作区互不覆盖；
-释放 WSL → 该台 **1469 ms** 内端口关闭、SSH 仍在线；再释放 SSH → **380 ms** 关闭。
+**真机（`spikes/m4-multi-host/probe.cjs`）**：
+- `--cross-host` **5/5**：WSL 8960 + SSH 8961 同时 attach 都 connected；投影按 workspace id 各自独立；
+  释放 WSL → **783 ms** 端口关闭、SSH 仍在线；再释放 SSH → **284 ms** 关闭。
+- `--same-host` **3/3**：同一 distro、同端口 8959、不同目录 → 第二个引擎被顺延到 **8941**（`portAdjusted=true`），
+  已连那台在监听、顺延那台未监听；释放已连那台 → **838 ms** 关闭。
+
+**A3 红队（不可签）四条 P0 的修法（已落地）**：
+
+| 阻断 | 修法 |
+|---|---|
+| B1 生产仍是单服务适配器（多 target 共用一个引擎） | `src/index.ts` 改为 `new ProjectionHub(() => new ProjectionService(...))` 并传 `hub`；`ctx.effect` 改 `hub.disposeAll()`；返回体由 `projection` 改 `hub` |
+| B2 写路由只作用 focus（会操作错主机） | 新增 `serviceOrFocus(target)`；`/disconnect`、`/reconnect`、`/stop`、`/session`、`/probe`、`/projection/refresh`、`/workspace/import(able)` 全部接受 target；客户端 `*Of(target)` 版本并按 focus 调用 |
+| B3 attach 失败留账（引用/端口不回滚） | `attach` 失败时 `release` 并 `#dropEntry`（新建或最后一个引用时连 entry 与端口一起还） |
+| B4 僵尸 entry 导致假池满 | `release` 归零时 `#dropEntry`（删 entry + 还端口）；重复释放不抛 |
+
+另修：`disposeAll` 清空引用计数（B5）；`sameHostOf` SSH 别名大小写归一 + 补用例（B6）；探针改三态端口探测、用 `effective.port`、补 same-host 场景（B7）。
+
+**残留（P2，已记录）**：`release` 目前只有探针在调用——UI 没有「关闭工作区」动作，所以 `references` 现阶段等于 attach 次数；接 UI 时要把 release 挂到关闭工作区/结束远端上。
 
 ## 4. 风险
 

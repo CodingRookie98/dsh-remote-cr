@@ -1,6 +1,6 @@
 # RFC-0007 · 多 host：从单槽到「多登记 + 单活」还是真并发分槽
 
-- 状态：**Accepted（2026-11-19 用户拍板方案 A：真并发分槽；分期见 §6）**
+- 状态：**Implemented（A1–A3 已合并 master，2026-11-19；A3 红队四条 P0 已修，待 Delta 复审）**
 - 日期：2026-11-19
 - 关联：`docs/design/milestones.md` M3「多工作区/多 host 同时在线、引用计数」、`src/local/projection/service.ts`（单槽）、`src/local/api/routes.ts`（无 target 参数）、RFC-0004 §1.4
 

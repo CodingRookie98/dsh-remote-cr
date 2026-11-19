@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ProjectionHub, targetKeyOf } from './hub.ts'
+import { ProjectionHub, sameHostOf, targetKeyOf } from './hub.ts'
 import { ProjectionService, type ConnectTarget } from './service.ts'
 import { ProjectionStore } from './store.ts'
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
@@ -118,12 +118,27 @@ test('A3 引用计数：两个引用释放一个不回收，最后一个才 recy
   assert.equal(recycles, 0, '还有一个引用，不许回收')
   assert.deepEqual(hub.release(A), { remaining: 0, recycled: true })
   assert.equal(recycles, 1)
-  assert.equal(hub.entries()[0]?.references, 0, '回收后投影条目仍在（只是引用归零）')
+  // B4：回收后 entry 必须被删掉（否则僵尸端口会让池假满）；投影由下一次 attach 重建。
+  assert.equal(hub.entries().length, 0)
+  assert.equal(hub.peek(A), undefined)
 })
 
 test('A3 释放未知 target 不抛、也不误报回收', () => {
   const hub = hubWith({})
   assert.deepEqual(hub.release(A), { remaining: 0, recycled: false })
+})
+
+test('sameHostOf：WSL 与 SSH 别名都大小写不敏感（P4 B6）', () => {
+  assert.equal(sameHostOf(A, { ...A, port: 9999, remoteRoot: '/other' }), true, '同 alias 不同端口/目录仍是同一台主机')
+  assert.equal(sameHostOf(A, { ...A, alias: 'A' }), true, 'SSH 别名大小写不该当成两台机器')
+  assert.equal(
+    sameHostOf(
+      { backend: 'wsl', distro: 'Ubuntu-24.04', port: 1, remoteRoot: '/a' },
+      { backend: 'wsl', distro: 'ubuntu-24.04', port: 2, remoteRoot: '/b' },
+    ),
+    true,
+  )
+  assert.equal(sameHostOf(A, { backend: 'wsl', distro: 'a', port: 8941, remoteRoot: '/a' }), false, '跨后端判不出同机（保守方向）')
 })
 
 test('targetKeyOf 与 sameTarget 同形：端口/检出根不同就是不同键', () => {

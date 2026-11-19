@@ -33,6 +33,7 @@ import { type CredentialProxyRuntime, resolveUpstreamFromEnv, startCredentialPro
 import { createLiveConnect, ENV_POLICY_CONFLICT } from './local/projection/live.ts'
 import { installPromptProjection, type PromptProjectionLog } from './local/projection/prompt.ts'
 import { ProjectionService } from './local/projection/service.ts'
+import { ProjectionHub } from './local/projection/hub.ts'
 import { ProjectionStore } from './local/projection/store.ts'
 
 /** Loader 行里的插件名（与 \`cordis.patch.yml\` 的 \`id\` 无关，那个是行 id）。 */
@@ -71,7 +72,11 @@ function fenceOf(ctx: RemoteCrPluginContext): ConnectionFence | undefined {
 /** 一次启动挂上的全部东西；测试与启动自检都能据此断言「该挂的都挂了」。 */
 export interface RemoteCrMount {
   readonly routes: readonly MountedRoute[]
-  readonly projection: ProjectionService
+  /**
+   * 多 host 容器（RFC-0007）：每台 target 一个 `ProjectionService`，各自 store / 连接 / 重连驱动。
+   * 之前这里暴露的是单个 `projection`——那正是 A3 红队判「生产仍单引擎」的根因。
+   */
+  readonly hub: ProjectionHub
   readonly promptLog: PromptProjectionLog | undefined
   /**
    * 本机凭据代理的启动结果；`undefined` 表示起不来（没有凭据文件、端口被占、被策略拦）。
@@ -143,30 +148,34 @@ export function apply(ctx: RemoteCrPluginContext): RemoteCrMount {
     }
   })()
 
-  // 投影服务先建：它不连远端（连接在第一次 /attach 时才建立），构造是纯内存操作。
-  const projection = new ProjectionService({
-    store: new ProjectionStore(),
-    connect: createLiveConnect({
-      // SSH 走 `ssh` 自己的认证（密钥 / agent / ssh_config 里的 IdentityFile）；
-      // 本插件不碰密码，也不把任何凭据存在远端或浏览器里。
-      ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }), proxyPort: () => proxy?.port },
-      // 环境档位从宿主环境读**原始字符串**：写错时要在「点连接」那一刻给出结构化错误，
-      // 而不是在插件加载时崩掉（那会让面板都开不出来）。
-      envPolicy,
-    }),
-  })
+  // 多 host 容器：**每台 target 一个引擎**（各自的 store / 连接 / 重连驱动 / 槽位）。
+  // 工厂在 `serviceFor` 里按需调用；构造是纯内存操作，第一次 /attach 才连远端。
+  const hub = new ProjectionHub(
+    () =>
+      new ProjectionService({
+        store: new ProjectionStore(),
+        connect: createLiveConnect({
+          // SSH 走 `ssh` 自己的认证（密钥 / agent / ssh_config 里的 IdentityFile）；
+          // 本插件不碰密码，也不把任何凭据存在远端或浏览器里。
+          ssh: { homeDir, authFor: async () => ({ kind: 'key' as const }), proxyPort: () => proxy?.port },
+          // 环境档位从宿主环境读**原始字符串**：写错时要在「点连接」那一刻给出结构化错误，
+          // 而不是在插件加载时崩掉（那会让面板都开不出来）。
+          envPolicy,
+        }),
+      }),
+  )
 
   const promptLog = installPromptProjection(ctx as never)
 
   // 进程退出时释放远端连接；不标 offline，因为没人会再看这份内存表。
   ctx.effect(() => () => {
-    projection.dispose()
+    hub.disposeAll()
     // 代理要显式停：它持着一个 listening socket，不停就留在进程里占端口。
     void proxy?.stop()
   }, 'dsh-remote-cr: projection lifetime')
 
   const routes = registerRemoteCrRoutes(ctx, {
-    projection,
+    hub,
     homeDir,
     // 插件同步（RFC-0003）：SSH 与 WSL 都接；宿主版本对齐（H 系列）用本进程的宿主版本作目标。
     // 传 null 时上游会给 local-version-unknown——宁可拒绝，也不猜一个版本装到远端。
@@ -179,7 +188,7 @@ export function apply(ctx: RemoteCrPluginContext): RemoteCrMount {
           reject: (req: IncomingMessage) => fence.requestRejection({ headers: req.headers }),
         }),
   })
-  return { routes, projection, promptLog, proxyReady, proxyFailure: () => proxyFailure }
+  return { routes, hub, promptLog, proxyReady, proxyFailure: () => proxyFailure }
 }
 
 export { SHARED_PROTOCOL_VERSION, describeShared } from './shared/index.ts'

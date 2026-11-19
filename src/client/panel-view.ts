@@ -38,6 +38,9 @@ import {
   probeRemoteSession,
   readProjection,
   readProjectionOf,
+  disconnectRemoteOf,
+  reconnectRemoteOf,
+  stopRemoteOf,
   readDoctor,
   readResidue,
   purgeResidue,
@@ -790,7 +793,16 @@ export function RemoteCrPanel(): unknown {
   const onLink = async (action: 'disconnect' | 'reconnect'): Promise<void> => {
     setBusy(action)
     try {
-      const next = action === 'disconnect' ? await disconnectRemote() : await reconnectRemote()
+      // 切到哪台就操作哪台：不带 target 时服务端只作用「最后 attach 的那台」，
+      // 用户点 A 的主机却断开了 B（P4 B2）。
+      const next =
+        action === 'disconnect'
+          ? focusTarget === null
+            ? await disconnectRemote()
+            : await disconnectRemoteOf(focusTarget)
+          : focusTarget === null
+            ? await reconnectRemote()
+            : await reconnectRemoteOf(focusTarget)
       setSnapshot(next)
       setError(null)
     } catch (caught) {
@@ -833,7 +845,8 @@ export function RemoteCrPanel(): unknown {
   const onStopRemote = async (): Promise<void> => {
     setBusy('stop-remote')
     try {
-      await stopRemote()
+      if (focusTarget === null) await stopRemote()
+      else await stopRemoteOf(focusTarget)
       setError(null)
       await refresh()
     } catch (caught) {

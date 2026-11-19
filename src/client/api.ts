@@ -17,6 +17,7 @@
 import { API_PREFIX } from '../shared/api.ts'
 import type {
   HostEntryInfo,
+  ProjectionSnapshotInfo,
   ImportableWorkspaceInfo,
   PurgeResultInfo,
   RemoteTargetInfo,
@@ -119,6 +120,27 @@ export async function callApi<T>(
 export async function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo> {
   // callApi 自己会拼 API_PREFIX；这里只给路径（拼两遍会得到 /remote-cr/api/remote-cr/api/...）。
   return await callApi<import('../shared/api.ts').DoctorReportInfo>('/doctor')
+}
+
+/**
+ * 写操作的目标版（RFC-0007 A2/B2）：切到哪台就操作哪台。
+ *
+ * 不带 target 时服务端只作用「最后 attach 的那台」；用户点了 A 主机却断开了 B 就是这么来的。
+ */
+export function disconnectRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo> {
+  return callApi('/disconnect', { method: 'POST', body: { target } }, fetchImpl)
+}
+
+export function reconnectRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo> {
+  return callApi('/reconnect', { method: 'POST', body: { target } }, fetchImpl)
+}
+
+export function stopRemoteOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<{ stopped: boolean }> {
+  return callApi('/stop', { method: 'POST', body: { target } }, fetchImpl)
+}
+
+export function refreshProjectionOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<ProjectionSnapshotInfo> {
+  return callApi('/projection/refresh', { method: 'POST', body: { target } }, fetchImpl)
 }
 
 /** `GET /projection/targets`：容器里每台的状态与条目数（RFC-0007 A1/A2）。 */

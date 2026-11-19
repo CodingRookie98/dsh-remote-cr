@@ -1,0 +1,18 @@
+{
+  "mode": "same-host",
+  "passed": 3,
+  "failed": 0,
+  "failures": [],
+  "result": {
+    "ports": [
+      8959,
+      8941
+    ],
+    "adjusted": [
+      false,
+      true
+    ],
+    "closedFirst": 838
+  },
+  "at": "2026-11-19T07:46:20.652Z"
+}
