@@ -95,6 +95,8 @@ export declare function cancelFlow(id: string, fetchImpl?: typeof fetch): Promis
 export declare function listWorkspaces(fetchImpl?: typeof fetch): Promise<readonly import('../shared/api.ts').WorkspaceRecord[]>;
 /** 读一次投影快照（远端工作区 + 会话 + 连接状态）。 */
 export declare function readProjection(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo>;
+/** 读**指定那台**的投影（RFC-0007 A2）：面板切换主机时用它，服务端按 target 返回对应引擎的快照。 */
+export declare function readProjectionOf(target: RemoteTargetInfo, fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo>;
 /**
  * 让宿主半**刷新一次**投影（`POST /projection/refresh`），回来的是最新快照。
  *
