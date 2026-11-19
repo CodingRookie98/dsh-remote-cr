@@ -49,8 +49,12 @@ dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.3.0'
 - **首次引导重**：约 1.4 GB / ~3 分钟（要装远端 dsh）。
 - **WSL 后端不支持驻留**：`wsl.exe` 句柄一退就把 distro 侧子进程带走（`keepAlive` 是可选能力）。
 - **取消是分级的**：`probe/bootstrap/launch/tunnel` 保证可取消；`attach` RPC 与 `#connect` 是尽力而为；不承诺取消后远端进程立刻退出（回收归退出）。
-- **端口固定**：同一 target 默认 `port + 1` 作隧道口，冲突时会回落启动。
-- **未验证**：远端整机重启后的重连、链路丢包下的握手、`verify/barrier` 阶段的 UI 呈现。
+- **没有版本探针**：老远端 + 新本地混跑的表象是 `remote/port-in-use`，不是「版本不匹配」；跨 `engines.dsh` 区间会被拒绝连接。
+- **Docker 已取消**（ADR-0008）：四选一里保留灰显「暂不支持」，不交付可用链路。
+- **远端残留清理是显式动作**：staging 与 instances **不会自动删**；清理要两步确认，且**有活驻留实例时保留 staging**（先「结束远端」再清）。
+- **面板刷新是 5 s 级**：「运行中 / 最后活动」最多滞后一轮；失败会保留旧帧并标「数据已过期」。
+- **浏览器只验 Chrome**：Edge / Firefox / WebKit 未验证；读屏路径未验证。
+- **未验证**：远端整机重启后的重连、链路丢包下的握手、`verify/barrier` 阶段的 UI 呈现、`GatewayPorts yes` 下 `-R` 的绑定范围、`hidepid=2` 容器里的实例判活。
 
 ## 8. 提交步骤（已执行，2026-11-14）
 
