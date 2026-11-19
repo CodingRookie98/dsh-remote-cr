@@ -62,8 +62,13 @@ export interface RemoteConnection {
   rehandshake?(): Promise<void>
   /** 驻留：让远端进程在本地离开后继续跑（与 `dispose` 互斥，先调哪个哪个生效）。 */
   keepAlive?(): Promise<void>
-  /** 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。 */
-  stopRemote?(): Promise<void>
+  /**
+   * 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。
+   *
+   * 返回 `false` = 没能确认进程已退出（看门狗没在窗口内退出）。**别把它当 void 丢掉**：
+   * `/stop` 是唯一的生产回收入口，丢了就等于「没退干净永远报成功」（P4 P1-B）。
+   */
+  stopRemote?(): Promise<boolean | void>
   /**
    * 把远端绝对路径映射成本地锚点虚拟路径（导入远端工作区要用）。
    *
@@ -523,8 +528,19 @@ export class ProjectionService {
     this.#setLive(undefined)
     this.#stopDriver()
     const detached = this.#dropDetached()
-    await this.#reclaim(live?.connection)
-    if (detached !== undefined) await this.#reclaim(detached)
+    // 两条都要收：live 先失败就不收 detached 的话，那条连接对象会泄漏（不进任何槽位，也没人 dispose）。
+    let first: unknown
+    try {
+      await this.#reclaim(live?.connection)
+    } catch (error) {
+      first = error
+    }
+    try {
+      await this.#reclaim(detached)
+    } catch (error) {
+      first ??= error
+    }
+    if (first !== undefined) throw first
   }
 
   /** 非回收路径用：丢掉留存连接并就地 retire（不 await，进程退出/断开时不需要等）。 */
@@ -610,7 +626,7 @@ export class ProjectionService {
   }
 
   /** 把勾选的远端路径逐个投影进来（`workspace/create` 幂等，已有就复用）。 */
-  async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number; readonly created: number }> {
+  async importWorkspaces(paths: readonly string[]): Promise<{ readonly imported: number }> {
     const live = this.#live
     if (live === undefined) {
       throw new RemoteCrError({
@@ -629,15 +645,12 @@ export class ProjectionService {
     }
     const deps = attachDeps(live.target, live.connection.rpc, this.#store)
     let imported = 0
-    let created = 0
     for (const remotePath of paths) {
       const mapped = await anchorFor(remotePath)
-      const result = await attachWorkspace(deps, { remotePath, localPath: mapped.localPath, title: baselineTitle(remotePath) })
+      await attachWorkspace(deps, { remotePath, localPath: mapped.localPath, title: baselineTitle(remotePath) })
       imported += 1
-      // 只数**新建**的：重复导入同一路径是幂等的，数进去会让引用数虚高（虹吸成永不回收）。
-      if (result.created) created += 1
     }
-    return { imported, created }
+    return { imported }
   }
 
   /**
@@ -668,7 +681,8 @@ export class ProjectionService {
       this.#retired.add(entry.connection)
       // `stopRemote()` 是显式停远端（无返回值）；`dispose()` 会带回「是否收干净」，要看。
       if (typeof entry.connection.stopRemote === 'function') {
-        await entry.connection.stopRemote()
+        const stopped = (await entry.connection.stopRemote()) !== false
+        if (!stopped) throw incomplete(undefined)
         continue
       }
       const clean = (await entry.connection.dispose()) !== false

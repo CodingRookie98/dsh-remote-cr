@@ -502,10 +502,13 @@ async function openConnection(
       // 把「是否干净」原样带出去：调用方（取消路径）据此决定要不要报 recycle-incomplete。
       return await handle.dispose()
     },
-    /** 「结束远端」：本地连接走 dispose（EXIT 行 → 看门狗 kill），语义与 recycle 一致。 */
-    stopRemote: async () => {
-      await handle.dispose()
-    },
+    /**
+     * 「结束远端」：本地连接走 dispose（EXIT 行 → 看门狗 kill），语义与 recycle 一致。
+     *
+     * **必须把 clean 带出去**（P4 P1-B）：`handle.dispose()` 返回 `false` 表示看门狗没在窗口内退出，
+     * 丢掉它就等于把「没退干净」永远报成成功 —— 而这是「结束远端」唯一的生产路径。
+     */
+    stopRemote: async () => await handle.dispose(),
   }
 }
 

@@ -96,6 +96,17 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 **补的回归判据**：`dispose()===false` → `remote/recycle-incomplete`（含干净对照组）、留存连接必须 await、`/stop` 回收失败回错误码、`/workspace/remove` 只删投影不回收、`removeWorkspace` 级联删会话、未知工作区断言到**码**（原来只断 `ok:false`，stub 抛 TypeError 也算通过）。
 另删除 `lib/` 里 8 个 `refcount.*` 陈旧产物（源码已删、产物没清，且会被 `files` 打包）。
 
+**Delta-2（判不可签，3 条残余 P1）已修（2026-11-19）**：
+
+| 编号 | 问题 | 修法 |
+|---|---|---|
+| P1-A | `/stop` 先 `stopRemote()` 再 `releaseAll` 留窗口（槽位已清、entry 还在，`serviceFor` 会复用正在回收的引擎） | hub 路径**只走 `releaseAll` 一条收尾**（`recycle` 本身就是真收+删 entry+还端口）；无 hub 的注入路径才 `stopRemote()` |
+| P1-B | `live.stopRemote` 把 `handle.dispose()` 的 clean 丢掉，`RemoteConnection.stopRemote?(): Promise<void>` 没有返回通道 → `/stop` 在生产上永远报不了「没退干净」 | 类型改 `Promise<boolean \| void>`；live 返回 clean；`service.stopRemote` 判 `false → incomplete()` |
+| P1-C | `shared/api.ts` / `hub.ts` 注释宣称「移除最后一个工作区会回收」，与 P2-1 后的实现相反 | 两处都改成「只有『结束远端』回收；移除只改列表」 |
+
+另：`recycle()` 改成 live/detached **两条都收**（live 先失败不再让 detached 泄漏）；删掉无消费方的 `importWorkspaces().created`；
+面板「移除」文案抽成纯函数 `removeButtonLabel(busy, id, labels)` + 4 条断言（原来内联三元被改坏仍全绿）。
+
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：

@@ -66,7 +66,7 @@ import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
 import { filterSessions } from './filter.ts'
 import { applyPollState, createRefreshScheduler, type RefreshScheduler } from './poll.ts'
 import { createRefreshRunner } from './refresh-runner.ts'
-import { nextPurgeClick } from './purge-arming.ts'
+import { nextPurgeClick, removeButtonLabel } from './purge-arming.ts'
 import { lastSessionActionFailure, subscribeSessionActions } from './session-actions.ts'
 import {
   beginApply,
@@ -1124,7 +1124,7 @@ export function RemoteCrPanel(): unknown {
           title: t('panel.removeWorkspaceHint'),
           onClick: () => void onRemoveWorkspace(workspace.id),
         },
-        busy === 'remove:' + workspace.id ? t('panel.removing') : t('panel.removeWorkspace'),
+        removeButtonLabel(busy, workspace.id, { idle: t('panel.removeWorkspace'), busy: t('panel.removing') }),
       ),
     )
   })

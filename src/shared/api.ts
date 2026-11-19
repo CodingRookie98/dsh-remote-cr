@@ -219,7 +219,8 @@ export interface HostEntryInfo {
   readonly portAdjusted: boolean
   /**
    * 引用数 = **这台投影里还剩几个工作区**（从投影表派生，不是接入次数、也不是独立计数器）。
-   * 归零意味着这台 target 已经没有工作区在用；「结束远端」与「移除最后一个工作区」都会回收它。
+   * 归零意味着这台 target 已经没有工作区在用；**但回收只由「结束远端」触发**——
+   * 「移除工作区」只是列表操作，不会杀远端进程（否则清一下列表就会连带杀掉远端在跑的会话）。
    */
   readonly references: number
 }

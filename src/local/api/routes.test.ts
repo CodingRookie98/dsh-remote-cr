@@ -396,6 +396,29 @@ test('/stop：回收失败要如实回错（remote/recycle-incomplete），不�
   assert.equal(hub.entries().length, 0, '失败的回收也要把 entry 收掉，否则端口永久被占')
 })
 
+test('/stop：hub 装配下只走一条收尾路径（不先 stopRemote 再 releaseAll，P4 P1-A）', async () => {
+  let stopCalls = 0
+  const stub = {
+    attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+    stopRemote: async () => {
+      stopCalls += 1
+    },
+    recycle: async () => undefined,
+    dispose() {},
+    snapshot: () => ({ workspaces: [{}], sessions: [], connected: true, target: null, link: 'connected', envPolicy: null, attach: null, stale: false }),
+    get connected() {
+      return true
+    },
+  } as unknown as ProjectionService
+  const hub = new ProjectionHub(() => stub)
+  const target: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/a' }
+  await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  const result = await rig({}, { hub }).call({ path: '/stop', method: 'POST', body: JSON.stringify({ target }) })
+  assert.equal(result.status, 200)
+  assert.equal(stopCalls, 0, 'hub 路径不许再单独 stopRemote 一次（会留窗口）')
+  assert.equal(hub.entries().length, 0)
+})
+
 test('/workspace/remove：不在投影里时结构化报错，不假装成功', async () => {
   const hub = new ProjectionHub(
     () => ({ removeWorkspace: () => false }) as unknown as ProjectionService,
