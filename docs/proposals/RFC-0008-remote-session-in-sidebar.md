@@ -58,6 +58,19 @@ P2 的隐含前提是「本地能创建一条会话，但它的 agent 是转发�
 
 → 所以 P2 必须由 companion 做**真代理**（发送转发到远端），不是文件复制。
 
+## 4.6 面板内「可读可发」也不便宜（2026-11-19 评估，避免重复评估）
+
+C 被挡住后，退路是「至少在面板里给远端会话发消息、看历史」。查证结果：
+
+| 能力 | 代价 |
+|---|---|
+| 发消息 | `session/prompt`（`api/session-controller/src/index.ts:467`）要 `SessionPromptRequest`：`content[]` 的 wire 编码 + `requestId` + 可选 `clientTimeZone`。能拼，但只是「发」 |
+| 读历史 | `session/events`/`session/page` 的分页请求要 durable `address`、`throughSeq`、cursor，响应要逐条 `assertSessionWireEvent` 解码（`client/transport.ts:38`、`:179-194`）。在插件里复刻这套 = 把 session-controller 的 client 层抄一遍 |
+
+**只做「发」不做「读」**：用户发完看不到任何回复，只能靠 `session/list` 的 `running` 位猜远端是不是在跑——比现状（只看得到会话存在、可取证）更糟。
+
+→ 结论：**B+ 的 ROI 不足以支撑，不做**。这条评估写在这里，避免下一轮或下一个人再花一次时间。
+
 ## 5. 建议
 
 1. **先落 P2 的只读半边**（镜像会话、不可发消息）作为过渡——但需要先修订 §4.2 的双写禁令，否则实现即违约；
