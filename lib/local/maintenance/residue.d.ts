@@ -40,7 +40,7 @@ export declare function applyLiveness(report: ResidueReportInfo, stdout: string)
 export interface PurgePlan {
     readonly removeStaging: boolean;
     /** staging 为什么没被删（null = 没跳过）。 */
-    readonly skipReason: 'resident-alive' | null;
+    readonly skipReason: 'resident-alive' | 'liveness-unknown' | null;
     readonly instances: readonly ResidueInstanceFileInfo[];
 }
 export declare function planPurge(report: ResidueReportInfo, stagingId?: string | null | undefined): PurgePlan;

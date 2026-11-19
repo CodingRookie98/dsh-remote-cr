@@ -216,13 +216,18 @@ export interface ResidueReportInfo {
     readonly instances: {
         readonly path: string;
         readonly files: readonly ResidueInstanceFileInfo[];
+        /**
+         * 判活拿不准的 pid（`hidepid=2` 下别人的进程既看不见、`kill -0` 又 EPERM）。
+         * 有值就必须**失败关闸**：宁可留着垃圾，也不删可能还活着的实例。
+         */
+        readonly unknown?: readonly number[];
     };
     readonly checkedAt: string;
 }
 /** `POST /maintenance/purge` 的应答体：删了什么、释放多少。 */
 export interface PurgeResultInfo {
     /** staging 没删时的原因（例如还有驻留实例在用它）；删了就是 null。 */
-    readonly skipped?: 'resident-alive' | null;
+    readonly skipped?: 'resident-alive' | 'liveness-unknown' | null;
     readonly removed: readonly {
         readonly kind: 'staging' | 'instance';
         readonly path: string;
