@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 /**
@@ -24,10 +24,24 @@ export function readOptout(file: string): readonly string[] {
   }
 }
 
+/**
+ * 原子写：先写同目录临时文件再 rename（R1-S10）。
+ *
+ * 直接 `writeFileSync` 有截断窗口：两个面板并发写会丢 target，读侧在窗口内读到空文件还会
+ * 静默当「没有任何静音」，表现为「不再提醒」自己失效。rename 在同一目录内是原子的。
+ */
 export function writeOptout(file: string, targets: readonly string[]): void {
   mkdirSync(dirname(file), { recursive: true })
   const payload: OptoutFile = { version: 1, targets: [...new Set(targets)].sort() }
-  writeFileSync(file, JSON.stringify(payload, null, 1) + '\n')
+  const temp = file + '.tmp'
+  try {
+    writeFileSync(temp, JSON.stringify(payload, null, 1) + '\n')
+    renameSync(temp, file)
+  } catch (error) {
+    // 失败时别留临时文件：下次读侧看到它只会更困惑。
+    rmSync(temp, { force: true })
+    throw error
+  }
 }
 
 /** 增删一个 target 的静音状态，返回最新列表。 */

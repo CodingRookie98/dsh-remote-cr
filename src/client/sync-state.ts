@@ -6,7 +6,7 @@ import type { RemoteCrKey } from './locales.ts'
  * 用 `as never` 拼键会让 tsc 失去保护，漏一个键只会在屏上印出 key。
  */
 export const SYNC_REASON_KEYS: Readonly<Record<SyncReasonId, RemoteCrKey>> = {
-  none: 'syncReason.missing-remote',
+  none: 'syncReason.none',
   'missing-remote': 'syncReason.missing-remote',
   'remote-older': 'syncReason.remote-older',
   'remote-newer': 'syncReason.remote-newer',

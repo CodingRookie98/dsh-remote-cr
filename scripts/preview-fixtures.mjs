@@ -336,6 +336,22 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // 读远端失败：对话框必须给码 + 下一步 + 重试，而不是留一个转圈的框（R2-S6）。
+    id: 'sync-failed',
+    label: '插件同步：读取失败（码 + 下一步 + 重试）',
+    theme: 'light',
+    targets: ['[data-remote-cr="sync-failed"]', '[data-remote-cr="sync-retry"]'],
+    hideFlow: true,
+    requireMarkers: ['sync-failed', 'sync-failed-code', 'sync-failed-next', 'sync-retry'],
+    steps: [
+      { wait: '[data-remote-cr="panel-head"]', timeoutMs: 10000 },
+      { wait: '[data-remote-cr="projected"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="sync-open"]' },
+      { wait: '[data-remote-cr="sync-failed"]', timeoutMs: 10000 },
+      { sleep: 150 },
+    ],
+  },
+  {
     // 宿主版本漂移：两段式确认必须可拍（第一次点变「确认」，第二次才执行）。
     id: 'sync-host-drift',
     label: '宿主版本漂移：两段式确认（点一次变确认）',
@@ -788,6 +804,15 @@ export function sceneFixtures(sceneId) {
       { name: 'dshmarket', ok: false, code: 'remote/plugin-sync-apply-failed', detail: '退出码 1' },
     ],
     syncOptout: [],
+    // 读 plan 就失败（R2-S6：对话框 failed 态原本没有场景）。
+    syncPlanError:
+      id === 'sync-failed'
+        ? {
+            code: 'remote/plugin-sync-read-failed',
+            detail: '读取远端插件清单失败（退出码 1）',
+            nextActions: ['重试', '先确认这台远端能正常接入', '复制日志查看远端 stderr'],
+          }
+        : null,
     // 宿主升级失败面：POST 回结构化错误（含 nextActions），场景据此断言「失败要响」。
     syncHostError:
       id === 'sync-host-failed'

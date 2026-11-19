@@ -123,6 +123,7 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
   if (path === '/remote-cr/api/projection') return { ok: true, value: fixtures.projection };
   if (path === '/remote-cr/api/plugin-sync') {
+    if (method === 'GET' && fixtures.syncPlanError) return { ok: false, ...fixtures.syncPlanError };
     return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
   }
   if (path === '/remote-cr/api/plugin-sync/host' && method === 'POST') {

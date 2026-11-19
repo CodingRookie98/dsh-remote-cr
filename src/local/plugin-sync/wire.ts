@@ -2,6 +2,7 @@ import { join } from 'node:path'
 
 import { RemoteCrError } from '../backend/errors.ts'
 import { anchorIdFor, anchorTargetOf } from '../backend/ssh/anchors.ts'
+import { HOME_DIR_NAME } from '../migration/legacy-names.ts'
 import { readSshConfig, resolveSshTarget, type SshTarget } from '../backend/ssh/config.ts'
 import { knownHostsPath } from '../backend/ssh/known-hosts.ts'
 import { runSsh, type SshRunOptions, type SshRunResult } from '../backend/ssh/transport.ts'
@@ -121,7 +122,8 @@ export function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesO
 
   return {
     profile,
-    optoutFile: join(options.homeDir, '.dsh-remote-cr', 'sync-optout.json'),
+    // 状态根名只认常量：再次改名时不会漏掉这里（R1-S11）。
+    optoutFile: join(options.homeDir, HOME_DIR_NAME, 'sync-optout.json'),
     localProfileDir: join(options.homeDir, '.dsh', 'profiles', profile),
     async targetId(target): Promise<string> {
       // SSH：与 anchors / 隔离目录同一个 id（host+user+port 的 hash），避免「同机不同用户」互相静音
