@@ -1269,12 +1269,11 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     // **只走一条收尾路径**（P4 P1-A）：先 `stopRemote()` 再 `releaseAll` 会在两步之间留一个窗口 ——
     // 那时槽位已清、entry 还在，`serviceFor` 会复用这个正在被回收的引擎，随后被 `releaseAll` 连带删掉。
     // `releaseAll → recycle` 本来就是「真收 + 删 entry + 还端口」，不需要再单独 stop 一次。
-    if (hub !== undefined) {
-      const entry = hub.entries().find((candidate) => candidate.service === service)
-      if (entry !== undefined) await hub.releaseAll(entry.target)
-    } else {
-      await service.stopRemote()
-    }
+    // 挂点是「entry 在不在容器里」，不是「hub 在不在」：`hub` 在生产恒存在（`options.projection` 会被包成单服务容器），
+    // 挂在 hub 上会让「注入式装配、entry 不在容器」时**静默 no-op**（P4 P2-②）。
+    const entry = hub?.entries().find((candidate) => candidate.service === service)
+    if (hub !== undefined && entry !== undefined) await hub.releaseAll(entry.target)
+    else await service.stopRemote()
     sendJson(res, 200, okEnvelope({ stopped: true }))
   })
 

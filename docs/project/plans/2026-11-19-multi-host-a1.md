@@ -6,7 +6,7 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: **A1/A2/A3 全部完成并签收**（A3 经四轮独立红队，最终「可签」。遗留 P2/P3 见文末）
+- **当前阶段**: **A1/A2/A3 + 工作区级引用 + 回收异步化 全部签收**（RFC-0007 四轮红队；A/B 两片再经三轮红队，最终「可签」）
 - **最后验证**（2026-11-19）：`889 tests / 0 fail`；L4 32 场景全绿；真机双 target **5/5**
 
 ## 1. 范围
@@ -66,10 +66,10 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - `references` 改为**从投影表派生**（`snapshot().workspaces.length`）——计数器会被「重复接入 / 幂等导入 / 失败回滚」搞漂移，
   而投影表本来就知道「还剩几个工作区」；`ReferenceCounter`、`refcount.test.ts`、`hub.release` 一并删除。
 - `ProjectionStore.removeWorkspace(id)`（连它的会话一起删）+ `ProjectionService.removeWorkspace(id)`（只删本地投影，**不删远端工作区**）。
-- 新路由 `POST /workspace/remove`：移走最后一个工作区 → 这台 target 直接回收（`releaseAll`：recycle + 删 entry + 还端口）；
+- 新路由 `POST /workspace/remove`：**只删本地投影**；回收只由「结束远端」触发（语义在复审 P2-1 后收敛，见下）；
   不在投影里 → `remote/not-attached` 结构化报错，不假装成功。
 - 面板每个投影工作区多一个「移除」按钮（`data-remote-cr="remove-workspace"`），经 focusTarget 分流；中英文案齐全。
-- 「结束远端」也改用 `releaseAll`（同一台反复接过时一次放干净）。
+- 「结束远端」走 `releaseAll`：`#reclaim` 优先 `connection.stopRemote()`（复用/驻留实例要按 pid 真杀），无该能力才回落 `dispose()`。
 
 **B（远端进程回收）已完成（2026-11-19）**：
 
@@ -115,6 +115,11 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 | P1-D（我引入的回归） | 把 `/stop` 合并成 `releaseAll → recycle → dispose()` 后，**复用/驻留实例只关隧道**（真杀在 `stopRemote` 的按 pid kill）→ `/stop` 回 `stopped:true` 但远端 dsh 还在 | `#reclaim` **优先 `connection.stopRemote?.()`**（有 clean 通道），无该能力才回落到 `dispose()`；`live.ts` 复用分支的 `stopRemote` 补 `return true` 并标注 clean 语义 |
 
 判据：service 用例「recycle 优先用 stopRemote」——变异回「只 dispose」会红；真机 `reclaim-probe` 在修复后仍 **3/3**（pid 14698 在 `releaseAll` 后消失）。
+
+**Delta-4 签收（2026-11-19）**：P1-C / P1-D 均闭合，**P1 清零**。复审另在 `%TEMP%` 跑 13 条复现全绿、真机 `reclaim-probe` 3/3，并确认 `#reclaim` 的 `stopRemote` 优先分支被真实走过。
+顺带带走复审的两条 P2：`/stop` 的挂点从「hub 在不在」改成「**entry 在不在容器里**」（原来注入式装配 + entry 不在容器时会静默 no-op，已补用例），计划文档两行旧语义也改正。
+
+**剩余 P2 台账（不阻断）**：探针判据收紧（改打 `/stop`、去恒真项、cmdline 防 pid 复用）、`/stop` 失败后的可重试性、复用分支 `stopRemote` 恒 `return true`（clean 通道名义存在但不做二次确认）。
 
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
