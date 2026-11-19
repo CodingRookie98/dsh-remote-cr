@@ -11,6 +11,12 @@ export interface OptoutFile {
     readonly targets: readonly string[];
 }
 export declare function readOptout(file: string): readonly string[];
+/**
+ * 原子写：先写同目录临时文件再 rename（R1-S10）。
+ *
+ * 直接 `writeFileSync` 有截断窗口：两个面板并发写会丢 target，读侧在窗口内读到空文件还会
+ * 静默当「没有任何静音」，表现为「不再提醒」自己失效。rename 在同一目录内是原子的。
+ */
 export declare function writeOptout(file: string, targets: readonly string[]): void;
 /** 增删一个 target 的静音状态，返回最新列表。 */
 export declare function setMuted(file: string, targetId: string, muted: boolean): readonly string[];

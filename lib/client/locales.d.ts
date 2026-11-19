@@ -98,6 +98,7 @@ export declare const zh: {
     readonly 'sync.optout': "这台远端不再自动提醒";
     readonly 'sync.close': "关闭";
     readonly 'sync.retry': "重试";
+    readonly 'syncReason.none': "无需处理";
     readonly 'syncReason.missing-remote': "远端未安装";
     readonly 'syncReason.remote-older': "远端版本更低";
     readonly 'syncReason.remote-newer': "远端版本更高（不降级）";
