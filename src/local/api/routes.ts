@@ -47,8 +47,8 @@ import { listDistroDirectory, listLocalDirectory } from './browse.ts'
 import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
-import { sameTarget, type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts'
-import { ProjectionHub } from '../projection/hub.ts'
+import { type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts'
+import { ProjectionHub, sameHostOf } from '../projection/hub.ts'
 import { applySyncPlan, buildSyncPlan, readSyncProgress, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
 import type { DoctorReportInfo, HostEntryInfo, PurgeResultInfo, ResidueReportInfo } from '../../shared/api.ts'
@@ -924,13 +924,9 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
     const target = bodyMaintenanceTarget(body?.target)
     // WSL 的 staging 是 **distro 级**共享：同一发行版换 remoteRoot 也算「正连着」，否则会删到在用的安装。
-    const sameStagingHome = connectedTargets().some(
-      (live) =>
-        sameTarget(live, target) ||
-        (live.backend === 'wsl' &&
-          target.backend === 'wsl' &&
-          live.distro.toLowerCase() === target.distro.toLowerCase()),
-    )
+    // 判定用**主机身份**而不是 `sameTarget`（含端口/目录）：staging 与实例登记是按主机/anchor 共享的，
+    // 顺延过端口的同一台如果拿请求端口去比，会漏判「正连着」（P4 P3）。
+    const sameStagingHome = connectedTargets().some((live) => sameHostOf(live, target))
     if (sameStagingHome) {
       throw new RemoteCrError({
         code: 'remote/maintenance-busy',
