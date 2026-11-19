@@ -32,6 +32,16 @@ export declare function formatDoctorReport(checks: readonly DoctorCheck[]): stri
  */
 export declare function packageRootOf(moduleUrl: string | URL): string;
 export declare function installedRoot(): string;
+/**
+ * 解析用户 home：环境变量优先，**空串等于未设置**，最后回退到 `os.homedir()`。
+ *
+ * 与 `routes.ts` 的 `defaultHomeDir()` 同一条口径（那处也有 `!== ''` 守卫）：两边不一致会让
+ * 「面板诊断」与「pnpm doctor」看不同的 home，而这条差异只有在本机跑一次才发现。
+ */
+export declare function resolveHome(env: {
+    readonly USERPROFILE?: string | undefined;
+    readonly HOME?: string | undefined;
+}, fallback: () => string): string;
 /** CLI：`node lib/local/doctor.js`（也可 `pnpm doctor`）。 */
 export declare function doctorMain(argv: readonly string[]): number;
 //# sourceMappingURL=doctor.d.ts.map
