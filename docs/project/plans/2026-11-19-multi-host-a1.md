@@ -144,6 +144,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - Windows 侧 `~/.ssh/config` 增了一条 `Host wsl_local`（127.0.0.1:2223，`~/.ssh/hui_ed25519`）。
 - 这样 WSL 后端与 SSH 后端**指向同一台机器**（`machine-id` 均为 `1ab08868…`），跨后端同机场景才第一次可复现。
 - 验证完已把 `GatewayPorts` 改回 `no`；验证用 sshd 与 `wsl_local` 别名保留，随时可删。
+- `spikes/m4-multi-host/e2e-exposed.mjs`：切到 `GatewayPorts yes` 跑 → `remote/tunnel-exposed`（detail 带 `0.0.0.0:42571, [::]:42571`）；切回 `no` 跑 → `LAUNCH_OK`。两个方向都验过。
 
 ### 跨后端同机（未验证项 3）的真机结论（2026-11-19）
 
