@@ -53,6 +53,16 @@ export declare class ProjectionStore {
     /** 写入/更新一个工作区；超出容量时按**插入顺序**丢最旧的。 */
     upsertWorkspace(workspace: ProjectedWorkspace): void;
     upsertSession(session: ProjectedSession): void;
+    /**
+     * 原地更新一条**已存在**的会话：不改变插入顺序，也不新增条目。
+     *
+     * 为什么不用 `upsertSession`：它是「先删再插」，会让被刷新的行挪到插入序末尾；
+     * `sessions()` 按插入序 reverse 呈现，一次 5 s 刷新就会让面板里的行整体重排。
+     * 刷新只该改 `running` / `updatedAt` 这类字段，行位置属于用户的肌肉记忆。
+     *
+     * 返回 `false` 表示投影里没有这条（刷新路径据此不新增——`session/list` 不带 workspaceId）。
+     */
+    patchSession(session: ProjectedSession): boolean;
     /** 按远端快照整体重建；远端是唯一真相源，本地不留远端已经删掉的条目。 */
     replaceAll(workspaces: readonly ProjectedWorkspace[], sessions: readonly ProjectedSession[]): void;
     /**

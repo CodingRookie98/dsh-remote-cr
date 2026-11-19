@@ -12,12 +12,12 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: P1 计划制定（本文）→ 待用户确认 P3 执行后端后进 P2/P3
+- **当前阶段**: **P4.3 可签，待合并 master**（Delta 复审：可签；三条「实现对、测试 0 红」的残留已补判据并做变异反证）
 - **当前子任务**: 无
 - **重试计数**: 0/3
 - **外层循环**: 0/5
-- **最后验证**: 基线 `805 tests / 0 fail`、`typecheck` 0、`e2e:preview` 通过（2026-11-19 实测）
-- **最新有效提交**: `a9dd2f9`（RFC-0004 落盘）
+- **最后验证**（2026-11-19）：`837 tests / 0 fail`、`typecheck` 0、`check:*` 全 OK、`e2e:preview` **27 场景全绿**+键盘 10/0、L3 真机 WSL 7/7 与 SSH 7/7（负控失败集 `{R5-3,R5-5}`）
+- **最新有效提交**: `29761b8`（客户端轮询/徽标/过滤）
 - **阻断原因**: 无
 
 ## 0. 结论先行
@@ -95,29 +95,36 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 
 ### Batch A · 新鲜度（本轮承诺）
 
-- [ ] **P3.1 `refresh.ts` 原语**：`applyRefresh(store, sessions)` 走 `replaceAll`；`RefreshGuard` 按 targetId 单飞；失败保留旧表、置 `stale=true`。
+- [ ] **P3.1 `refresh.ts` 原语**（已交付）：`applySessionRefresh({ store, listed })` 逐条**原地**贴回（`store.patchSession`，**保序**；不用 `replaceAll`——刷新没有 workspace 数据，整体重建会清空工作区表），只更新已知会话、不增不删（`missing` 只计数）；`RefreshGuard` 按 targetId 单飞；失败由上层保留旧表并置 `stale`。
   - 涉及：`src/local/projection/refresh.ts`、`refresh.test.ts`
   - TDD：🔴 失败（无实现）→ 🟢 最简 → 🔵 抽守卫 → ✅ → 💾
   - 验收：`node --test "src/local/projection/refresh.test.ts"`
 - [ ] **P3.2 服务与路由**：`ProjectionService.refreshSessions()`（只打 `session/list`，不动 workspace）；`POST /projection/refresh`（target 编码同 attach；未接入时给结构化码）。
   - 涉及：`service.ts`、`api/routes.ts`、`shared/api.ts`（`stale`）
   - 验收：`node --test "src/local/api/routes.test.ts" "src/local/projection/service.test.ts"`
-- [ ] **P3.3 客户端轮询**：可见时 5 s、`document.visibilityState` 隐藏即停、失败退避、终态后停；同一 target 不叠请求。
-  - 涉及：`src/client/state.ts`、`panel-view.ts`、`locales.ts`（`panel.stale` 文案 zh/en）
-  - 验收：`node --test "src/client/state.test.ts"`
+- [x] **P3.3 客户端轮询**（已交付）：`src/client/poll.ts` 的 `createRefreshScheduler`（注入 run/isVisible/timer；隐藏不跑只重排、失败翻倍封顶 30 s、单飞、`stop` 真清定时器、`kick` 用于回到可见/重试）；面板挂载起链、卸载收链、`visibilitychange` 补一次。
+  - Lead 变异反证：去掉可见性判断 → 1 红；退避改定值 → 2 红；`stop` 去掉 `clearPending` → **首轮全绿**（用例先 `take()` 了定时器，断言成了空断言）→ 补 `⑥b stop 在还有排队定时器时必须 clearTimeout` 后该变异转红。
+  - Lead 追加决策：刷新失败后**立刻读一次 `/projection`**（纯本地读）把宿主置的 `stale=true` 拿到手；否则徽标要等下一轮（失败后退避到 10–30 s）才亮，等于把「刚刚失败」藏起来。
 
 ### Batch B · 过滤（本轮承诺）
 
 - [ ] **P3.4 纯函数**：`filterSessions(sessions, query)`（标题子串、大小写不敏感、trim）。
   - 涉及：`src/client/filter.ts`、`filter.test.ts`
-- [ ] **P3.5 面板接线**：搜索框 + 空态（`panel-filter-empty` 标记），不改变行排序语义。
-  - 涉及：`panel-view.ts`、`components.ts`、`styles.ts`、`locales.ts`
-  - L4：新增场景 `panel-filter-empty`，并给既有 `panel` 场景加 `requireMarkers`。
+- [x] **P3.5 面板接线**（已交付）：`session-filter` 输入框 + `filter-empty` 空态；过滤用 `filterSessions`，只筛不排；`panel-stale` 徽标贴在会话区标题行右侧（贴着它描述的区块，不让人读成「远端离线」）。
+  - L4（真 Chrome，27 场景全绿）：新增 `panel-stale`（夹具 `stale:true` → 徽标）与 `panel-filter-empty`（`fill` 步进输入无匹配串 → 空态）；harness 为此新增 `fill` 步进（原生 setter + input 事件，React 受控输入才生效）。
 
 ### Batch C · 真机验收（本轮承诺）
 
-- [ ] **P3.6 探针**：`spikes/m3-refresh/probe.cjs`，两模式（`--wsl <distro>` / `--ssh <alias>`）：接入 → 记录会话 id 集合与 `running` → 断开 → 重连 → 比对 + 刷新一轮后 `running` 与远端一致。
-- [ ] **P3.7 真机执行**：`ubuntu_dev` 与 `syy_wsl_ubuntu_LAN` 各跑一次，结果落 `spikes/m3-refresh/measurements.json`；失败路径（断连期间刷新）也要有一轮。
+- [x] **P3.6 探针**（已交付）：`spikes/m3-refresh/probe.cjs`，两模式（`--wsl` / `--ssh <alias>`），7 条断言 R5-1…R5-7；
+  负控 `NEGATIVE_CONTROL=1` 把 `refreshSessions` 换成空实现，**期望失败集恰为 `{R5-3, R5-5}`**。
+- [x] **P3.7 真机执行**（2026-11-19）：
+  - WSL `ubuntu_dev`：**7/7**（`measurements-wsl.json`；512 条投影会话、重叠 511/512）；
+  - SSH `syy_wsl_ubuntu_LAN`：**7/7**（`measurements-ssh.json`；3 条会话、重叠 3/3）；
+  - 负控：**5 pass / 2 fail = `{R5-3, R5-5}`**，与期望失败集逐项相等（证明这两条不是空断言）。
+  - 口径补充一：**投影容量上限 512**（`store.ts` `MAX_PROJECTED_SESSIONS`）。远端会话超过上限时，「哪 512 条」会随重建变化，
+    所以 R5-6 的判据是「条数不变 + 重叠 ≥ 99% + workspace 不回退」，探针自建会话是否留存只作 INFO（WSL 上本轮正是 511/512）。
+  - 口径补充二：SSH 目标的 `remoteRoot` 必须是**远端已存在**的目录。`syy_wsl_ubuntu_LAN` 是 bootstrap 形态（`~/.dsh-remote-cr/staging/<hash>`），
+    没有检出，用检出路径会得到 `remote/path-unreadable`；本轮用 `/home/hui/workspace`。
 
 ### Batch D · 多 host（条件批，开工前需再确认）
 
@@ -132,6 +139,17 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 - [ ] 全量门禁 + `build` / `build:client` + L4 预览 + 两目标真机；产物可复现（重跑构建后 `git status` 为空）。
 
 ### P4 对抗式终审
+
+**P4.1 定向红队（2026-11-19）：不可签，3 条阻断。** 处置如下（Lead 亲自复核并重跑判据）：
+
+| 阻断 | 判据 | 修法 | 反证 |
+|---|---|---|---|
+| B1 客户端刷新失败链零测试 | 把失败分支改成 `setSnapshot(null)`（R1 明令禁止的「失败清表」）后 837 条仍全绿 | 把执行体从 React 抽到 `src/client/refresh-runner.ts`（注入 `refresh`/`reread`/`applySnapshot`/`applyError`），三条纪律各有用例；面板只保留注入与渲染 | 新增 6 条用例；变异掉补读 → L4 链场景红 |
+| B2 L4 完全不触达 `POST /projection/refresh` | 扫 31 份场景 json：0 次刷新请求、0 个 `panel-error`；跑得稍慢就会渲染一条无人断言的 `preview/unmocked` 假错误而仍判通过 | ①预览服务端补该端点 + 「刷新失败 → `/projection` 返回 `stale:true`」的宿主语义；②新增场景 `panel-refresh-failed`（等调度器 5 s 真触发，断言 `panel-stale` + `panel-error`）；③harness 增加 `preview/unmocked` 门禁 | 夹具 `refreshFails:false` → 场景报「目标标记没命中 + 缺必需标记」；恢复后 28 场景全绿 |
+| B3 契约漂移：RFC R3「隐藏/断连时停」未实现 | 实现只是「隐藏时到点跳过」，定时器空转；计划单方面改了措辞而 RFC 未动 | 按 RFC 实现：`shouldPoll({connected, visible})` 纯函数 + 面板在 `visibilitychange` 与连接状态变化时 `start/kick/stop` | 新增 ⓪ 用例；隐藏→`stop`、断连→`stop` 各有分支 |
+
+采纳的非阻断：P1-1 失败不再覆盖别人的错误与重试意图（按身份写）；P1-2 补读只在没有 attach 时进行；P2-1 `refreshKey` 与 `sameTarget` 同形（加端口与检出根）；P2-2 `kick` 不重置退避（改注释）；P3-1 `runAndReschedule` 补代数守卫；P3-3 远端没给时间戳时保留上一帧已知 `updatedAt`。
+
 
 - [ ] **P4.1** 定向红队（A–C 批）→ 若含 Batch D，升级为 `dual-round-review` 全量双轮。
 - [ ] **P4.2** 阻断修复 + Delta Re-Loop（≤5）。

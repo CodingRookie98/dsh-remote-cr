@@ -109,6 +109,12 @@ function loadScript(url) {
 
 // ── 2. fetch 拦截 ───────────────────────────────────────────────────────
 
+/**
+ * 宿主在刷新失败后会把 stale 置 true 且保留旧帧；预览按同一语义走，
+ * 不然 panel-stale 只能靠夹具直接给 `stale:true`，测不到「失败 → stale → 徽标」这条链（P4 B2）。
+ */
+let refreshFailed = false;
+
 function respond(fixtures, method, url) {
   const path = url.pathname;
   if (path === '/remote-cr/api/sources') return { ok: true, value: fixtures.sources };
@@ -121,7 +127,19 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/workspace' && method === 'POST') return { ok: true, value: fixtures.workspace };
   if (path === '/remote-cr/api/flow' || path === '/remote-cr/api/flow/cancel') return { ok: true, value: fixtures.flow };
   if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
-  if (path === '/remote-cr/api/projection') return { ok: true, value: fixtures.projection };
+  if (path === '/remote-cr/api/projection') {
+    const value = refreshFailed ? { ...fixtures.projection, stale: true } : fixtures.projection;
+    return { ok: true, value };
+  }
+  if (path === '/remote-cr/api/projection/refresh' && method === 'POST') {
+    if (fixtures.refreshFails === true) {
+      refreshFailed = true;
+      // 码要挑一条**与现场一致**的：此刻面板是连着的，用 remote/disconnected 会让截图写「连接已断开」。
+      return { ok: false, code: 'remote/unknown', detail: '预览：后台刷新失败（夹具）', nextActions: ['重试'] };
+    }
+    refreshFailed = false;
+    return { ok: true, value: fixtures.projection };
+  }
   if (path === '/remote-cr/api/plugin-sync') {
     if (method === 'GET' && fixtures.syncPlanError) return { ok: false, ...fixtures.syncPlanError };
     return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
@@ -153,7 +171,7 @@ function installFetchInterceptor(fixtures) {
     const url = new URL(raw, location.href);
     const method = (init && init.method) || (input && input.method) || 'GET';
     const envelope = respond(fixtures, String(method).toUpperCase(), url);
-    state.requests.push({ method: String(method).toUpperCase(), path: url.pathname + url.search, ok: envelope.ok !== false });
+    state.requests.push({ method: String(method).toUpperCase(), path: url.pathname + url.search, ok: envelope.ok !== false, ...(typeof envelope.code === 'string' ? { code: envelope.code } : {}) });
     if (url.pathname === '/remote-cr/api/list') {
       state.timings.fetches.push({ path: url.pathname + url.search, at: Math.round(performance.now() * 10) / 10 });
     }
@@ -327,6 +345,14 @@ async function runStep(step) {
       if (Date.now() >= deadline) return 'optionalClick ' + step.optionalClick + '（没有找到，跳过）';
       await sleep(40);
     }
+  }
+  if (step.fill !== undefined) {
+    const target = await waitFor(step.fill.selector, step.timeoutMs);
+    // React 受控输入：必须走原生 setter 再派发 input，直接改 value 不会触发 onChange。
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(target, step.fill.value);
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    return 'fill ' + step.fill.selector + ' = ' + JSON.stringify(step.fill.value);
   }
   if (step.sleep !== undefined) {
     await sleep(step.sleep);

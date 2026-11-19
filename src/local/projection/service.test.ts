@@ -14,9 +14,10 @@ import test from 'node:test'
 
 import { RemoteCrError } from '../backend/errors.ts'
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
-import { ProjectionService, defaultWarmupMs, type ConnectTarget } from './service.ts'
+import { ProjectionService, defaultWarmupMs, refreshKey, type ConnectTarget } from './service.ts'
 import { TERMINAL_WARMUP_MS } from './probe.ts'
 import { ProjectionStore } from './store.ts'
+import type { RemoteSessionSummary } from './attach.ts'
 import type { ReconnectTimers } from '../../shared/reconnect.ts'
 
 const TARGET: ConnectTarget = {
@@ -58,8 +59,14 @@ interface FakeRpc extends ProjectionRpc {
   failNext(error: unknown): void
 }
 
-/** 假 RPC：记住被调过的端点，回最小可解析形状。 */
-function fakeRpc(): FakeRpc {
+/**
+ * 假 RPC：记住被调过的端点，回最小可解析形状。
+ *
+ * `listed` 是远端的「会话真相」，默认空数组（既有用例看到的形状完全不变）。刷新用例
+ * 靠它造出「远端这次说 running=false」：`workspace/create` 也按它回 `sessionIds`，
+ * 这样接入时那批会话才会真被投影出来（归属只认远端给的 sessionIds，不按 cwd 猜）。
+ */
+function fakeRpc(listed: readonly RemoteSessionSummary[] = []): FakeRpc {
   const calls: string[] = []
   const errors: unknown[] = []
   return {
@@ -77,14 +84,15 @@ function fakeRpc(): FakeRpc {
             workspaceId: 'ws-1',
             path: TARGET.remoteRoot,
             title: 'harness',
-            sessionIds: [],
+            sessionIds: listed.map((row) => row.sessionId),
             createdAt: '',
             updatedAt: '',
           },
           created: true,
         } as T
       }
-      if (endpoint === 'session/list') return { items: [] } as T
+      // 每次现取：用例改的是 `listed` 的内容（远端状态变了），假连接不持有旧副本。
+      if (endpoint === 'session/list') return { items: listed.map((row) => ({ ...row })) } as T
       if (endpoint === 'session/create') return { sessionId: 'sess-1' } as T
       throw new Error('假的 RPC 没有准备 ' + endpoint)
     },
@@ -632,4 +640,132 @@ test('取消发生在 attach 段：本次新建的连接要被 dispose，而不�
   // R1 #2 C5：取消后若连接还在、远端还在监听，就是「取消了什么也没发生」的假象。
   assert.equal(disposed, 1, '取消要回收本次新建的连接')
   assert.equal(service.connected, false)
+})
+
+// ── 刷新（R1）：恰好 1 次 session/list；失败留旧表并标 stale ──────────────────
+
+/** 一条远端会话摘要；`running` 随「远端那边跑完了」而改。 */
+function sessionRow(running: boolean): RemoteSessionSummary {
+  return { sessionId: 'sess-1', updatedAt: Date.parse('2026-11-19T03:04:05.000Z'), running, blank: false }
+}
+
+test('refreshKey 与 sameTarget 同形：换端口或换检出根就是另一个键（P4 P2-1）', () => {
+  const base = { backend: 'wsl' as const, distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/h' }
+  assert.equal(refreshKey(base), refreshKey({ ...base }), '完全相同 → 同一个键（单飞才成立）')
+  assert.notEqual(refreshKey(base), refreshKey({ ...base, port: 8900 }), '同发行版换端口 = 另一台')
+  assert.notEqual(refreshKey(base), refreshKey({ ...base, remoteRoot: '/home/dev/other' }), '换检出根 = 另一台')
+})
+
+test('刷新把远端的 running true→false 贴回快照：RPC 序列恰为 session/list（没写 workspace/create）', async () => {
+  const store = new ProjectionStore()
+  const listed: RemoteSessionSummary[] = [sessionRow(true)]
+  const rpc = fakeRpc(listed)
+  const service = new ProjectionService({
+    store,
+    timers: fakeTimers(),
+    async connect() {
+      return { rpc, dispose() {} }
+    },
+  })
+  await service.attach(TARGET, ATTACH)
+  assert.equal(store.sessions('ws-1')[0]?.running, true, '接入那一帧远端说它还在跑')
+  assert.equal(service.snapshot().stale, false, '刚接入过，表不是旧的')
+
+  // 远端那边任务结束了。刷新要把它贴回本地表，否则面板里的「运行中」永久挂住。
+  listed[0] = sessionRow(false)
+  rpc.calls.length = 0
+  const outcome = await service.refreshSessions()
+
+  assert.deepEqual(rpc.calls, ['session/list'], '刷新只许读一次 session/list：出现 workspace/create 就是打了写接口')
+  assert.deepEqual(outcome, { updated: 1, missing: 0 })
+  const snapshot = service.snapshot()
+  assert.equal(snapshot.sessions[0]?.running, false, 'running 必须落到快照上')
+  assert.equal(snapshot.sessions[0]?.updatedAt, '2026-11-19T03:04:05.000Z', '时间以远端为准')
+  assert.equal(snapshot.stale, false, '刷新成功就该清掉旧帧标记')
+})
+
+test('刷新失败：原错误原样抛、旧帧留着、stale 置 true（不清表）', async () => {
+  const store = new ProjectionStore()
+  const rpc = fakeRpc([sessionRow(true)])
+  const service = new ProjectionService({
+    store,
+    timers: fakeTimers(),
+    async connect() {
+      return { rpc, dispose() {} }
+    },
+  })
+  await service.attach(TARGET, ATTACH)
+
+  const failure = new RemoteCrError({
+    code: 'remote/unknown',
+    detail: '远端拒绝：session/list 不可用',
+    nextActions: ['重试一次'],
+  })
+  rpc.failNext(failure)
+  // 原样抛：不包一层新错，也不吞成布尔值 —— 面板要靠这条错误拿到码与宿主原文。
+  await assert.rejects(
+    () => service.refreshSessions(),
+    (error: unknown) => error === failure,
+  )
+
+  const snapshot = service.snapshot()
+  assert.equal(snapshot.sessions.length, 1, '刷新失败不许清空旧帧')
+  assert.equal(snapshot.sessions[0]?.running, true, '旧帧原样留着（只是不再声称它新）')
+  assert.equal(snapshot.stale, true, '旧帧必须被标成旧的')
+  assert.equal(snapshot.connected, true, '业务拒绝不是断线，别把用户拽进重试')
+})
+
+test('没接入就刷新：抛 remote/disconnected，且一次 RPC 都不发', async () => {
+  const store = new ProjectionStore()
+  const rpc = fakeRpc([sessionRow(true)])
+  let connects = 0
+  const service = new ProjectionService({
+    store,
+    timers: fakeTimers(),
+    async connect() {
+      connects += 1
+      return { rpc, dispose() {} }
+    },
+  })
+
+  const isDisconnected = (error: unknown): true => {
+    assert.ok(error instanceof RemoteCrError)
+    assert.equal(error.code, 'remote/disconnected')
+    assert.ok(error.detail.includes('接入'), error.detail)
+    assert.ok(error.nextActions.length >= 1 && error.nextActions.length <= 2, '下一步给 1–2 条，别铺满屏')
+    return true
+  }
+  await assert.rejects(() => service.refreshSessions(), isDisconnected)
+  assert.equal(connects, 0, '刷新不得顺手连一次远端')
+  assert.deepEqual(rpc.calls, [], '未连接时不得发起任何 RPC')
+
+  // 掉线之后同理：连接对象还在留存槽里，但口径是「现在没连着」，那就一个 RPC 都不发。
+  await service.attach(TARGET, ATTACH)
+  service.disconnect()
+  rpc.calls.length = 0
+  await assert.rejects(() => service.refreshSessions(), isDisconnected)
+  assert.deepEqual(rpc.calls, [], '断开后刷新同样一个 RPC 都不发')
+})
+
+test('并发两次刷新按 target 单飞：只打一次 session/list，两边拿到同一份计数', async () => {
+  // R3 的「同 target 不叠请求」。两次点击是同步发生的（按钮 + 轮询就是这样撞上的），
+  // 所以这里不插闸门：`RefreshGuard` 在**登记阶段**就同步占位，第二次直接拿到同一个 promise。
+  const store = new ProjectionStore()
+  const rpc = fakeRpc([sessionRow(false)])
+  const service = new ProjectionService({
+    store,
+    timers: fakeTimers(),
+    async connect() {
+      return { rpc, dispose() {} }
+    },
+  })
+  await service.attach(TARGET, ATTACH)
+  rpc.calls.length = 0
+
+  const [left, right] = await Promise.all([service.refreshSessions(), service.refreshSessions()])
+
+  assert.deepEqual(rpc.calls, ['session/list'], '两次并发刷新只许打一次远端：叠请求会把同一帧写两遍')
+  assert.deepEqual(left, right, '单飞 = 共享同一次结果，不是「一个成功一个报忙」')
+  assert.deepEqual(left, { updated: 1, missing: 0 })
+  assert.equal(service.snapshot().stale, false)
 })

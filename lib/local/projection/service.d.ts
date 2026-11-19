@@ -155,6 +155,13 @@ export interface ProjectionSnapshot {
      * 「两个状态源不一致」的失败形态。
      */
     readonly attach: AttachProgress | null;
+    /**
+     * 最近一次刷新失败、表里仍是旧帧（`refreshSessions()` 的失败标记）。
+     *
+     * 与 `link` 分工不同：`link` 说「通道通不通」，`stale` 说「这份表有多新」。
+     * 刷新成功或刚接入过就是 false；刷新失败就是 true，且旧帧不删。
+     */
+    readonly stale: boolean;
 }
 /** 投影服务对外的一整套动作。 */
 export declare class ProjectionService {
@@ -200,6 +207,27 @@ export declare class ProjectionService {
      * 常数调回去——两者的区别是前者有可观测就绪信号，后者是猜。
      */
     probe(sessionId: string, options?: ProbeOptions): Promise<ProbeResult>;
+    /**
+     * 重打一次 `session/list`，把结果**贴回**投影表（R1：恰好 1 次 `session/list`）。
+     *
+     * **只读**：远端没有第二个能一次拿全会话状态的入口，而写接口（`workspace/create`）
+     * 会顺带改远端注册表 —— 刷新是「看」，不是「改」，所以这里一个写接口都不碰。
+     * 贴回语义（不删 / 不增 / 不重排）全在 `applySessionRefresh` 里，这里只负责取与记。
+     *
+     * 三条口径：
+     * - 成功 → `stale=false`，返回真实计数；
+     * - 失败 → `stale=true` 并**原样抛**原错误。吞成布尔值会让面板拿不到码，
+     *   用户就分不清「远端拒了」和「隧道断了」；
+     * - 没接入 → `remote/disconnected`，一个 RPC 都不发（拿断掉的连接打远端，
+     *   只会把「还没接入」变成一条莫名其妙的隧道错误）。
+     *
+     * 并发按 target 的稳定键单飞：服务目前是单槽（`#live` 只有一个连接），所有刷新实际上
+     * 落在同一个键下；仍然按 target 派生而不是写死常量，见 `refreshKey` 的注释。
+     */
+    refreshSessions(): Promise<{
+        updated: number;
+        missing: number;
+    }>;
     /**
      * 正在进行的接入；面板轮询快照即可显示阶段。
      *
@@ -273,6 +301,19 @@ export declare class ProjectionService {
  */
 export declare function defaultWarmupMs(target: ConnectTarget | null): number;
 export declare function attachDeps(target: ConnectTarget, rpc: ProjectionRpc, store: ProjectionStore): AttachDeps;
+/**
+ * 刷新单飞用的稳定 target 键。
+ *
+ * 与 `plugin-sync` 的 `targetId` 同风格（`wsl:<distro>` / `ssh:<alias>`），但只求
+ * 「同一 target 稳定相同」，不求跨进程唯一：它只活在 `RefreshGuard` 的 Map 里，
+ * 不进任何持久化状态。发行版名按小写归一（`wsl.exe -d` 本身大小写不敏感），
+ * 否则 `ubuntu` 与 `Ubuntu` 会被当成两台机器、各刷一遍。
+ *
+ * 为什么按键而不是写死一个常量：服务目前是单槽（`#live` 只有一个连接），所有刷新
+ * 实际上落同一个键，写成常量也「能跑」；但换 target 时，旧 target 那次还在飞的刷新
+ * 会挡住新 target 的第一次刷新，而 Batch D 把单槽拆成分槽后常量还得再改回来。
+ */
+export declare function refreshKey(target: ConnectTarget): string;
 /** 两台远端是否「同一条连接」。换后端就是另一台，哪怕端口与检出根一模一样。 */
 export declare function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean;
 //# sourceMappingURL=service.d.ts.map

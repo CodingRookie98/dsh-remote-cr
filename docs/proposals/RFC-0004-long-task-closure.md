@@ -1,6 +1,6 @@
 # RFC-0004 · 长任务闭环：后台任务可见 / 断线续跑验收 / 多 host 共存
 
-- 状态：**Accepted**（2026-11-19 用户认可，进 P1；实现计划见 [plans/2026-11-19-m3-long-task-closure.md](../project/plans/2026-11-19-m3-long-task-closure.md)）
+- 状态：**Implemented（分支 `feat/long-task-closure`，P4 复审可签，待合并 master）**（2026-11-19 用户认可 → P1；实现计划见 [plans/2026-11-19-m3-long-task-closure.md](../project/plans/2026-11-19-m3-long-task-closure.md)）
 - 日期：2026-11-19
 - 关联：[milestones.md](../design/milestones.md) §M3、[keep-alive.md](../design/keep-alive.md)、[plans/2026-11-13-m3-long-task.md](../project/plans/2026-11-13-m3-long-task.md)、`src/shared/api.ts#ProjectedSessionInfo`、`src/local/projection/{attach,store,service}.ts`、DSH `packages/api/session-controller`
 - 发起：用户 2026-11-19 P-1 裁决 —— 方向 **C（长任务闭环）**、可见性粒度 **(a) 会话级**、真机 **(a) 本机 WSL `ubuntu_dev` + SSH `syy_wsl_ubuntu_LAN`（192.168.5.6:2222）**
@@ -79,7 +79,7 @@ P0 时写的「加个引用计数即可」不准确，P1 取证后改写为：
 
 | 方案 | 做法 | 取舍 |
 |---|---|---|
-| **A（选定）按需刷新 + 轻轮询** | 新增 `POST /remote-cr/api/projection/refresh`（内部重打一次 `session/list`，`replaceAll` 写表）；面板可见时 5 s 一次、页面隐藏/失败退避时停 | 复用已验证的解析与取消路径；代价是 N 秒延迟 + 每轮 1 次 RPC（本地回环，实测 attach 一轮 741 ms 量级） |
+| **A（选定）按需刷新 + 轻轮询** | 新增 `POST /remote-cr/api/projection/refresh`（内部重打一次 `session/list`，**逐条原地贴回已有会话**：保序、不增不删）；面板可见时 5 s 一次、页面隐藏/失败退避时停 | 复用已验证的解析与取消路径；代价是 N 秒延迟 + 每轮 1 次 RPC（本地回环，实测 attach 一轮 741 ms 量级） |
 | B 事件驱动 | 订阅 `session/follow` 或 `$events` 的会话生命周期事件增量更新 | 实时、零轮询；代价：`running` 是否随事件推送**未验证**，失同步要额外兜底（还要处理重连后的整表重建）→ 先做 spike 再谈 |
 | C 维持现状 | 接入时快照 | 不可接受：「运行中」会永久挂住 |
 
@@ -132,7 +132,7 @@ P0 时写的「加个引用计数即可」不准确，P1 取证后改写为：
 | R2 | 新鲜度语义：远端 `running` 由 true→false 后，一次刷新让面板行变「空闲」（组件级断言 `data-running`） | L2 |
 | R3 | 轮询生命周期：面板可见时启、隐藏/断连时停、失败按退避重试；不产生并发刷新（同一 target 单飞） | L1 |
 | R4 | 过滤：大小写不敏感、空查询不过滤、无匹配时显示空态而不是「加载中」 | L1 + L4 |
-| R5 | 真机 G3：`ubuntu_dev` 与 `syy_wsl_ubuntu_LAN` 各一轮「接入 → 断开 → 重连」，会话数与 id 集合不变、`running` 与远端一致；探针落盘 measurements | L3 真机 |
+| R5 | 真机 G3：`ubuntu_dev` 与 `syy_wsl_ubuntu_LAN` 各一轮「接入 → 断开 → 重连」，会话数不变、id 集合重叠 ≥ 99%（投影上限 512 时「逐字相等」不成立）、`running` 与远端一致；探针落盘 measurements | L3 真机 |
 | R6 | 多 host：两个 target 同时 attach，端口不重复、条目互不覆盖；释放一个后另一个仍可用；全部释放后无孤儿进程/端口 | L2 + L3 |
 
 ## 7. 风险与未验证

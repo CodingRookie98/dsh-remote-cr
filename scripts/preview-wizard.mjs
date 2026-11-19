@@ -888,6 +888,14 @@ async function main() {
   if ((totals.wizard || 0) === 0 && flowScenes.length > 0) reasons.push('没有 wizard 标记');
   if (options.only === null && (totals.source || 0) === 0) reasons.push('全量跑里没有 source 标记');
   if (broken > 0) reasons.push('有场景没跑完（' + broken + ' 个）');
+  // 未覆盖的端点会拿到 `preview/unmocked`：那是一条**没人断言**的假错误，
+  // 慢机器上（>5 s）还会随调度器自己冒出来，把截图证据静默污染成「面板在报错」（P4 B2）。
+  const unmocked = results.filter((record) =>
+    (record.requests || []).some((request) => request.code === 'preview/unmocked'),
+  );
+  if (unmocked.length > 0) {
+    reasons.push('有场景打到了未覆盖的端点（preview/unmocked）：' + unmocked.map((record) => record.scene).join(','));
+  }
   // B3：目标标记必须真的命中。之前只打印不判 —— 场景表写了目标却没有任何断言执行它，
   // 于是「WSL 起不来」这条最关键的失败路径即使退化成一张空壳截图也会「通过」。
   // 场景必须声明目标：否则「把 targets 清空」就能绕过上面那条命中判据（R1 Delta-2 的 M-A）。

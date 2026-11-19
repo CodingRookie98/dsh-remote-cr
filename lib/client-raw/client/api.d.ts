@@ -87,6 +87,15 @@ export declare function cancelFlow(id: string, fetchImpl?: typeof fetch): Promis
 export declare function listWorkspaces(fetchImpl?: typeof fetch): Promise<readonly import('../shared/api.ts').WorkspaceRecord[]>;
 /** 读一次投影快照（远端工作区 + 会话 + 连接状态）。 */
 export declare function readProjection(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo>;
+/**
+ * 让宿主半**刷新一次**投影（`POST /projection/refresh`），回来的是最新快照。
+ *
+ * 为什么复用 `ProjectionSnapshotInfo` 而不新造一个「刷新结果」类型：面板拿到它就
+ * **原地**替换 `setSnapshot` 的那份状态，读快照的地方一行都不用改；失败时宿主已经把
+ * `stale` 置 true 并保留了旧帧，所以失败路径不该（也不需要）由客户端清表。
+ * 错误仍然走本文件统一的那一套：宿主信封 → `RemoteCrApiError` 四字段。
+ */
+export declare function refreshProjection(fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').ProjectionSnapshotInfo>;
 /** 接入一个远端工作区（远端 `workspace/create`，幂等）。 */
 export declare function attachWorkspace(input: import('../shared/api.ts').AttachInput, fetchImpl?: typeof fetch): Promise<import('../shared/api.ts').AttachOutcome>;
 /**

@@ -21,6 +21,11 @@ export declare const zh: {
     readonly 'panel.emptyWorkspaces': "还没有添加目录";
     readonly 'panel.emptyProjected': "远端还没有投影的工作区";
     readonly 'panel.emptySessions': "还没有远端会话";
+    readonly 'panel.stale': "数据已过期";
+    readonly 'panel.staleHint': "最近一次刷新失败了，表里仍是上一帧（远端恢复后会自动重试）";
+    readonly 'panel.filterPlaceholder': "按标题过滤会话";
+    readonly 'panel.filterEmpty': "没有匹配的会话";
+    readonly 'panel.refreshFailed': "后台刷新失败";
     readonly 'panel.importEmpty': "远端没有其它可导入的工作区";
     readonly 'panel.importing': "导入中…";
     readonly 'panel.importSelected': "导入选中（{count}）";

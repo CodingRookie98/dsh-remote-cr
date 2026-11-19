@@ -246,6 +246,7 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
       '/remote-cr/api/plugin-sync/progress GET',
       '/remote-cr/api/probe POST',
       '/remote-cr/api/projection GET',
+      '/remote-cr/api/projection/refresh POST',
       '/remote-cr/api/reconnect POST',
       '/remote-cr/api/session POST',
       '/remote-cr/api/sources GET',
@@ -686,6 +687,40 @@ test('/reconnect 成功后回 connected 快照；失败如实回错，不假装�
   assert.equal(noTarget.status, 200)
   assert.equal((noTarget.json as { ok: boolean }).ok, false, '没连过就重连必须回错误，而不是空成功')
   assert.ok((noTarget.json as { detail: string }).detail.includes('还没有连过任何远端'))
+})
+
+test('/projection/refresh 未接线：明确报错，不回一份假快照', async () => {
+  // 与 /plugin-sync 未接线同一条纪律：没接线就说没接线，不能回一份「刚刷新过、什么都没有」
+  // 的快照 —— 那会把「功能没上」伪装成「远端很干净」。
+  const result = await rig().call({ path: '/projection/refresh', method: 'POST', body: '{}' })
+  assert.equal(result.status, 200, '与其它路由一致：错误也走 200 + 错误信封')
+  const envelope = result.json as { ok: boolean; code?: string; detail?: string; nextActions?: string[] }
+  assert.equal(envelope.ok, false)
+  assert.equal(envelope.code, 'remote/unknown')
+  assert.ok((envelope.detail ?? '').includes('投影服务没有接线'), envelope.detail)
+  assert.ok((envelope.nextActions ?? []).length > 0, '必须给出可执行的下一步')
+})
+
+test('/projection/refresh 已接线：200 且快照带 stale=false（刷新成功即不是旧帧）', async () => {
+  const projection = projectionRig()
+  const r = rig({}, { projection })
+  await r.call({ path: '/attach', method: 'POST', body: JSON.stringify({ target: PROJECTION_TARGET, remotePath: '/w' }) })
+
+  const refreshed = await r.call({ path: '/projection/refresh', method: 'POST', body: '{}' })
+  assert.equal(refreshed.status, 200)
+  const envelope = refreshed.json as {
+    ok: boolean
+    value?: { stale: boolean; connected: boolean; sessions: unknown[] }
+  }
+  assert.equal(envelope.ok, true)
+  assert.equal(envelope.value?.stale, false, '刷新成功必须回 stale=false')
+  assert.equal(envelope.value?.connected, true)
+  assert.deepEqual(envelope.value?.sessions, [], '远端说没有会话，刷新不该编出条目')
+
+  // /projection 的行为不变，只是多带一个 stale：读面板仍然不打远端。
+  const plain = await r.call({ path: '/projection' })
+  assert.equal(plain.status, 200)
+  assert.equal((plain.json as { value: { stale: boolean } }).value.stale, false, '/projection 也带 stale')
 })
 
 test('NEGATIVE_CONTROL 可假性：把回环守卫去掉必须让 403 断言失败', async () => {

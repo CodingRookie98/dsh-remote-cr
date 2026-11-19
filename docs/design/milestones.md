@@ -103,9 +103,10 @@
 | 同步面板 UI（`ui-design.md` §6）：逐项 `queued/syncing/synced/failed/skipped` + 单项 stop；`installBundle` 的 danger-full-access 审批桥到本地 GUI | 每个审批都能在本地点到；无静默自动同步 |
 | 同步前置：写权限预检（`flag:'wx'` + pid+uuid marker）+ host 级单飞 | 只读目录在**上传前**就报错；并发不互相覆盖 |
 | 路径重写：按**目标远端形态**拼路径，不用 `process.platform` | Windows 宿主 → WSL/SSH 路径正确 |
-| 统一会话列表/搜索/归档（远端会话与本地同列） | 单一列表可操作远端会话 |
+| 统一会话列表/搜索/归档（远端会话与本地同列） | 单一列表可操作远端会话。**2026-11-19**：同列与**标题过滤**已落地（`session-filter` + `filter-empty`）；**归档**因 DSH api 层没有 `session/archive` 端点，转上游提案，本轮不交付（RFC-0004 §4.3） |
+| **后台任务可见的新鲜度**（RFC-0004）：可见且已连接时 5 s 一次 `session/list` 回贴，隐藏/断连即停、失败退避（5→30 s 封顶）、同 target 单飞；失败保留旧帧并标 `stale` | 任务结束后 ≤10 s 内不再显示「运行中」。✅ 真机两目标 7/7（WSL `ubuntu_dev`、SSH `syy_wsl_ubuntu_LAN`），负控失败集 `{R5-3,R5-5}` |
 | 账号/用量端点的代理或明确降级 | 不再出现 200+非 JSON |
-| 多工作区/多 host 同时在线、引用计数 | 不互相踩进程/端口 |
+| 多工作区/多 host 同时在线、引用计数 | 不互相踩进程/端口。**2026-11-19 状态**：`ProjectionService` 仍是**单槽**（`#live`/`#detached`），多 host 属结构性重构（RFC-0004 Batch D），用户裁决本轮不做 |
 | 诊断中心（doctor、日志导出、版本矩阵） | 用户可自助定位常见失败 |
 
 ## M4 · 发布（1–2 周）
