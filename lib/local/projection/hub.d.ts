@@ -9,9 +9,8 @@
  * 1. **端口分配**：同主机（WSL 同 distro / SSH 同 alias）的两个 target 若都要同一个端口，
  *    第二个改用池 8941–8961 里的空闲端口——否则只会在启动阶段报 `remote/port-in-use`，
  *    用户看不出是「另一个 target 占着」；
- * 2. **工作区级引用**：`references` = 这台投影里还剩几个工作区（从投影表派生，不维护计数器）；
- *    **移走最后一个工作区、或用户点「结束远端」才 `recycle()`**——否则关一个工作区会连带杀掉
- *    另一个工作区正在用的远端进程。
+ * 2. **工作区级引用**：`references` = 这台投影里还剩几个工作区（从投影表派生，不维护计数器）。
+ *    **只有「结束远端」才 `recycle()`**；移除工作区只改投影，不杀远端进程。
  */
 import type { AttachRequest, AttachResult } from './attach.ts';
 import { type AttachControl, type ConnectTarget, ProjectionService, type ProjectionSnapshot } from './service.ts';

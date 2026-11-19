@@ -56,8 +56,13 @@ export interface RemoteConnection {
     rehandshake?(): Promise<void>;
     /** 驻留：让远端进程在本地离开后继续跑（与 `dispose` 互斥，先调哪个哪个生效）。 */
     keepAlive?(): Promise<void>;
-    /** 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。 */
-    stopRemote?(): Promise<void>;
+    /**
+     * 「结束远端」：把远端进程真的收掉（复用连接必须按登记 pid 杀，光关隧道不算）。
+     *
+     * 返回 `false` = 没能确认进程已退出（看门狗没在窗口内退出）。**别把它当 void 丢掉**：
+     * `/stop` 是唯一的生产回收入口，丢了就等于「没退干净永远报成功」（P4 P1-B）。
+     */
+    stopRemote?(): Promise<boolean | void>;
     /**
      * 把远端绝对路径映射成本地锚点虚拟路径（导入远端工作区要用）。
      *
@@ -290,7 +295,6 @@ export declare class ProjectionService {
     /** 把勾选的远端路径逐个投影进来（`workspace/create` 幂等，已有就复用）。 */
     importWorkspaces(paths: readonly string[]): Promise<{
         readonly imported: number;
-        readonly created: number;
     }>;
     /**
      * 从投影里移除一个工作区（连同它的会话）。
