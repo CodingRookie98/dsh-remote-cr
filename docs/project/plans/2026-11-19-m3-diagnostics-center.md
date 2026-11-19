@@ -38,7 +38,16 @@
 | B1 `/doctor` 失败在面板上完全静默 | 把副本 `/doctor` 改成回错误信封：`panel-error=0`、`panel-diagnostics-empty=1`，用户分不清「没查过」与「查了但炸了」；且它写的是**共享**错误槽，会顶掉 probe/接入的错误 | 诊断自带 `doctorError` + 区内 `panel-diagnostics-error`（`role=status`），**不碰共享错误槽**；失败时清空上一次报告（不把旧结果当新结果） | 新场景 `panel-diagnostics-failed`；删掉错误行 → **缺必需标记**变红 |
 | B2 删掉 `data-status` 全绿 | 变异后 `preview-wizard: 通过`、851 条单测 0 红；而配色规则完全依赖该属性 | harness 新增 `requireAttrs`（按 marker 收集属性值，缺任一值即失败）；`panel-diagnostics` 场景要求 `data-status` 同时出现 `ok/warn/fail` | 删 `data-status` → **属性断言未命中**变红 |
 
-采纳的建议项：空 `checks` 走空态；`generatedAt` 真的渲染成「检查于 …」；抽 `packageRootOf(moduleUrl)` 并把**产物布局**（`lib/local/doctor.js`）钉进测试；`doctorMain` 默认包根改用 `installedRoot()`、home 回退与路由一致（`USERPROFILE → os.homedir()`）；`loadDoctor` 加请求序号，重叠请求只让最后一次落地。
+采纳的建议项：空 `checks` 走空态；`generatedAt` 真的渲染成「检查于 …」；抽 `packageRootOf(moduleUrl)` 并把**产物布局**（`lib/local/doctor.js`）钉进测试；`doctorMain` 默认包根改用 `installedRoot()`、home 回退与路由一致；`loadDoctor` 加请求序号。
+
+**Delta 复审：可签。** 之后把复审提出的 4 条残留一并关掉：
+
+| 项 | 处置 | 反证 |
+|---|---|---|
+| N3「诊断失败不污染共享错误槽」无断言 | harness 新增 `forbidMarkers`（场景级负向断言）；`panel-diagnostics-failed` 要求 `panel-error` 计数为 0 | 把该场景的禁现标记临时改成 `panel-diagnostics` → **禁现标记出现**变红 |
+| N1 失败态与空态同屏 | 空态条件加 `doctorError === null` | 失败场景 dump：`diag-error=1`、`empty=0` |
+| N2 home 空串被当成有效值 | 抽 `resolveHome()`（空串=未设置，末位回退 `os.homedir()`）并加 4 条用例 | 用例覆盖 `USERPROFILE=''` / 两者皆空 |
+| N4 失败态信息面偏薄 | 错误行带 `code` + `nextActions`（`diagnostics-error-next`） | 场景断言错误行文本含码 |
 
 ## 4. 过程偏差（记录在案）
 

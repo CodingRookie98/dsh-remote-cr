@@ -600,6 +600,8 @@ export const PREVIEW_SCENES = [
     theme: 'light',
     targets: ['[data-remote-cr="panel-diagnostics-error"]', '[data-remote-cr="panel-diagnostics"]'],
     requireMarkers: ['panel-diagnostics-error'],
+    // 诊断失败只能在诊断区里响：共享错误块必须干净（P4 Delta N3 的负向断言）。
+    forbidMarkers: ['panel-error'],
     hideFlow: true,
     steps: [
       { wait: '[data-remote-cr="panel-diagnostics-error"]', timeoutMs: 10000 },

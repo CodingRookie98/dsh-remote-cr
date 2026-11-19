@@ -408,7 +408,7 @@ export function RemoteCrPanel(): unknown {
   const [doctor, setDoctor] = useState<DoctorReportInfo | null>(null)
   const [doctorBusy, setDoctorBusy] = useState(false)
   /** 诊断失败只写在诊断区（P4 B1）：写共享错误槽会顶掉 probe/接入的错误，且它的「重试」按意图分派。 */
-  const [doctorError, setDoctorError] = useState<string | null>(null)
+  const [doctorError, setDoctorError] = useState<{ code: string; detail: string; nextActions: readonly string[] } | null>(null)
   /** 请求序号：连点时只让最后一次落地，避免旧响应覆盖新结果（P4 建议 5）。 */
   const doctorSeq = useRef(0)
 
@@ -502,7 +502,9 @@ export function RemoteCrPanel(): unknown {
       if (doctorSeq.current !== seq) return
       // 失败要响，但**只在这块里响**：既不改共享错误槽，也不把上一次的报告当结果留着。
       setDoctor(null)
-      setDoctorError(failureOf(caught).detail)
+      const failure = failureOf(caught)
+      // 带 code 与下一步：只给一句 detail 的话，用户只能手抄去搜（P4 Delta N4）。
+      setDoctorError({ code: failure.code, detail: failure.detail, nextActions: failure.nextActions })
     } finally {
       if (doctorSeq.current === seq) setDoctorBusy(false)
     }
@@ -1054,10 +1056,20 @@ export function RemoteCrPanel(): unknown {
       : h(
           'div',
           { 'data-remote-cr': 'panel-diagnostics-error', role: 'status' },
-          t('panel.diagnosticsFailed') + '：' + doctorError,
+          t('panel.diagnosticsFailed') + '：' + doctorError.code + ' — ' + doctorError.detail,
+          doctorError.nextActions.length === 0
+            ? null
+            : h(
+                'span',
+                { 'data-remote-cr': 'diagnostics-error-next' },
+                doctorError.nextActions.join(' · '),
+              ),
         ),
-    ...(doctor === null || doctor.checks.length === 0
-      ? [h('div', { 'data-remote-cr': 'panel-diagnostics-empty' }, t('panel.diagnosticsEmpty'))]
+    // 失败态不再叠一句「还没有体检结果」：那不是空态，是查询失败（P4 Delta N1）。
+    ...(doctorError !== null
+      ? []
+      : doctor === null || doctor.checks.length === 0
+        ? [h('div', { 'data-remote-cr': 'panel-diagnostics-empty' }, t('panel.diagnosticsEmpty'))]
       : doctor.checks.map((check) =>
           h(
             'div',

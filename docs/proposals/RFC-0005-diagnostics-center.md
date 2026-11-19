@@ -1,6 +1,6 @@
 # RFC-0005 · 诊断中心（面板内 doctor）
 
-- 状态：**In Review（P0 出口）**
+- 状态：**Delivered（已合并 master，2026-11-19；定向红队 + Delta 复审可签）**
 - 日期：2026-11-19
 - 关联：`docs/design/milestones.md` §M3「诊断中心（doctor、日志导出、版本矩阵）」、`src/local/doctor.ts`、`docs/troubleshooting.md`
 - 发起：用户 2026-11-19「按你评估的顺序开始」

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 
 import { LEGACY_HOME_DIR_NAME } from './migration/legacy-names.ts'
-import { formatDoctorReport, packageRootOf, runDoctor } from './doctor.ts'
+import { formatDoctorReport, packageRootOf, resolveHome, runDoctor } from './doctor.ts'
 
 /**
  * doctor 的用例都建在临时目录上：它查的就是「装出来的包能不能用」，
@@ -85,6 +85,14 @@ test('旧状态根只 warn，不 fail（能用，只是没清）', () => {
     rmSync(root, { recursive: true, force: true })
     rmSync(home, { recursive: true, force: true })
   }
+})
+
+test('resolveHome：空串等于未设置，回退到 os.homedir()（P4 Delta N2）', () => {
+  const fallback = (): string => '/fallback-home'
+  assert.equal(resolveHome({ USERPROFILE: 'C:/Users/hui', HOME: '/home/hui' }, fallback), 'C:/Users/hui')
+  assert.equal(resolveHome({ USERPROFILE: '', HOME: '/home/hui' }, fallback), '/home/hui', '空串不许当成有效值')
+  assert.equal(resolveHome({ USERPROFILE: '', HOME: '' }, fallback), '/fallback-home', '两个都空 → 系统 home')
+  assert.equal(resolveHome({}, fallback), '/fallback-home')
 })
 
 test('packageRootOf：源码与产物两种布局都落到包根（P4 建议 3）', () => {

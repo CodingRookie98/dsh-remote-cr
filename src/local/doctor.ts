@@ -176,13 +176,28 @@ export function installedRoot(): string {
   return packageRootOf(import.meta.url)
 }
 
+/**
+ * 解析用户 home：环境变量优先，**空串等于未设置**，最后回退到 `os.homedir()`。
+ *
+ * 与 `routes.ts` 的 `defaultHomeDir()` 同一条口径（那处也有 `!== ''` 守卫）：两边不一致会让
+ * 「面板诊断」与「pnpm doctor」看不同的 home，而这条差异只有在本机跑一次才发现。
+ */
+export function resolveHome(env: { readonly USERPROFILE?: string | undefined; readonly HOME?: string | undefined }, fallback: () => string): string {
+  const profile = env.USERPROFILE
+  if (profile !== undefined && profile !== '') return profile
+  const home = env.HOME
+  if (home !== undefined && home !== '') return home
+  return fallback()
+}
+
 /** CLI：`node lib/local/doctor.js`（也可 `pnpm doctor`）。 */
 export function doctorMain(argv: readonly string[]): number {
   // 默认包根用与 `/doctor` 同一个 `installedRoot()`：以前是 `process.cwd()`，于是 `pnpm doctor`
   // 的结论取决于你在哪个目录敲命令，和面板看到的不是一件事（P4 建议 4）。
   const rootDir = argv[0] ?? installedRoot()
-  // home 回退与路由一致（`USERPROFILE` → `os.homedir()`）：都没有时会探到相对路径 `./.dsh-remote-cr`。
-  const homeDir = process.env['USERPROFILE'] ?? process.env['HOME'] ?? homedir()
+  // home 回退与路由一致（`USERPROFILE` → `HOME` → `os.homedir()`），且**空串按未设置处理**：
+  // `??` 会放过 `USERPROFILE=''`，于是探到相对路径 `./.dsh-remote-cr` 并在 cwd 里建目录（P4 Delta N2）。
+  const homeDir = resolveHome(process.env, homedir)
   const checks = runDoctor({ rootDir, homeDir })
   console.log(formatDoctorReport(checks))
   return checks.some((check) => check.status === 'fail') ? 1 : 0

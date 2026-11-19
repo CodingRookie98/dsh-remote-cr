@@ -905,6 +905,16 @@ async function main() {
     }
   }
   if (attrMisses.length > 0) reasons.push('属性断言未命中：' + attrMisses.join('；'));
+  // 禁现断言：某些场景必须**没有**某个标记（例如诊断失败不许污染共享错误块）。
+  const forbidden = [];
+  for (const record of results) {
+    const scene = PREVIEW_SCENES.find((candidate) => candidate.id === record.scene);
+    for (const marker of (scene && scene.forbidMarkers) || []) {
+      const count = (record.markers || []).filter((entry) => entry.marker === marker).length;
+      if (count > 0) forbidden.push(record.scene + ' 不允许出现 ' + marker + '（实际 ' + count + ' 次）');
+    }
+  }
+  if (forbidden.length > 0) reasons.push('禁现标记出现：' + forbidden.join('；'));
   const unmocked = results.filter((record) =>
     (record.requests || []).some((request) => request.code === 'preview/unmocked'),
   );
