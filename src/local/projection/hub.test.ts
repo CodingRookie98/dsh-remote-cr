@@ -128,6 +128,54 @@ test('A3 释放未知 target 不抛、也不误报回收', () => {
   assert.deepEqual(hub.release(A), { remaining: 0, recycled: false })
 })
 
+/** 一个只实现 hub 会调到的几个方法的假 service（B3/B4 只需要 attach/recycle/dispose）。 */
+function stubService(attach?: () => Promise<unknown>): ProjectionService {
+  return {
+    attach: attach ?? (async () => ({ created: true, workspace: {}, sessions: [] })),
+    recycle() {},
+    dispose() {},
+    snapshot: () => ({ workspaces: [], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+    get connected() {
+      return false
+    },
+  } as unknown as ProjectionService
+}
+
+test('B3 attach 失败回滚：失败一次 + 成功一次 → 一次 release 即回收', async () => {
+  let failNext = true
+  const hub = new ProjectionHub(() =>
+    stubService(async () => {
+      if (failNext) {
+        failNext = false
+        throw new Error('boom')
+      }
+      return { created: true, workspace: {}, sessions: [] }
+    }),
+  )
+  await assert.rejects(hub.attach(A, { remotePath: '/a', localPath: 'C:/a' }))
+  assert.equal(hub.entries().length, 0, '失败的 attach 不该留下 entry / 端口')
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  assert.deepEqual(hub.release(A), { remaining: 0, recycled: true }, '一次 release 就该回收（引用没有留账）')
+})
+
+test('B4 端口不随僵尸条目泄漏：21 次 attach+release 后第 22 个仍能分配', async () => {
+  let made = 0
+  const hub = new ProjectionHub(() => {
+    made += 1
+    return stubService()
+  })
+  for (let index = 0; index < 21; index += 1) {
+    const target = { ...A, remoteRoot: '/home/hui/w' + String(index) }
+    await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+    hub.release(target)
+  }
+  assert.equal(hub.entries().length, 0, '释放后不留 entry')
+  const extra = { ...A, remoteRoot: '/home/hui/w-last' }
+  await hub.attach(extra, { remotePath: '/a', localPath: 'C:/a' })
+  assert.equal(hub.entries().length, 1, '第 22 个不该被假池满挡住')
+  assert.ok(made >= 22)
+})
+
 test('sameHostOf：WSL 与 SSH 别名都大小写不敏感（P4 B6）', () => {
   assert.equal(sameHostOf(A, { ...A, port: 9999, remoteRoot: '/other' }), true, '同 alias 不同端口/目录仍是同一台主机')
   assert.equal(sameHostOf(A, { ...A, alias: 'A' }), true, 'SSH 别名大小写不该当成两台机器')

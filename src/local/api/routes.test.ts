@@ -16,6 +16,7 @@ import type {
 } from '../../shared/api.ts'
 import { API_PREFIX } from '../../shared/api.ts'
 import { ProjectionService, type ConnectTarget, type SshConnectTarget } from '../projection/service.ts'
+import { ProjectionHub } from '../projection/hub.ts'
 import { ProjectionStore } from '../projection/store.ts'
 import type { HostDeps, MountedRoute, RemoteCrHostContext } from './routes.ts'
 import { RemoteCrError } from '../backend/errors.ts'
@@ -159,6 +160,7 @@ function rig(
     homeDir?: string
     sync?: SyncRoutesOptions
     doctor?: { rootDir?: string; homeDir?: string }
+    hub?: ProjectionHub
   } = {},
   makeRes: () => FakeRes = fakeRes,
 ): Rig {
@@ -204,6 +206,7 @@ function rig(
     ...(extra.resolveAnchorPath === undefined ? {} : { resolveAnchorPath: extra.resolveAnchorPath }),
     ...(extra.sync === undefined ? {} : { sync: extra.sync }),
     ...(extra.doctor === undefined ? {} : { doctor: extra.doctor }),
+    ...(extra.hub === undefined ? {} : { hub: extra.hub }),
   })
   assert.deepEqual(effects.length, mounted.length, '每条路由恰好一个 effect')
 
@@ -268,6 +271,47 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
 
 
 // ── 多 host 容器（RFC-0007 A1）────────────────────────────────────────────
+
+test('/disconnect?target=：只断开指定那台，不动 focus（P4 A3-B2）', async () => {
+  const calls: string[] = []
+  const makeStub = (name: string): ProjectionService =>
+    ({
+      attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+      disconnect: () => {
+        calls.push(name)
+      },
+      snapshot: () => ({
+        workspaces: [],
+        sessions: [],
+        connected: false,
+        target: null,
+        link: 'idle',
+        envPolicy: null,
+        attach: null,
+        stale: false,
+      }),
+    }) as unknown as ProjectionService
+  let created = 0
+  const hub2 = new ProjectionHub(() => {
+    const service = makeStub(String(created))
+    created += 1
+    return service
+  })
+  const A2: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }
+  const B2: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/b' }
+  await hub2.attach(A2, { remotePath: '/a', localPath: 'C:/a' })
+  await hub2.attach(B2, { remotePath: '/b', localPath: 'C:/b' })
+  calls.length = 0
+  const result = await rig({}, { hub: hub2 }).call({
+    path: '/disconnect',
+    method: 'POST',
+    body: JSON.stringify({ target: A2 }),
+  })
+  assert.equal(result.status, 200)
+  assert.equal(calls.includes('0'), true, '必须断开 A 自己那个引擎')
+  assert.equal(calls.includes('1'), false, '不许断到 focus（B）')
+})
+
 
 test('/projection/targets：没有容器时给空数组（不是 404、也不是 null）', async () => {
   const result = await rig().call({ path: '/projection/targets' })
