@@ -6,7 +6,7 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: **A1/A2/A3 全部完成**（A3：端口分配器 + 引用计数 + 两台真机同时在线）
+- **当前阶段**: **A1/A2/A3 全部完成并签收**（A3 经四轮独立红队，最终「可签」。遗留 P2/P3 见文末）
 - **最后验证**（2026-11-19）：`889 tests / 0 fail`；L4 32 场景全绿；真机双 target **5/5**
 
 ## 1. 范围
@@ -86,6 +86,14 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - N1/N3/N4 补行为判据：hub 装配下 purge 连接中拒绝、失败 attach 必须 `dispose()`、失败不清 focus（三条各自做了变异验证）。
 - N7：`release` 对 refs=0 的僵尸 entry 直接删除并归还端口（同 distro 顺延场景会制造这种 entry）。
 - 探针去掉同义反复（`closedFirst = recycled ? 0 : -1`），S3 改为断言 entry 消失；远端进程计数只记录不断言。
+
+**最终签收（R4，2026-11-19）**：四条修复逐条变异验证通过（N2/M7/N1/N3/N4/N7 各自 1 红），插桩确认 M7 用例真的走到 `reserveAvoiding`（40 次调用）。**结论：可签。**
+
+遗留（不阻断交付，下个维护窗口补）：
+- P2：N7 用例的「归还端口」半句此前对 `#ports.release` 不敏感（已重做为「同主机先占 8941 → 僵尸被顺延 → release 后必须拿回该池端口」）；
+- P3：`connectedTargets()` 用 effective 端口比 `sameTarget`，SSH 同别名被顺延的 target 若传请求端口会漏判 busy（UI 走 snapshot 的 effective，不受影响）；
+- P3：`sameTarget` 仍大小写敏感，而 `targetKeyOf` 已归一；`target-wiring` 是文本门禁，注释可绕过；
+- P3：`remoteProcCount` 自匹配已修（改用 `node.*dsh` + 排除 pgrep），但仍是「只记录不断言」。
 
 **口径更正（第三次）**：Delta-3 提交信息写 902 tests，实测 **905 / 0 fail**（901 + 2 路由 + 2 hub）。三次都是先写提交信息后跑门禁；规矩已记在本文件，仍复发一次，说明要改的是**流程顺序**而不是提醒。
 

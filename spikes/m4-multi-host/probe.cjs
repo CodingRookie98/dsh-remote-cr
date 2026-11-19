@@ -113,7 +113,12 @@ async function crossHost(hub) {
   const sshStill = hub.peek(ssh) !== undefined && sshEntry?.service.connected === true
   // 远端进程是否真退出：**只记录不断言**（本机 `ss`/进程观测不稳定，不能当判据）。
   const wslListeningAfter = wslP === undefined ? 'unknown' : wslPort(wslP)
-  const remoteProcs = spawnSync('wsl.exe', ['-d', WSL_DISTRO, '--exec', 'sh', '-c', "pgrep -fc 'dsh' || true"], { windowsHide: true })
+  // 排除自身：`sh -c` 的命令行里也有 "dsh"，直接 `pgrep -fc dsh` 会自匹配（P4 P3）。
+  const remoteProcs = spawnSync(
+    'wsl.exe',
+    ['-d', WSL_DISTRO, '--exec', 'sh', '-c', "pgrep -af 'node.*dsh' | grep -v pgrep | wc -l"],
+    { windowsHide: true },
+  )
   const remoteProcCount = Buffer.from(remoteProcs.stdout ?? []).toString('utf8').trim()
   expect('M4', released.recycled === true && wslEntryGone && sshStill,
     JSON.stringify({ released, wslEntryGone, sshStill, wslListeningAfter, remoteProcCount }))
