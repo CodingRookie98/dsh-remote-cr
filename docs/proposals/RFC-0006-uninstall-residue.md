@@ -5,6 +5,8 @@
 - 关联：`docs/design/milestones.md` §M4「卸载干净」、`src/index.ts`（`ctx.effect` 生命周期）、`src/local/backend/wsl/children.ts`、`src/local/backend/ssh/{bootstrap,instance}.ts`、`docs/troubleshooting.md`
 - 发起：用户 2026-11-19「按你评估的顺序开始」→ 第 2 顺位
 
+> legacy-name-ok：本文的残留清单必须点名旧状态根的真实路径（用户要照它手删），这是命名铁律允许的文档豁免；改名映射本身仍只在 ADR-0006。
+
 ## 1. 问题
 
 M4 要求「卸载后无残留（远端用户数据可保留）」。现状分三类，先前从未系统盘过：
