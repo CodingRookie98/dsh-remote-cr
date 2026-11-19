@@ -340,6 +340,25 @@ export const PANEL_CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+[data-remote-cr='panel'] [data-remote-cr='panel-diagnostics'] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+[data-remote-cr='panel'] [data-remote-cr='panel-diagnostics-head'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-remote-cr='panel'] [data-remote-cr='panel-diagnostic'] {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(64px, auto) 1fr;
+  gap: 8px;
+  font-size: 12px;
+}
+[data-remote-cr='panel'] [data-remote-cr='panel-diagnostic'][data-status='fail'] { color: var(--tp-err); }
+[data-remote-cr='panel'] [data-remote-cr='panel-diagnostic'][data-status='warn'] { color: var(--tp-warn); }
+
 [data-remote-cr='panel'] [data-remote-cr='session-running'] {
   display: inline-flex;
   align-items: center;

@@ -12,6 +12,7 @@
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
+  DoctorReportInfo,
   ImportableWorkspaceInfo,
   ProbeOutcome,
   ProjectedSessionInfo,
@@ -32,6 +33,7 @@ import {
   loadSources,
   probeRemoteSession,
   readProjection,
+  readDoctor,
   reconnectRemote,
   refreshProjection,
   stopRemote,
@@ -402,11 +404,17 @@ export function RemoteCrPanel(): unknown {
    * 调度器只在挂载时建一次（`run` 那个闭包也就被冻一次）：直接把 `snapshot` 读进闭包，
    * 它会永远停在首帧的 `null`。镜像在每次渲染时同步一次，`run` 里就能读到当前值。
    */
+  /** 诊断（RFC-0005）：进面板查一次，之后由「重新检查」手动刷新。 */
+  const [doctor, setDoctor] = useState<DoctorReportInfo | null>(null)
+  const [doctorBusy, setDoctorBusy] = useState(false)
+
   const liveSnapshot = useRef<ProjectionSnapshotInfo | null>(null)
   liveSnapshot.current = snapshot
 
   /** 挂载期内的调度器：「用户点重试」要能把那一次立刻补上（`kick()`）。 */
   const schedulerRef = useRef<RefreshScheduler | null>(null)
+  /** 上一次已知的连接状态：只在**真的变化**时才起/停链（否则挂载时与 sync() 各 kick 一次）。 */
+  const lastConnected = useRef<boolean | null>(null)
 
   /** 后台刷新的失败面：形状沿用 `failureFromError`，不新造错误类型、不新造弹窗（铁律 4）。 */
   const refreshFailureOf = (caught: unknown): PanelFailure => {
@@ -464,7 +472,9 @@ export function RemoteCrPanel(): unknown {
     const host = visibilityHost()
     const sync = (): void => {
       // 判断与动作都收在 `applyPollState` 里：这一处接线有单测（P4 Delta 的 P2）。
-      applyPollState(scheduler, { connected: liveSnapshot.current?.connected === true, visible: panelVisible() })
+      const connected = liveSnapshot.current?.connected === true
+      lastConnected.current = connected
+      applyPollState(scheduler, { connected, visible: panelVisible() })
     }
     sync()
     host?.addEventListener?.('visibilitychange', sync)
@@ -475,11 +485,30 @@ export function RemoteCrPanel(): unknown {
     }
   }, [refreshRunner])
 
+  const loadDoctor = async (): Promise<void> => {
+    setDoctorBusy(true)
+    try {
+      setDoctor(await readDoctor())
+    } catch (caught) {
+      // 诊断失败走既有错误块（不新造弹窗）；下一次点「重新检查」就是重试入口。
+      setError(failureOf(caught))
+    } finally {
+      setDoctorBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadDoctor()
+  }, [])
+
   // 连接状态变化也要跟着起/收链：断连即停、重连后立刻补一次（RFC R3 的另一半）。
+  // 只在真的变化时动手：挂载时 sync() 已经起过链，这里再 kick 一次会让首屏多打一条刷新。
   const snapshotConnected = snapshot?.connected === true
   useEffect(() => {
     const scheduler = schedulerRef.current
     if (scheduler === null) return
+    if (lastConnected.current === snapshotConnected) return
+    lastConnected.current = snapshotConnected
     applyPollState(scheduler, { connected: snapshotConnected, visible: panelVisible() })
   }, [snapshotConnected])
 
@@ -969,6 +998,51 @@ export function RemoteCrPanel(): unknown {
     ),
   )
 
+  const doctorStatusLabel = (status: 'ok' | 'warn' | 'fail'): string =>
+    status === 'ok' ? t('panel.diagnosticOk') : status === 'warn' ? t('panel.diagnosticWarn') : t('panel.diagnosticFail')
+  const doctorBox = h(
+    'div',
+    { 'data-remote-cr': 'panel-diagnostics' },
+    h(
+      'div',
+      { 'data-remote-cr': 'panel-diagnostics-head' },
+      h('span', { 'data-remote-cr': 'panel-section-title' }, t('panel.diagnosticsTitle')),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-remote-cr': 'diagnostics-rerun',
+          disabled: doctorBusy,
+          onClick: () => void loadDoctor(),
+        },
+        doctorBusy ? t('panel.diagnosticsChecking') : t('panel.diagnosticsRerun'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-remote-cr': 'diagnostics-copy',
+          disabled: doctor === null,
+          onClick: () => {
+            if (doctor !== null) void copyText(doctor.report)
+          },
+        },
+        t('panel.diagnosticsCopy'),
+      ),
+    ),
+    ...(doctor === null
+      ? [h('div', { 'data-remote-cr': 'panel-diagnostics-empty' }, t('panel.diagnosticsEmpty'))]
+      : doctor.checks.map((check) =>
+          h(
+            'div',
+            { key: check.id, 'data-remote-cr': 'panel-diagnostic', 'data-status': check.status },
+            h('span', { 'data-remote-cr': 'diagnostic-id' }, check.id),
+            h('span', { 'data-remote-cr': 'diagnostic-status' }, doctorStatusLabel(check.status)),
+            h('span', { 'data-remote-cr': 'diagnostic-detail' }, check.detail),
+          ),
+        )),
+  )
+
   const probeBox =
     probe === null
       ? null
@@ -1182,6 +1256,7 @@ export function RemoteCrPanel(): unknown {
               ]
             : sessionRows),
         ),
+        doctorBox,
         probeBox,
       ),
     ),

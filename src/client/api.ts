@@ -109,6 +109,12 @@ export async function callApi<T>(
   return envelope.value as T
 }
 
+/** `/doctor` 的答复：检查项 + 与 CLI 同款的报告文本（RFC-0005）。 */
+export async function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo> {
+  // callApi 自己会拼 API_PREFIX；这里只给路径（拼两遍会得到 /remote-cr/api/remote-cr/api/...）。
+  return await callApi<import('../shared/api.ts').DoctorReportInfo>('/doctor')
+}
+
 /** `/sources` 的答复：探测结果 + 四选一的展示状态。 */
 export interface SourcesPayload {
   readonly wslAvailable: boolean

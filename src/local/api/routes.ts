@@ -50,7 +50,9 @@ import { assertRemoteExecution } from '../projection/probe.ts'
 import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts'
 import { applySyncPlan, buildSyncPlan, readSyncProgress, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
+import type { DoctorReportInfo } from '../../shared/api.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
+import { formatDoctorReport, installedRoot, runDoctor } from '../doctor.ts'
 import { readLocalBundles } from '../plugin-sync/local.ts'
 import { upgradeRemoteHost } from '../plugin-sync/host-upgrade.ts'
 import { acquireWrite, releaseWrite } from '../plugin-sync/locks.ts'
@@ -132,6 +134,11 @@ export interface RouteOptions {
    * 而不是返回空 plan 让面板显示「已同步」。
    */
   readonly sync?: SyncRoutesOptions
+  /**
+   * 诊断区（RFC-0005）的注入口：只给测试换掉包根 / home，生产走 `installedRoot()` 与 `homeDir`。
+   * 做成注入而不是让用户填路径——面板上的「检查一下」不该要求用户知道插件装在哪。
+   */
+  readonly doctor?: { readonly rootDir?: string; readonly homeDir?: string }
   /**
    * SSH 目标的「本地锚点路径」落实器（建目录 + 写 map.json，见 `ssh/anchor-runtime.ts`）。
    *
@@ -574,6 +581,26 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   mount('/anchors', ['GET'], async (_req, res) => {
     const report = await describeAnchors({ homeDir })
     sendJson(res, 200, okEnvelope(report))
+  })
+
+  // ── 诊断（RFC-0005）─────────────────────────────────────────────────────
+  // 只读：跑的是既有纯函数 `runDoctor`，报告文本复用 CLI 的 `formatDoctorReport`。
+  // 面板与终端必须看到同一份口径——两套措辞比没有诊断更糟。
+  mount('/doctor', ['GET'], async (_req, res) => {
+    const injected = options.doctor
+    const checks = runDoctor({
+      rootDir: injected?.rootDir ?? installedRoot(),
+      homeDir: injected?.homeDir ?? homeDir,
+    })
+    sendJson(
+      res,
+      200,
+      okEnvelope<DoctorReportInfo>({
+        checks: checks.map((check) => ({ id: check.id, status: check.status, detail: check.detail })),
+        report: formatDoctorReport(checks),
+        generatedAt: new Date().toISOString(),
+      }),
+    )
   })
 
   // ── 投影（P3.5）──────────────────────────────────────────────────────────

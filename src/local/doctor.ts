@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // 旧名常量只有一处定义（ADR-0006）：体检要报「旧根还在」，也走同一个常量，
 // 免得把字面量又抄一份到迁移目录之外（check:boot 会红）。
@@ -154,6 +155,18 @@ export function formatDoctorReport(checks: readonly DoctorCheck[]): string {
   })
   const failed = checks.filter((check) => check.status === 'fail').length
   return ['dsh-remote-cr doctor', ...lines, '', failed === 0 ? '结论：可以正常加载' : '结论：' + String(failed) + ' 项必须修'].join('\n')
+}
+
+/**
+ * 本插件安装目录（包根）。
+ *
+ * 这个文件编译后在 `lib/local/doctor.js`，上两级就是包根（`package.json` 所在处）；
+ * 面板的「诊断」区没必要让用户填路径，也不需要读 `process.cwd()`（那可能是任意目录）。
+ * 仍保留注入口：路由测试传临时目录，不碰真实安装。
+ */
+export function installedRoot(): string {
+  const here = fileURLToPath(import.meta.url)
+  return resolve(dirname(here), '..', '..')
 }
 
 /** CLI：`node lib/local/doctor.js`（也可 `pnpm doctor`）。 */

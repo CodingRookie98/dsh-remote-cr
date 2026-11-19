@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -158,6 +158,7 @@ function rig(
     resolveAnchorPath?: (target: SshConnectTarget, remotePath: string) => Promise<string>
     homeDir?: string
     sync?: SyncRoutesOptions
+    doctor?: { rootDir?: string; homeDir?: string }
   } = {},
   makeRes: () => FakeRes = fakeRes,
 ): Rig {
@@ -202,6 +203,7 @@ function rig(
     ...(extra.projection === undefined ? {} : { projection: extra.projection }),
     ...(extra.resolveAnchorPath === undefined ? {} : { resolveAnchorPath: extra.resolveAnchorPath }),
     ...(extra.sync === undefined ? {} : { sync: extra.sync }),
+    ...(extra.doctor === undefined ? {} : { doctor: extra.doctor }),
   })
   assert.deepEqual(effects.length, mounted.length, '每条路由恰好一个 effect')
 
@@ -237,6 +239,7 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
       '/remote-cr/api/attach POST',
       '/remote-cr/api/attach/cancel POST',
       '/remote-cr/api/disconnect POST',
+      '/remote-cr/api/doctor GET',
       '/remote-cr/api/flow GET',
       '/remote-cr/api/flow/cancel POST',
       '/remote-cr/api/list GET',
@@ -260,6 +263,49 @@ test('全部路由都挂载在 /remote-cr/api 下，且各自声明允许的 met
   )
 })
 
+
+// ── 诊断（RFC-0005）────────────────────────────────────────────────────────
+
+function doctorFixture(): string {
+  const root = mkdtempSync(join(tmpdir(), 'remote-cr-doctor-'))
+  writeFileSync(
+    join(root, 'package.json'),
+    JSON.stringify({
+      name: 'fixture-plugin',
+      version: '1.2.3',
+      main: 'lib/index.js',
+      dsh: { bundle: { patch: './cordis.patch.yml' }, engines: { dsh: '>=0.2.1-rc.0 <0.3.0' } },
+    }),
+  )
+  mkdirSync(join(root, 'lib'), { recursive: true })
+  writeFileSync(join(root, 'lib', 'index.js'), 'module.exports = {}')
+  writeFileSync(join(root, 'lib', 'client.js'), 'module.exports = {}')
+  writeFileSync(join(root, 'cordis.patch.yml'), 'rows: []')
+  return root
+}
+
+test('/doctor：跑既有 runDoctor，报告首行与 CLI 同款（RFC-0005 R1/R2）', async () => {
+  const rootDir = doctorFixture()
+  const homeDir = mkdtempSync(join(tmpdir(), 'remote-cr-doctor-home-'))
+  const result = await rig({}, { doctor: { rootDir, homeDir } }).call({ path: '/doctor' })
+  const envelope = result.json as { ok: boolean; value?: { checks: { id: string; status: string; detail: string }[]; report: string } }
+  assert.equal(result.status, 200)
+  assert.equal(envelope.ok, true, JSON.stringify(result.json))
+  const value = envelope.value
+  assert.ok(value !== undefined)
+  assert.ok(value.checks.length >= 3, '至少要 package / entry / state-root 三项')
+  assert.ok(value.checks.some((check) => check.id === 'package' && check.detail === 'fixture-plugin@1.2.3'))
+  assert.equal(value.report.split('\n')[0], 'dsh-remote-cr doctor', '报告必须是 CLI 同一份格式化')
+})
+
+test('/doctor：不注入 rootDir 时读的是包根（installedRoot）', async () => {
+  const result = await rig().call({ path: '/doctor' })
+  const envelope = result.json as { ok: boolean; value?: { checks: { id: string; status: string }[] } }
+  const value = envelope.value
+  assert.ok(value !== undefined)
+  const pkg = value.checks.find((check) => check.id === 'package')
+  assert.ok(pkg !== undefined && pkg.status === 'ok', '仓库根的 package.json 必须读得到：' + JSON.stringify(pkg))
+})
 
 // ── 插件同步路由（RFC-0003 / T4）────────────────────────────────────────────
 

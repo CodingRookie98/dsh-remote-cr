@@ -178,6 +178,23 @@ export interface ProjectedSessionInfo {
   readonly availability: 'online' | 'offline'
 }
 
+/** 一条诊断检查（与宿主半 `DoctorCheck` 同形；浏览器半也要读，所以放共享层）。 */
+export interface DoctorCheckInfo {
+  readonly id: string
+  readonly status: 'ok' | 'warn' | 'fail'
+  /** 一句话结论（含取证细节）。 */
+  readonly detail: string
+}
+
+/** `GET /doctor` 的应答体。 */
+export interface DoctorReportInfo {
+  readonly checks: readonly DoctorCheckInfo[]
+  /** 与 CLI 完全一致的报告文本（`formatDoctorReport`）。 */
+  readonly report: string
+  /** ISO-8601；面板据此显示「多久之前查的」。 */
+  readonly generatedAt: string
+}
+
 /** 面板要的全部投影数据 + 连接状态 + 接入默认值。 */
   /** 远端已有、可导入的工作区（M4-1：DSH 没有 workspace/list，靠 workspace/follow 首帧）。 */
 export interface ImportableWorkspaceInfo {
