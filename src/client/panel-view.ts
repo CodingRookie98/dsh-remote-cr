@@ -13,6 +13,7 @@ import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   DoctorReportInfo,
+  HostEntryInfo,
   PurgeResultInfo,
   ResidueReportInfo,
   ImportableWorkspaceInfo,
@@ -38,6 +39,7 @@ import {
   readDoctor,
   readResidue,
   purgeResidue,
+  readHosts,
   reconnectRemote,
   refreshProjection,
   stopRemote,
@@ -417,6 +419,9 @@ export function RemoteCrPanel(): unknown {
   /** 请求序号：连点时只让最后一次落地，避免旧响应覆盖新结果（P4 建议 5）。 */
   const doctorSeq = useRef(0)
 
+  /** 容器里的主机一览（RFC-0007 A2）：只读展示，切换留到下一片。 */
+  const [hosts, setHosts] = useState<readonly HostEntryInfo[]>([])
+
   /** 远端残留（RFC-0006 Phase 2）：盘点只读、清理要两步确认。 */
   const [residue, setResidue] = useState<ResidueReportInfo | null>(null)
   const [residueBusy, setResidueBusy] = useState(false)
@@ -524,6 +529,19 @@ export function RemoteCrPanel(): unknown {
 
   useEffect(() => {
     void loadDoctor()
+  }, [])
+
+  /** 主机一览是辅助信息：失败就保持上一次（或空），不占用错误通道。 */
+  const loadHosts = async (): Promise<void> => {
+    try {
+      setHosts(await readHosts())
+    } catch {
+      // 容器没接线 / 宿主半老版本：面板照常工作
+    }
+  }
+
+  useEffect(() => {
+    void loadHosts()
   }, [])
 
   /** 远端残留的盘点目标：只有「接过的这个 target」才有意义（没接过就不知道该清谁）。 */
@@ -1082,6 +1100,27 @@ export function RemoteCrPanel(): unknown {
 
   const doctorStatusLabel = (status: 'ok' | 'warn' | 'fail'): string =>
     status === 'ok' ? t('panel.diagnosticOk') : status === 'warn' ? t('panel.diagnosticWarn') : t('panel.diagnosticFail')
+  const hostsBox =
+    hosts.length === 0
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'panel-hosts-list' },
+          h('div', { 'data-remote-cr': 'panel-section-title' }, t('panel.hostsRegistered')),
+          ...hosts.map((host) =>
+            h(
+              'div',
+              { key: host.key, 'data-remote-cr': 'host-row', 'data-connected': String(host.connected) },
+              h('span', { 'data-remote-cr': 'host-name' }, host.target.backend === 'wsl' ? host.target.distro : host.target.alias),
+              h(
+                'span',
+                { 'data-remote-cr': 'host-counts' },
+                t('panel.hostCounts', { workspaces: String(host.workspaces), sessions: String(host.sessions) }),
+              ),
+            ),
+          ),
+        )
+
   const residueBox = residueTarget === null ? null : h(
     'div',
     { 'data-remote-cr': 'panel-residue' },
@@ -1417,6 +1456,7 @@ export function RemoteCrPanel(): unknown {
               ]
             : sessionRows),
         ),
+        hostsBox,
         doctorBox,
         residueBox,
         probeBox,

@@ -155,6 +155,7 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/plugin-sync/optout') {
     return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
   }
+  if (path === '/remote-cr/api/projection/targets') return { ok: true, value: fixtures.hosts ?? [] };
   if (path === '/remote-cr/api/maintenance/residue') return { ok: true, value: fixtures.residue };
   if (path === '/remote-cr/api/maintenance/purge' && method === 'POST') return { ok: true, value: fixtures.purge };
   if (path === '/remote-cr/api/doctor') {

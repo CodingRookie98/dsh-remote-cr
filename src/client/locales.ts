@@ -15,6 +15,8 @@
 /** 简体中文字典（键集真相源）。 */
 export const zh = {
   'panel.title': '远端工作台',
+  'panel.hostsRegistered': '已登记主机',
+  'panel.hostCounts': '{workspaces} 工作区 · {sessions} 会话',
   'panel.diagnosticsTitle': '诊断',
   'panel.diagnosticsRerun': '重新检查',
   'panel.diagnosticsChecking': '检查中…',
@@ -447,6 +449,8 @@ export type RemoteCrKey = keyof typeof zh
 /** 英文字典；缺键会被 `i18n.test.ts` 拒绝合入。 */
 export const en: Readonly<Record<RemoteCrKey, string>> = {
   'panel.title': 'Remote Workbench',
+  'panel.hostsRegistered': 'Registered hosts',
+  'panel.hostCounts': '{workspaces} workspaces · {sessions} sessions',
   'panel.diagnosticsTitle': 'Diagnostics',
   'panel.diagnosticsRerun': 'Re-check',
   'panel.diagnosticsChecking': 'Checking…',

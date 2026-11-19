@@ -16,6 +16,7 @@
 
 import { API_PREFIX } from '../shared/api.ts'
 import type {
+  HostEntryInfo,
   ImportableWorkspaceInfo,
   PurgeResultInfo,
   RemoteTargetInfo,
@@ -118,6 +119,11 @@ export async function callApi<T>(
 export async function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo> {
   // callApi 自己会拼 API_PREFIX；这里只给路径（拼两遍会得到 /remote-cr/api/remote-cr/api/...）。
   return await callApi<import('../shared/api.ts').DoctorReportInfo>('/doctor')
+}
+
+/** `GET /projection/targets`：容器里每台的状态与条目数（RFC-0007 A1/A2）。 */
+export async function readHosts(): Promise<HostEntryInfo[]> {
+  return await callApi<HostEntryInfo[]>('/projection/targets')
 }
 
 /** `GET /maintenance/residue`：远端残留只读盘点（RFC-0006 Phase 2）。 */

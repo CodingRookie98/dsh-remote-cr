@@ -540,7 +540,7 @@ export const PREVIEW_SCENES = [
     // 需求② 的可见面：徽标必须有、离线行必须给得出重连（RFC-0003 R2-1/R2-2）。
     // 上一轮误判成「要选中主机才渲染」，实际是 **--no-build 用了旧 bundle**；现已确认面板
     // 一进入就渲染两条投影行（panel.json 里 projected-badge / row-reconnect 均出现）。
-    requireMarkers: ['projected-badge', 'row-reconnect'],
+    requireMarkers: ['projected-badge', 'row-reconnect', 'host-row'],
     // 向导是模态：不挂它，面板才完整可见。
     hideFlow: true,
     // 结构门禁的期望值在 harness 代码里（REQUIRED_ORDER_SCENES），不写在这里 —— 避免两处真相。
@@ -894,6 +894,23 @@ export function sceneFixtures(sceneId) {
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 诊断夹具（RFC-0005）：一份含 ok / warn / fail 的报告，用来断言逐条状态渲染。
     doctorFails: id === 'panel-diagnostics-failed',
+    // 多 host 一览（RFC-0007 A2）：两台，一台在线一台离线。
+    hosts: [
+      {
+        key: 'wsl:' + DISTRO + '|8899|/home/hui/workspace',
+        target: { backend: 'wsl', distro: DISTRO, port: 8899, remoteRoot: '/home/hui/workspace' },
+        connected: true,
+        workspaces: 2,
+        sessions: 30,
+      },
+      {
+        key: 'ssh:prod|22|/srv/api',
+        target: { backend: 'ssh', alias: 'prod', port: 22, remoteRoot: '/srv/api' },
+        connected: false,
+        workspaces: 1,
+        sessions: 4,
+      },
+    ],
     // 远端残留（RFC-0006 Phase 2）：一份含「活着的实例 + 已死登记」的盘点结果。
     residue: {
       targetId: 'wsl:' + DISTRO,
