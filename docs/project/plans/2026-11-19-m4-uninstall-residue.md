@@ -58,6 +58,9 @@ N5（面板两步确认 0 覆盖 + target 漂移）：抽出 `nextPurgeClick` �
 沙箱真脚本 **8/8**（有活实例 → staging 保留、只删死登记；去掉活登记后才删 staging）。
 **口径更正**：delta-2 的提交信息里写了 879 tests，实测为 **877 / 0 fail**（差额是我算错，不是用例缺失）。
 
+**Delta-3（2026-11-19）**：`planPurge` 的 instances 作用域收到 **anchor 级**（instances 是跨 anchor 共享目录，只删本 target 的 `<id>.json`；WSL 无 id 时才按 distro 级），面板渲染 `skipped`，并补三条判据（$HOME 守卫 / 同 distro 不同 remoteRoot 的 busy / skipped 透传）。沙箱 8/8。
+**口径再次更正**：delta-3 的提交信息写 883 tests，实测 **881 / 0 fail**。两次都是「先写提交信息、后跑门禁」导致的；后续提交信息里的数字必须在门禁**之后**填。
+
 v2 真机：沙箱 **5/5**（死登记删掉、活登记与字段乱序的活登记都保留、无失败项）；只读盘点 WSL **4/4**、SSH **4/4**（1.18 GB staging 正确解析）。
 
 ## 4. 风险与未验证
