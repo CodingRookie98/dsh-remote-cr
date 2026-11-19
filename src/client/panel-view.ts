@@ -33,6 +33,7 @@ import {
   probeRemoteSession,
   readProjection,
   reconnectRemote,
+  refreshProjection,
   stopRemote,
   readSyncPlan,
   readSyncProgress,
@@ -43,6 +44,8 @@ import {
   type SyncTargetLike,
 } from './api.ts'
 import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
+import { filterSessions } from './filter.ts'
+import { createRefreshScheduler, type RefreshScheduler } from './poll.ts'
 import { lastSessionActionFailure, subscribeSessionActions } from './session-actions.ts'
 import {
   beginApply,
@@ -143,6 +146,29 @@ function refusalOf(reason: string): PanelFailure {
   }
 }
 
+/**
+ * 浏览器全局里我们真正用到的那一小面。
+ *
+ * 为什么不直接写 `document`：这个文件被**两个工程各编译一次** —— `tsconfig.client.json`
+ * 带 DOM lib，而宿主半的 `tsconfig.json` 没有。直接引用全局 `document` 会在后者炸掉；
+ * 从 `globalThis` 上取是两边都成立的读法，语义与 `typeof document !== 'undefined'` 一致
+ * （node 里取到 `undefined`，也就是「看不见」，于是调度器只重排、不发请求）。
+ */
+interface VisibilityHostLike {
+  readonly visibilityState?: string
+  addEventListener?(type: string, listener: () => void): void
+  removeEventListener?(type: string, listener: () => void): void
+}
+
+function visibilityHost(): VisibilityHostLike | undefined {
+  return (globalThis as unknown as { readonly document?: VisibilityHostLike }).document
+}
+
+/** 面板此刻是否可见（R3：隐藏时调度器只重排、不刷新）。 */
+function panelVisible(): boolean {
+  return visibilityHost()?.visibilityState === 'visible'
+}
+
 /** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
 export function RemoteCrIcon(): unknown {
   return h('span', { 'data-remote-cr': 'panellist-icon', title: t('panel.title') }, t('panel.icon'))
@@ -171,6 +197,8 @@ type RetryIntent =
   | { readonly kind: 'create-session'; readonly workspaceId: string }
   | { readonly kind: 'link'; readonly action: 'disconnect' | 'reconnect' }
   | { readonly kind: 'probe'; readonly sessionId: string }
+  /** 后台刷新失败：没有表单可重放，重试就是让调度器立刻补一次。 */
+  | { readonly kind: 'refresh' }
 
 export function RemoteCrPanel(): unknown {
   const state = useWizard()
@@ -353,6 +381,8 @@ export function RemoteCrPanel(): unknown {
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const [importable, setImportable] = useState<readonly ImportableWorkspaceInfo[] | null>(null)
   const [importPick, setImportPick] = useState<readonly string[]>([])
+  // 会话过滤（R4）：只影响会话区的行，不动排序、不动工作区区。
+  const [sessionFilter, setSessionFilter] = useState('')
   // SSH 接入：主机清单来自 /sources（只含 alias / 端口 / 有无密钥），路径由用户手输。
   const [ssh, setSsh] = useState<SshSourceReport | null>(null)
   const [sshError, setSshError] = useState<string | null>(null)
@@ -365,6 +395,100 @@ export function RemoteCrPanel(): unknown {
   // 存的是**意图**而不是当时那个闭包：用户改了远端路径再点重试，期待的是用新路径重来；
   // 存闭包会用旧路径再失败一次（表单值变了、错误却一模一样，看起来像重试没反应）。
 
+  /**
+   * 快照的 **ref 镜像**。
+   *
+   * 调度器只在挂载时建一次（`run` 那个闭包也就被冻一次）：直接把 `snapshot` 读进闭包，
+   * 它会永远停在首帧的 `null`。镜像在每次渲染时同步一次，`run` 里就能读到当前值。
+   */
+  const liveSnapshot = useRef<ProjectionSnapshotInfo | null>(null)
+  liveSnapshot.current = snapshot
+
+  /**
+   * 后台刷新留下的那条错误：用**对象身份**记住，成功时只撤自己。
+   *
+   * 与 `sessionErrorRef` 同一套理由：详情是本地化后的文案，与任何字符串都不相等，
+   * 按身份撤才不会把面板里别的错误一起抹掉。
+   */
+  const refreshErrorRef = useRef<PanelFailure | null>(null)
+
+  /** 挂载期内的调度器：「用户点重试」要能把那一次立刻补上（`kick()`）。 */
+  const schedulerRef = useRef<RefreshScheduler | null>(null)
+
+  /** 后台刷新的失败面：形状沿用 `failureFromError`，不新造错误类型、不新造弹窗（铁律 4）。 */
+  const refreshFailureOf = (caught: unknown): PanelFailure => {
+    const shaped = failureFromError(caught)
+    const code = typeof shaped === 'string' ? 'remote-cr/client-failed' : shaped.code
+    const detail = typeof shaped === 'string' ? shaped : shaped.detail
+    const nextActions = typeof shaped === 'string' ? [] : shaped.nextActions
+    const raw = typeof shaped === 'string' ? shaped : (shaped.logTail ?? shaped.command ?? shaped.detail)
+    return {
+      code,
+      detail,
+      nextActions: nextActions.length === 0 ? [t('action.retry')] : nextActions,
+      report: [
+        t('panel.refreshFailed'),
+        t('panel.errorCode') + code,
+        t('panel.reason') + detail,
+        t('panel.raw') + raw,
+      ].join('\n'),
+      intent: { kind: 'refresh' },
+    }
+  }
+
+  /**
+   * 后台刷新一次：**沿用既有数据流** —— 只写 `setSnapshot`，面板里读快照的地方一行都不用改。
+   *
+   * 三条纪律：
+   * 1. **未连接不发请求**：宿主必然回 `remote/not-attached`，让它进退避只会把间隔白白拖到 30 s；
+   * 2. 失败**不清空**快照（远端抖一下不该变成「列表全没了」），旧帧由宿主原样保留；
+   * 3. 失败进既有错误块（`panel-error`）并**抛出**，退避交给调度器（`poll.ts`）。
+   */
+  const refreshOnce = useMemo(
+    () => async (): Promise<void> => {
+      if (liveSnapshot.current?.connected !== true) return
+      try {
+        const next = await refreshProjection()
+        setSnapshot(next)
+        setError((current) => (current !== null && current === refreshErrorRef.current ? null : current))
+        refreshErrorRef.current = null
+      } catch (caught) {
+        const failure = refreshFailureOf(caught)
+        refreshErrorRef.current = failure
+        setError(failure)
+        // 失败后立刻读一次宿主快照（`/projection` 是纯本地读，不触发远端 RPC）：宿主已经把 stale 置 true，
+        // 只等下一轮轮询（失败后退避到 10–30 s）才亮徽标，等于把「刚刚失败」藏起来。
+        // 读失败就保持现状，绝不把快照清空。
+        const authoritative = await readProjection().catch(() => null)
+        if (authoritative !== null) setSnapshot(authoritative)
+        throw caught
+      }
+    },
+    [],
+  )
+
+  /**
+   * 轮询（R3）：挂载起链、卸载收链，页面重新可见时补一次。
+   *
+   * 为什么不用 `setInterval`：可见性 / 退避 / 单飞三件事它一件都不成立，而这三件事恰好
+   * 都能在 node 里断言（`poll.test.ts` 用假定时器逐条钉住）。
+   */
+  useEffect(() => {
+    const scheduler = createRefreshScheduler({ run: refreshOnce, isVisible: panelVisible })
+    schedulerRef.current = scheduler
+    scheduler.start()
+    const host = visibilityHost()
+    const onVisibility = (): void => {
+      // 只管「回到可见」这一侧：隐藏时到点自然会跳过，不需要额外动作。
+      if (host?.visibilityState === 'visible') scheduler.kick()
+    }
+    host?.addEventListener?.('visibilitychange', onVisibility)
+    return () => {
+      scheduler.stop()
+      if (schedulerRef.current === scheduler) schedulerRef.current = null
+      host?.removeEventListener?.('visibilitychange', onVisibility)
+    }
+  }, [refreshOnce])
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
@@ -620,6 +744,10 @@ export function RemoteCrPanel(): unknown {
         case 'link':
           await onLink(intent.action)
           return
+        case 'refresh':
+          // 后台刷新没有表单可重放：让调度器立刻补一次（退避也因此从头开始）。
+          schedulerRef.current?.kick()
+          return
         case 'probe':
           await onProbe(intent.sessionId)
       }
@@ -815,7 +943,9 @@ export function RemoteCrPanel(): unknown {
     )
   })
 
-  const sessionRows = (snapshot?.sessions ?? []).map((session: ProjectedSessionInfo) =>
+  // 过滤（R4）：`filterSessions` 只筛不排，快照给的顺序就是渲染顺序。
+  const filtering = sessionFilter.trim() !== ''
+  const sessionRows = filterSessions(snapshot?.sessions ?? [], sessionFilter).map((session: ProjectedSessionInfo) =>
     h(
       'div',
       {
@@ -1027,11 +1157,36 @@ export function RemoteCrPanel(): unknown {
         ),
         importBox,
         h('h3', { 'data-remote-cr': 'panel-section-title' }, t('panel.sessionsTitle')),
+        // 会话区上方：过滤框 + 新鲜度徽标。
+        // 徽标放在这里而不是状态带：`stale` 说的是「这份**会话列表**有多新」
+        // （`shared/api.ts` 该字段的注释），贴着它描述的区块才不会读成「远端离线」。
+        h(
+          'div',
+          { 'data-remote-cr': 'panel-sessions-head' },
+          h('input', {
+            'data-remote-cr': 'session-filter',
+            type: 'text',
+            value: sessionFilter,
+            placeholder: t('panel.filterPlaceholder'),
+            'aria-label': t('panel.filterPlaceholder'),
+            onInput: (event: unknown) => {
+              const value = (event as { target?: { value?: unknown } }).target?.value
+              if (typeof value === 'string') setSessionFilter(value)
+            },
+          }),
+          snapshot?.stale === true
+            ? h('span', { 'data-remote-cr': 'panel-stale', title: t('panel.staleHint') }, t('panel.stale'))
+            : null,
+        ),
         h(
           'div',
           { 'data-remote-cr': 'panel-sessions' },
           ...(sessionRows.length === 0
-            ? [h('div', { 'data-remote-cr': 'panel-sessions-empty' }, t('panel.emptySessions'))]
+            ? [
+                filtering
+                  ? h('div', { 'data-remote-cr': 'filter-empty' }, t('panel.filterEmpty'))
+                  : h('div', { 'data-remote-cr': 'panel-sessions-empty' }, t('panel.emptySessions')),
+              ]
             : sessionRows),
         ),
         probeBox,
