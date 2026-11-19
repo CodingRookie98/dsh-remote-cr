@@ -416,6 +416,10 @@ export declare const zh: {
     readonly 'wizard.pollFailed': "查不到进度了：{detail}";
     readonly 'wizard.close': "关闭";
     readonly 'wizard.cancel': "取消";
+    readonly 'wizard.hostAttaching': "正在启动远端 dsh…（首次约 9–18 秒）";
+    readonly 'wizard.hostReady': "远端宿主已就绪：这个工作区的会话会跑在远端";
+    readonly 'wizard.hostFailed': "远端宿主没起来。本地工作区已保留，可以重试";
+    readonly 'wizard.hostRetry': "重试接入";
     readonly 'wizard.addFailed': "添加工作区失败";
     readonly 'wizard.addCurrent': "把当前目录添加为工作区";
     readonly 'wizard.pendingInput': "路径框里的输入还没读取：按 Enter 后再添加";
