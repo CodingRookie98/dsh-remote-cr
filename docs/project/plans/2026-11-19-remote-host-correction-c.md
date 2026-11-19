@@ -7,6 +7,7 @@
 ## 🚀 Active Checkpoint
 
 - **当前阶段**：P3.1–P3.5 完成（B 落地）；**C 被内核阻断，取证已成文（RFC-0008），待用户裁决**
+- **本轮补充（证据轮）**：RFC-0008 补第 6/7 条硬证据；产出 `docs/proposals/upstream-multi-host-remote.md`（P1 的上游补丁面，≤400 行）；向导 done 屏文案改为「远端会话在面板里，侧栏那条目录开的是本地会话」，不再让人误以为侧栏入口已是远端
 - **最后验证**（2026-11-19）：`pnpm typecheck` / `pnpm test` **932 pass 0 fail** / `pnpm build:client`（33 modules）/ 预览 **33/33 场景 + 键盘 10/0**；新增场景 `done-wsl` 命中 `[data-remote-cr="host-attach"][data-phase="done"]`
 
 ## 1. 问题（用户原话）
@@ -67,6 +68,8 @@
 | 3 | CLI 没有「连远端 host」模式 | `apps/cli/README.md` 只有 `--profile`；`--host` 是**监听地址**，不是上游 host |
 | 4 | companion 是空壳 | `src/companion/index.ts`：只有 `describeSelf`，注释写明「在此之前不宣称任何行为已实现」 |
 | 5 | 桌面端的 remote 是**应用装配**，不是插件能力 | `tests/desktop-host.e2e.ts` 里 Connection 由 Electron 注入 `authenticatedUrl` |
+| 6 | Client gateway 的每个入口都直接吃**那一个** `connection`（`openWebSocket` / `rpc.open` / `start` / `generation`） | `packages/api/gateway/src/client/index.ts` 160–219 行 |
+| 7 | 「复制 JSONL 进本地 sessions 目录」不是镜像而是**伪造**：执行体仍是本地 agent，且无「只读会话」标记位 | `packages/session/session-persistence` 的 `list()` 是目录扫描；RFC-0008 §4.5 |
 
 → 结论：C 需要**内核级多 host 支持**或 **companion 全量会话代理**，二者都不是本插件能单方面完成的。三条路径与成本见 RFC-0008。
 
