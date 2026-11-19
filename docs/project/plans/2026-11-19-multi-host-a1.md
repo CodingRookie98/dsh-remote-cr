@@ -149,7 +149,13 @@ sources 200 · doctor 200 · projection 200 · projection/targets 200 · workspa
 
 顺带证实两件事：① 没有 cookie 时我们的路由回的是**自己的** `remote/auth-failed` 信封（不是 404），说明路由确实挂上了、guard 也真的在跑；② `engines.dsh` 的区间对真实宿主版本成立。
 
-**仍未做（记账）**：恢复探针打的是 `hub.releaseAll`（与 `/stop` 现在走同一条路径），没有经过 HTTP 路由层——路由层的 await/错误传播由 `routes.test.ts` 覆盖。`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
+**路由级 `/stop` 探针（2026-11-19，已补）**：`spikes/m4-multi-host/route-stop-probe.cjs` 挂**真的 `http.Server`**、发**真的 `fetch`**，
+`registerRemoteCrRoutes` 的返回值直接接到 server 上，跑完 **6/6**：attach 200 → 远端登记 pid 活着 → `/stop` 200 → 响应时 `entries()===0` → pid 最终消失 → 再打一次仍 200（幂等）。
+
+**这条探针的能力边界（如实记）**：它**不能**分辨「有没有 `await`」。两个原因都在实现里：
+① `releaseAll` 是「先摘 entry 再 await」，所以漏 `await` 时 `entries()` 同样是 0；
+② 远端杀进程本身是异步的（`dispose()` resolve ≠ 内核已回收），所以「响应时 pid 已死」不成立。
+「有没有 await」由 `routes.test.ts` 的「回收失败要如实回错」用例把关：把 `await` 改成 `void` 后它**立刻 1 红**（已实测）。`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
 ### hidepid=2 容器判活（未验证项 2）的真机结论（2026-11-19）
 
