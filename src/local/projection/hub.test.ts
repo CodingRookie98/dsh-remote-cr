@@ -84,6 +84,48 @@ test('disposeAll 级联且幂等（R5）', async () => {
   hub.disposeAll()
 })
 
+test('A3 端口分配：同主机同端口的第二个 target 自动顺延（不撞 remote/port-in-use）', async () => {
+  const hub = hubWith({ a: 'ws-a' })
+  await hub.attach(A, { remotePath: '/home/hui/a', localPath: 'C:/anchors/a' })
+  // 同一 alias、同一端口、不同目录：真实世界里这就是「同一台机器的另一个工作区」。
+  const A2 = { ...A, remoteRoot: '/home/hui/a2' }
+  await hub.attach(A2, { remotePath: '/home/hui/a2', localPath: 'C:/anchors/a2' })
+  const entries = hub.entries()
+  assert.equal(entries.length, 2)
+  const ports = entries.map((entry) => entry.effective.port)
+  assert.notEqual(ports[0], ports[1], '两个引擎不能拿同一个端口')
+  assert.equal(entries[1]?.portAdjusted, true, '第二个应当标出「端口被顺延过」')
+})
+
+test('A3 引用计数：两个引用释放一个不回收，最后一个才 recycle', async () => {
+  let recycles = 0
+  const hub = new ProjectionHub(() => {
+    const service = new ProjectionService({
+      store: new ProjectionStore(),
+      connect: async () => await fakeConnect('ws-a')(),
+    })
+    const original = service.recycle.bind(service)
+    service.recycle = () => {
+      recycles += 1
+      original()
+    }
+    return service
+  })
+  await hub.attach(A, { remotePath: '/home/hui/a', localPath: 'C:/anchors/a' })
+  await hub.attach(A, { remotePath: '/home/hui/a', localPath: 'C:/anchors/a' })
+  assert.equal(hub.entries()[0]?.references, 2)
+  assert.deepEqual(hub.release(A), { remaining: 1, recycled: false })
+  assert.equal(recycles, 0, '还有一个引用，不许回收')
+  assert.deepEqual(hub.release(A), { remaining: 0, recycled: true })
+  assert.equal(recycles, 1)
+  assert.equal(hub.entries()[0]?.references, 0, '回收后投影条目仍在（只是引用归零）')
+})
+
+test('A3 释放未知 target 不抛、也不误报回收', () => {
+  const hub = hubWith({})
+  assert.deepEqual(hub.release(A), { remaining: 0, recycled: false })
+})
+
 test('targetKeyOf 与 sameTarget 同形：端口/检出根不同就是不同键', () => {
   assert.equal(targetKeyOf(A), targetKeyOf({ ...A }))
   assert.notEqual(targetKeyOf(A), targetKeyOf({ ...A, port: 9999 }))

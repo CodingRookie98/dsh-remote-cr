@@ -6,8 +6,8 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: A1 完成并合并；A2 第一半（主机列表）+ 切换（`?target=` 读 + `projection-target`）已完成；**A3 待开工**
-- **最后验证**（2026-11-19）：`881 tests / 0 fail`；L4 32 场景全绿（新增 `panel-host-switch`）
+- **当前阶段**: **A1/A2/A3 全部完成**（A3：端口分配器 + 引用计数 + 两台真机同时在线）
+- **最后验证**（2026-11-19）：`889 tests / 0 fail`；L4 32 场景全绿；真机双 target **5/5**
 
 ## 1. 范围
 
@@ -33,7 +33,19 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - [ ] P3.2 路由：`options.hub`（缺省用单服务适配器，保持旧装配可用）；`/attach` 走 hub；`GET /projection/targets`
 - [x] P3.3 `/projection?target=` 支持读指定那台（没接过的目标结构化报错）；`/disconnect`、`/reconnect`、`/projection/refresh` 仍只作用 focus（A3 再扩）
 - [x] A2 切换：主机行可点 → 设 focus → `refresh()`/`settleSnapshot()` 按 target 读；头部 `projection-target[data-target-alias]` 标明当前那台；L4 `panel-host-switch` 断言点击后真的切到 prod
-- [ ] P3.4 测试：R1–R6；既有用例只允许「接线方式」变化，断言不许放宽
+- [x] P3.4 测试：R1–R6；既有用例只允许「接线方式」变化，断言不许放宽
+
+## 3.5 A3 落地与真机取证
+
+| 面 | 实现 | 判据 |
+|---|---|---|
+| 端口分配 | `ports.ts`：池 8941–8961，`reserve(preferred)` 首选空闲即用、否则顺延；池外直接拒；池满抛 `PortPoolExhausted` | 5 条单测（首选/顺延/池外/池满/release 幂等） |
+| 引用计数 | `refcount.ts`：`retain` / `release → {remaining, recycle}` | 3 条单测（最后一个才回收 / 重复释放不误报 / 按 key 隔离） |
+| 容器接线 | `ProjectionHub.attach` 引用 +1、`release` 归零才 `recycle()`；同主机同端口的第二个 target 自动顺延并标 `portAdjusted` | hub 3 条新用例（顺延 / 引用 / 未知 target） |
+| 对外可见 | `GET /projection/targets` 增加 `port` / `portAdjusted` / `references` | 类型 + 路由映射 |
+
+**真机（`spikes/m4-multi-host/probe.cjs`）5/5**：WSL 8960 + SSH 8961 同时 attach 都 connected；投影各自 1 个工作区互不覆盖；
+释放 WSL → 该台 **1469 ms** 内端口关闭、SSH 仍在线；再释放 SSH → **380 ms** 关闭。
 
 ## 4. 风险
 

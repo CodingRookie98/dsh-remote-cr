@@ -714,6 +714,9 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
             connected: entry.service.connected,
             workspaces: snapshot.workspaces.length,
             sessions: snapshot.sessions.length,
+            port: entry.effective.port,
+            portAdjusted: entry.portAdjusted,
+            references: entry.references,
           }
         }),
       ),
