@@ -7,7 +7,7 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](./package.json)
 [![DSH](https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.0%20%3C0.3.0-6f42c1.svg)](./package.json)
 
-Maintained by [@CodingRookie98](https://github.com/CodingRookie98) · [Changelog](./CHANGELOG.md) · [Troubleshooting](./docs/troubleshooting.md) · [ADRs](./docs/decisions/) · [Review archive](./docs/project/reviews/) · [Issues](https://github.com/CodingRookie98/dsh-remote-cr/issues)
+Maintained by [@CodingRookie98](https://github.com/CodingRookie98) · [Changelog](./CHANGELOG.md) · [Troubleshooting](./docs/troubleshooting.md) · [ADRs](./docs/decisions/) · Review archive · [Issues](https://github.com/CodingRookie98/dsh-remote-cr/issues)
 
 > A remote-development plugin for DeepSeek Harness (DSH): **move the whole host to the remote (WSL2 / SSH) and keep only a native GUI plus the credentials on the local machine.**
 >
@@ -192,7 +192,7 @@ docs/          research, design, decisions, plans and review archives
 - [Documentation index](./docs/README.md) · **[Troubleshooting](./docs/troubleshooting.md)** (symptom-first, with an index of all error codes)
 - Design: [requirements](./docs/design/requirements.md) · [architecture](./docs/design/architecture.md) · [UI design](./docs/design/ui-design.md) · [milestones](./docs/design/milestones.md)
 - Decisions: [ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md) (type B) · [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md) (embedding route) · [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md) (plugin sync) · [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md) (workspace entry) · [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md) (naming) · [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md) (bilingual layering)
-- Reviews: [eight adversarial review rounds for 0.4.0](./docs/project/reviews/2026-11-15-remote-cr-rename-i18n-ui/)
+- Reviews: eight adversarial review rounds for 0.4.0
 - Research: [architecture models](./docs/research/01-architecture-models.md) · [competitive landscape](./docs/research/05-ecosystem-and-value-2026-11.md) · [DSH extension points and hard limits](./docs/research/04-dsh-extension-points.md)
 
 ## Known limitations
