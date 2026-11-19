@@ -183,6 +183,16 @@ export declare function remoteForwardSpec(localProxyPort: number): string;
 /** 从 ssh 的 verbose 里读回 `-R` 分到的端口。读不到就是 undefined，绝不猜。 */
 export declare function parseAllocatedPort(logText: string): number | undefined;
 /**
+ * 问远端「那个反向转发端口到底绑在哪个地址上」。
+ *
+ * 为什么必须问：我们 `-R` 写的是 `127.0.0.1:0:...`，但**服务端 `GatewayPorts yes` 会把它放宽成 `0.0.0.0`**
+ * —— 真机实测（本机 WSL sshd，2026-11-19）：`GatewayPorts no` → `127.0.0.1:18081`；改成 `yes` → `0.0.0.0:18082`。
+ * 放宽之后，局域网任何主机都能借这条回到本机代理的通道烧额度，这正是铁律 3 要防的事。
+ */
+export declare function buildForwardScopeScript(port: number): string;
+/** 远端报回来的监听地址是否**全部**是回环（空列表也算不合格——看不见就不算验证过）。 */
+export declare function isLoopbackOnlyBinding(listing: string): boolean;
+/**
  * 隧道建不起来的两种典型死法，各自给可操作的话。
  *
  * 必须在 `classifyStartFailure` 之前判：那条分类器认的是 dsh 自己的启动话术，

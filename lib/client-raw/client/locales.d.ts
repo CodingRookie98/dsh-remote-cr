@@ -281,6 +281,8 @@ export declare const zh: {
     readonly 'errNext.remote/attach-busy': "等当前这次接入结束 · 需要时先取消";
     readonly 'err.remote/not-attached': "这个工作区还没接入远端";
     readonly 'errNext.remote/not-attached': "先在列表里点「接入远端」";
+    readonly 'err.remote/tunnel-exposed': "反向代理隧道没有只绑回环（远端 GatewayPorts 放宽了它）";
+    readonly 'errNext.remote/tunnel-exposed': "在远端设 GatewayPorts no 后重连 · 或换一台策略正确的远端";
     readonly 'err.remote/recycle-incomplete': "远端实例回收没走完";
     readonly 'errNext.remote/recycle-incomplete': "再点一次「结束远端」 · 手工在远端确认没有残留 dsh";
     readonly 'err.remote/workspace-invalid-path': "工作区路径不合法";
