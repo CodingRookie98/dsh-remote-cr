@@ -1,0 +1,29 @@
+{
+  "mode": "wsl",
+  "target": "ubuntu_dev",
+  "negative": true,
+  "passed": 5,
+  "failed": 2,
+  "failures": [
+    "R5-3",
+    "R5-5"
+  ],
+  "measurements": [
+    {
+      "name": "R5-1",
+      "ok": true,
+      "ms": 15283
+    },
+    {
+      "name": "R5-3",
+      "ok": false,
+      "ms": 0
+    },
+    {
+      "name": "R5-6",
+      "ok": true,
+      "ms": 3192
+    }
+  ],
+  "at": "2026-11-19T04:14:15.001Z"
+}

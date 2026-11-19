@@ -1,0 +1,26 @@
+{
+  "mode": "ssh",
+  "target": "syy_wsl_ubuntu_LAN",
+  "negative": false,
+  "passed": 7,
+  "failed": 0,
+  "failures": [],
+  "measurements": [
+    {
+      "name": "R5-1",
+      "ok": true,
+      "ms": 5249
+    },
+    {
+      "name": "R5-3",
+      "ok": true,
+      "ms": 11
+    },
+    {
+      "name": "R5-6",
+      "ok": true,
+      "ms": 27
+    }
+  ],
+  "at": "2026-11-19T04:14:22.418Z"
+}

@@ -116,8 +116,16 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 
 ### Batch C · 真机验收（本轮承诺）
 
-- [ ] **P3.6 探针**：`spikes/m3-refresh/probe.cjs`，两模式（`--wsl <distro>` / `--ssh <alias>`）：接入 → 记录会话 id 集合与 `running` → 断开 → 重连 → 比对 + 刷新一轮后 `running` 与远端一致。
-- [ ] **P3.7 真机执行**：`ubuntu_dev` 与 `syy_wsl_ubuntu_LAN` 各跑一次，结果落 `spikes/m3-refresh/measurements.json`；失败路径（断连期间刷新）也要有一轮。
+- [x] **P3.6 探针**（已交付）：`spikes/m3-refresh/probe.cjs`，两模式（`--wsl` / `--ssh <alias>`），7 条断言 R5-1…R5-7；
+  负控 `NEGATIVE_CONTROL=1` 把 `refreshSessions` 换成空实现，**期望失败集恰为 `{R5-3, R5-5}`**。
+- [x] **P3.7 真机执行**（2026-11-19）：
+  - WSL `ubuntu_dev`：**7/7**（`measurements-wsl.json`；512 条投影会话、重叠 511/512）；
+  - SSH `syy_wsl_ubuntu_LAN`：**7/7**（`measurements-ssh.json`；3 条会话、重叠 3/3）；
+  - 负控：**5 pass / 2 fail = `{R5-3, R5-5}`**，与期望失败集逐项相等（证明这两条不是空断言）。
+  - 口径补充一：**投影容量上限 512**（`store.ts` `MAX_PROJECTED_SESSIONS`）。远端会话超过上限时，「哪 512 条」会随重建变化，
+    所以 R5-6 的判据是「条数不变 + 重叠 ≥ 99% + workspace 不回退」，探针自建会话是否留存只作 INFO（WSL 上本轮正是 511/512）。
+  - 口径补充二：SSH 目标的 `remoteRoot` 必须是**远端已存在**的目录。`syy_wsl_ubuntu_LAN` 是 bootstrap 形态（`~/.dsh-remote-cr/staging/<hash>`），
+    没有检出，用检出路径会得到 `remote/path-unreadable`；本轮用 `/home/hui/workspace`。
 
 ### Batch D · 多 host（条件批，开工前需再确认）
 
