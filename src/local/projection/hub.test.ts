@@ -207,6 +207,15 @@ test('recycle 抛错也必须删 entry（否则端口与引用永久卡死）', 
   assert.equal(hub.entries().length, 0)
 })
 
+test('releaseAll：接过两次也一次放干净（「结束远端」的语义）', async () => {
+  const hub = new ProjectionHub(() => stubService())
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  assert.equal(hub.entries()[0]?.references, 2)
+  assert.deepEqual(hub.releaseAll(A), { released: 2, recycled: true })
+  assert.equal(hub.entries().length, 0, '一次放干净，不留 refs>0 的僵尸')
+})
+
 test('N7 只建过引擎（refs=0）的僵尸：release 要删 entry 并归还端口', async () => {
   const hub = new ProjectionHub(() => stubService())
   hub.serviceFor(A)

@@ -167,6 +167,27 @@ export class ProjectionHub {
     return { remaining: 0, recycled: true }
   }
 
+  /**
+   * 把某 target 的所有引用一次放掉（「结束远端」用它）。
+   *
+   * 为什么不是 `release` 一次：`references` 是 attach 次数，用户可能对同一台反复接过；
+   * 「结束远端」的语义是「这台我不再用了」，放一次会留下 refs>0 的条目，远端进程也就不会被回收。
+   */
+  releaseAll(target: ConnectTarget): { readonly released: number; readonly recycled: boolean } {
+    const key = targetKeyOf(target)
+    const released = this.#refs.count(key)
+    while (this.#refs.count(key) > 0) this.#refs.release(key)
+    const entry = this.#services.get(key)
+    if (entry === undefined) return { released: 0, recycled: false }
+    try {
+      entry.service.recycle()
+    } catch {
+      // 同 `release`：recycle 抛错也必须删 entry
+    }
+    this.#dropEntry(key)
+    return { released, recycled: true }
+  }
+
   /** 最近一次 attach 的引擎（单主机路径的默认读目标）。 */
   focused(): ProjectionService | null {
     if (this.#focus === undefined) return null

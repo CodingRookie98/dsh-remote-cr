@@ -61,7 +61,7 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 
 另修：`disposeAll` 清空引用计数（B5）；`sameHostOf` SSH 别名大小写归一 + 补用例（B6）；探针改三态端口探测、用 `effective.port`、补 same-host 场景（B7）。
 
-**残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）在停掉远端后按 service 找到 entry 调 `hub.release(target)`（最后一个引用才 recycle、删 entry、还端口）；`release` 对 `recycle()` 抛错也兜底删 entry。仍未接的是「单独关闭某个工作区」——目前没有删除工作区的入口。
+**残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）在停掉远端后按 service 找到 entry 调 `hub.release(target)`（最后一个引用才 recycle、删 entry、还端口）；`release` 对 `recycle()` 抛错也兜底删 entry。仍未接的是「单独关闭某个工作区」——目前没有删除工作区的入口。为避免「接过两次、只放一次」留下 refs>0 的僵尸，「结束远端」改为 `releaseAll`（一次放干净），并有用例覆盖。**`references` 的准确定义 = 接入次数，不是工作区个数。**
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：
 

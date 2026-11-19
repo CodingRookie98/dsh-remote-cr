@@ -326,7 +326,8 @@ test('/stop：结束远端要放掉引用（entry 消失、端口归还），否
   } as unknown as ProjectionService
   const hub = new ProjectionHub(() => stub)
   await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
-  assert.equal(hub.entries().length, 1)
+  await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  assert.equal(hub.entries()[0]?.references, 2, '接过两次 → 两个引用')
   const result = await rig({}, { hub }).call({
     path: '/stop',
     method: 'POST',

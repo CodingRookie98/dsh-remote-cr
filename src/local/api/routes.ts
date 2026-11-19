@@ -1245,7 +1245,8 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     // 否则 references 永远停在 attach 次数，端口也一直被算作占用（RFC-0007 A3 遗留 2）。
     if (hub !== undefined) {
       const entry = hub.entries().find((candidate) => candidate.service === service)
-      if (entry !== undefined) hub.release(entry.target)
+      // 一次放干净：同一台可能被反复接过（`references` = attach 次数），只放一次会留下 refs>0 的僵尸。
+      if (entry !== undefined) hub.releaseAll(entry.target)
     }
     sendJson(res, 200, okEnvelope({ stopped: true }))
   })

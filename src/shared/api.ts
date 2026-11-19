@@ -217,7 +217,11 @@ export interface HostEntryInfo {
   readonly port: number
   /** 端口是否被顺延过（用户要能看出「和为什不是我填的 8899」）。 */
   readonly portAdjusted: boolean
-  /** 当前有几个工作区引用它；归零才回收远端。 */
+  /**
+   * 引用数 = 这台被**接入过几次**（同一台反复接入会累加）。
+   * 「结束远端」一次放干净（`releaseAll`），所以它不会长期停在非零值。
+   * 注意：它**不是**「工作区个数」——目前没有「关闭单个工作区」的入口。
+   */
   readonly references: number
 }
 
