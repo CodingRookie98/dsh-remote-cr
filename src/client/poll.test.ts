@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createRefreshScheduler, type RefreshTimer } from './poll.ts'
+import { createRefreshScheduler, shouldPoll, type RefreshTimer } from './poll.ts'
 
 /** 一次排上的定时器（句柄就是对象本身，方便按身份清表）。 */
 interface Armed {
@@ -51,6 +51,13 @@ function flush(): Promise<void> {
     setImmediate(resolve)
   })
 }
+
+test('⓪ shouldPoll：可见且已连接才跑（隐藏 / 断连都必须停，RFC R3 的字面口径）', () => {
+  assert.equal(shouldPoll({ connected: true, visible: true }), true)
+  assert.equal(shouldPoll({ connected: true, visible: false }), false, '隐藏时停')
+  assert.equal(shouldPoll({ connected: false, visible: true }), false, '断连时停')
+  assert.equal(shouldPoll({ connected: false, visible: false }), false)
+})
 
 test('① 可见时到点才跑：start 只排链，到点跑一次并重排', async () => {
   const clock = fakeTimer()

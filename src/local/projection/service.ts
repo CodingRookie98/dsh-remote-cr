@@ -896,7 +896,10 @@ export function attachDeps(
  * 会挡住新 target 的第一次刷新，而 Batch D 把单槽拆成分槽后常量还得再改回来。
  */
 function refreshKey(target: ConnectTarget): string {
-  return target.backend === 'wsl' ? 'wsl:' + target.distro.toLowerCase() : 'ssh:' + target.alias
+  const identity = target.backend === 'wsl' ? 'wsl:' + target.distro.toLowerCase() : 'ssh:' + target.alias
+  // 与 `sameTarget` 同形：换端口 / 换检出根就是另一台。只按 distro/alias 记键时，同一发行版换端口
+  // 重接会让旧 target 在飞的刷新 join 掉新 target 的首刷（P4 P2-1）。
+  return identity + '|' + String(target.port) + '|' + target.remoteRoot
 }
 
 /** 两台远端是否「同一条连接」。换后端就是另一台，哪怕端口与检出根一模一样。 */

@@ -128,9 +128,12 @@ export function createRefreshScheduler(options: RefreshSchedulerOptions): Refres
 
   /** 跑一次 → 结算间隔 → 重排。调用方必须已经判过 armed / 可见 / 单飞。 */
   const runAndReschedule = async (): Promise<void> => {
+    const mine = generation
     const ok = await runOnce()
     // stop 之后（或 stop + start 换代之后）不许再动调度：新一代自己会排。
-    if (!armed) return
+    // 只判 armed 不够：stop 后立刻 start 时 armed 又是 true，旧那一次的结算会把新一代的 delay
+    // 改写并重排（P4 P3-1 的换代窗口）。
+    if (!armed || mine !== generation) return
     delay = ok ? intervalMs : Math.min(delay * 2, maxIntervalMs)
     schedule()
   }
@@ -161,6 +164,7 @@ export function createRefreshScheduler(options: RefreshSchedulerOptions): Refres
   const kick = (): void => {
     if (!armed || inFlight || !options.isVisible()) return
     // 立刻跑：先前排着的那一次先撤掉，跑完由 runAndReschedule 重新排（否则会连着跑两次）。
+    // 注意：kick **不会**重置退避 —— 只有这次 run 成功才把 delay 复位（失败继续按当前值翻倍）。
     clearPending()
     void runAndReschedule()
   }
@@ -173,4 +177,15 @@ export function createRefreshScheduler(options: RefreshSchedulerOptions): Refres
       return delay
     },
   }
+}
+
+/**
+ * 该不该让调度器跑：RFC-0004 R3 的字面口径是「面板可见时启、**隐藏/断连时停**」。
+ *
+ * 抽成纯函数是为了让面板只写一处判断（`shouldPoll(...)`），而不是在事件回调与 effect 里
+ * 各写一半条件——那种写法漏一个分支就是契约漂移（P4 B3：隐藏时原先只是「到点跳过」，
+ * 定时器一直在空转）。
+ */
+export function shouldPoll(state: { readonly connected: boolean; readonly visible: boolean }): boolean {
+  return state.connected && state.visible
 }
