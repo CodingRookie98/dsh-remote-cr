@@ -10,29 +10,34 @@ export type SyncAction =
   | 'install'        // 远端缺，或远端版本低于本地 → 装本机确切版本
   | 'up-to-date'     // 版本一致
   | 'remote-newer'   // 远端更高版本：不降级，只展示
-  | 'skip-official'  // @deepseek-ai/*：随宿主自带，永不同步
   | 'skip-path'      // 本机绝对路径插件：需要打包上传，首版不支持
   | 'blocked'        // 其它不可同步（如本地版本未知）
 
+// 官方 `@deepseek-ai/*` **不会**出现在 entries 里：diff 前就被过滤（它们随宿主自带，
+// profile 里本来 ENOENT）。旧版契约里的 `skip-official` / `official-bundle` 从未实现，已删。
+
 export type SyncReasonId =
   | 'none' | 'missing-remote' | 'remote-older' | 'remote-newer'
-  | 'official-bundle' | 'local-path-plugin' | 'local-version-unknown' | 'remote-read-failed'
+  | 'local-path-plugin' | 'local-version-unknown'
 
 export interface SyncEntry {
   readonly name: string
   readonly action: SyncAction
   readonly reasonId: SyncReasonId
-  /** 宿主探测到的原文（不参与渲染，只进复制日志） */
-  readonly reasonDetail?: string
   readonly localVersion: string | null
   readonly remoteVersion: string | null
 }
 
-export interface SyncPlan {
+// GET 实际返回的是 SyncPlanView（比 SyncPlan 多了运行时与两处门禁字段）。
+export interface SyncPlanView {
   readonly targetId: string
   readonly profile: string
   readonly entries: readonly SyncEntry[]
   readonly totals: { readonly install: number; readonly upToDate: number; readonly skipped: number }
+  readonly muted: boolean
+  readonly runtime: RemoteRuntimePaths | null
+  readonly requiresRuntime: boolean
+  readonly host: HostPlan
 }
 
 export interface SyncResult {
@@ -40,6 +45,8 @@ export interface SyncResult {
   readonly ok: boolean
   readonly code?: string
   readonly detail?: string
+  /** 失败时的下一步（成功为 undefined）。 */
+  readonly nextActions?: readonly string[]
 }
 ```
 
@@ -87,6 +94,7 @@ export interface SyncResult {
 | ready | 三组列表：可同步（默认全选）/ 已是最新（灰）/ 不可同步（灰 + 原因）；底部「同步选中项（N）」 | `sync.group.install` `sync.group.uptodate` `sync.group.skipped` `sync.reason.*` `sync.apply` `sync.optout` |
 | applying | 显示「同步中…＋请勿关闭」，并**逐条**追加已完成的结果（客户端轮询 `GET /plugin-sync/progress`） | `sync.applying` `sync.applyingHint` `sync.result.ok` `sync.result.failed` |
 | done | 汇总「成功 N / 失败 M」+ 复制日志 + 关闭 | `sync.done` |
+| failed | 读 plan / 执行整单失败：码 + 原文 + 下一步 + 重试（不是转圈） | `sync.retry` |
 
 **「不再提醒」**：ready 状态底部勾选框，写 optout；下次自动打开条件 = 有 install 项 且 该 target 未被静音。
 
