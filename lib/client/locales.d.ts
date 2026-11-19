@@ -99,7 +99,7 @@ export declare const zh: {
     readonly 'panel.creating': "新建中…";
     readonly 'panel.newSession': "新建会话";
     readonly 'panel.removeWorkspace': "移除";
-    readonly 'panel.removeWorkspaceHint': "只从本地列表移除（远端工作区保留）；移走最后一个会回收这台远端";
+    readonly 'panel.removeWorkspaceHint': "只从本地列表移除（远端工作区与远端进程都保留）；要结束远端请点「结束远端」";
     readonly 'panel.removing': "移除中…";
     readonly 'sync.open': "插件同步";
     readonly 'sync.title': "插件同步";
