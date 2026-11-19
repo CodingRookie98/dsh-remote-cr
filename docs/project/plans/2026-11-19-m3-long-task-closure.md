@@ -89,6 +89,10 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 
 ## 3. 批次与原子任务
 
+### P3 准备
+
+- [ ] **P3.0 分支与基线**：从 `master`（`5777c3d`）切 `feat/long-task-closure`；分支内按「源码 / 产物」分层提交；P4.3 放行后合回 master。基线测试先跑一遍确认 `805 tests / 0 fail`。
+
 ### Batch A · 新鲜度（本轮承诺）
 
 - [ ] **P3.1 `refresh.ts` 原语**：`applyRefresh(store, sessions)` 走 `replaceAll`；`RefreshGuard` 按 targetId 单飞；失败保留旧表、置 `stale=true`。
