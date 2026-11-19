@@ -121,7 +121,6 @@ export function createSyncRoutesOptions(options: SyncWiringOptions): SyncRoutesO
   const runner = options.runSsh ?? runSsh
 
   return {
-    profile,
     // 状态根名只认常量：再次改名时不会漏掉这里（R1-S11）。
     optoutFile: join(options.homeDir, HOME_DIR_NAME, 'sync-optout.json'),
     localProfileDir: join(options.homeDir, '.dsh', 'profiles', profile),

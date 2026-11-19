@@ -100,9 +100,11 @@ export interface SyncRoutesOptions {
   readonly targetId: (target: ConnectTarget) => Promise<string>
   /** 本地 `sync-optout.json` 的绝对路径。 */
   readonly optoutFile: string
-  /** 本机 profile 目录（读本地已装清单）。 */
+  /**
+   * 本机 profile 目录（读本地已装清单）。profile 名不单独传：v1 固定由宿主配置决定（契约 §2 / R2-S1），
+   * 客户端带 `profile` 参数一律忽略——多 profile 要另开设计，不能靠查询参数偷偷切换。
+   */
   readonly localProfileDir: string
-  readonly profile?: string
 }
 
 export interface RouteOptions {
@@ -642,7 +644,6 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
       targetId,
       local: readLocalBundles({ profileDir: syncOptions.localProfileDir }),
       muted: readOptout(syncOptions.optoutFile).includes(targetId),
-      ...(syncOptions.profile === undefined ? {} : {}),
     })
   }
 
