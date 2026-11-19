@@ -13,6 +13,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput, type WslWakeResult } from '../../shared/api.ts';
 import { type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts';
+import { ProjectionHub } from '../projection/hub.ts';
 import { type SyncBackend } from '../plugin-sync/service.ts';
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
 export interface RemoteCrWebServer {
@@ -78,6 +79,11 @@ export interface RouteOptions {
      * 四选一与目录浏览，不该被投影的依赖拖着走。
      */
     readonly projection?: ProjectionService;
+    /**
+     * 多 host 容器（RFC-0007 A1）：按 target 持有多个引擎。
+     * 省略时用「单服务适配器」把 `projection` 包成只含一台的容器 —— 老装配与老测试零改动。
+     */
+    readonly hub?: ProjectionHub;
     /**
      * 插件同步的接线（RFC-0003）。省略时四条 `/plugin-sync*` 路由明确报「未接线」，
      * 而不是返回空 plan 让面板显示「已同步」。
