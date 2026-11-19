@@ -585,9 +585,24 @@ export const PREVIEW_SCENES = [
     theme: 'light',
     targets: ['[data-remote-cr="panel-diagnostics"]', '[data-remote-cr="diagnostics-copy"]'],
     requireMarkers: ['panel-diagnostic', 'diagnostics-rerun', 'diagnostics-copy'],
+    // 只数标记会把「删掉 data-* 也全绿」漏过去（P4 B2）：三态必须都在属性上命中。
+    requireAttrs: [{ marker: 'panel-diagnostic', attr: 'data-status', values: ['ok', 'warn', 'fail'] }],
     hideFlow: true,
     steps: [
       { wait: '[data-remote-cr="panel-diagnostic"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
+    // 诊断失败必须在诊断区里响（P4 B1）：不是空态、也不占共享错误槽。
+    id: 'panel-diagnostics-failed',
+    label: '面板：诊断失败（诊断区内报错，不占共享错误块）',
+    theme: 'light',
+    targets: ['[data-remote-cr="panel-diagnostics-error"]', '[data-remote-cr="panel-diagnostics"]'],
+    requireMarkers: ['panel-diagnostics-error'],
+    hideFlow: true,
+    steps: [
+      { wait: '[data-remote-cr="panel-diagnostics-error"]', timeoutMs: 10000 },
       { sleep: 200 },
     ],
   },
@@ -856,6 +871,7 @@ export function sceneFixtures(sceneId) {
     refreshFails: id === 'panel-refresh-failed',
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 诊断夹具（RFC-0005）：一份含 ok / warn / fail 的报告，用来断言逐条状态渲染。
+    doctorFails: id === 'panel-diagnostics-failed',
     doctor: {
       checks: [
         { id: 'package', status: 'ok', detail: 'dsh-remote-cr@0.4.0' },

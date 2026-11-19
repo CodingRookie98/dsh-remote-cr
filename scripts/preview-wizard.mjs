@@ -890,6 +890,21 @@ async function main() {
   if (broken > 0) reasons.push('有场景没跑完（' + broken + ' 个）');
   // 未覆盖的端点会拿到 `preview/unmocked`：那是一条**没人断言**的假错误，
   // 慢机器上（>5 s）还会随调度器自己冒出来，把截图证据静默污染成「面板在报错」（P4 B2）。
+  // 属性断言：`requireMarkers` 只数个数，把 `data-status` 删掉也全绿（P4 B2）。
+  const attrMisses = [];
+  for (const record of results) {
+    const scene = PREVIEW_SCENES.find((candidate) => candidate.id === record.scene);
+    for (const requirement of (scene && scene.requireAttrs) || []) {
+      const values = (record.markers || [])
+        .filter((marker) => marker.marker === requirement.marker)
+        .map((marker) => (marker.attrs || {})[requirement.attr]);
+      const missing = requirement.values.filter((value) => values.indexOf(value) < 0);
+      if (missing.length > 0) {
+        attrMisses.push(record.scene + ' 的 ' + requirement.marker + ' 缺少 ' + requirement.attr + '=' + missing.join('/'));
+      }
+    }
+  }
+  if (attrMisses.length > 0) reasons.push('属性断言未命中：' + attrMisses.join('；'));
   const unmocked = results.filter((record) =>
     (record.requests || []).some((request) => request.code === 'preview/unmocked'),
   );

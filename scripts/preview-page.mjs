@@ -155,7 +155,13 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/plugin-sync/optout') {
     return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
   }
-  if (path === '/remote-cr/api/doctor') return { ok: true, value: fixtures.doctor };
+  if (path === '/remote-cr/api/doctor') {
+    // 失败夹具：面板必须在诊断区里响（P4 B1），而不是显示空态。
+    if (fixtures.doctorFails === true) {
+      return { ok: false, code: 'remote/doctor-failed', detail: '预览：诊断失败（夹具）', nextActions: [] };
+    }
+    return { ok: true, value: fixtures.doctor };
+  }
   if (path === '/remote-cr/api/workspace/importable') return { ok: true, value: fixtures.importable };
   if (path.endsWith('/wake')) return { ok: true, value: fixtures.wake };
   return {
