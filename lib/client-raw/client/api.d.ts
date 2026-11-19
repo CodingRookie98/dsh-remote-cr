@@ -13,7 +13,7 @@
  * 3. **线上形状只有一份**：所有类型都从 `src/shared/api.ts` 来，两侧改字段会在
  *    `tsc` 阶段炸，而不是在浏览器里变成 `undefined`。
  */
-import type { ImportableWorkspaceInfo } from '../shared/api.ts';
+import type { ImportableWorkspaceInfo, PurgeResultInfo, RemoteTargetInfo, ResidueReportInfo } from '../shared/api.ts';
 /** 宿主半挂载的前缀；与 `src/local/api/routes.ts` 共用同一个常量。 */
 export declare const API_BASE = "/remote-cr/api";
 /** 结构化错误：与 `src/shared/flow.ts#FlowError` 的字段同名，便于直接塞进流程状态。 */
@@ -48,6 +48,10 @@ export declare function callApi<T>(path: string, init?: {
 }, fetchImpl?: typeof fetch): Promise<T>;
 /** `/doctor` 的答复：检查项 + 与 CLI 同款的报告文本（RFC-0005）。 */
 export declare function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo>;
+/** `GET /maintenance/residue`：远端残留只读盘点（RFC-0006 Phase 2）。 */
+export declare function readResidue(target: RemoteTargetInfo): Promise<ResidueReportInfo>;
+/** `POST /maintenance/purge`：显式清理（必须 confirm；连接中会被后端拒绝）。 */
+export declare function purgeResidue(target: RemoteTargetInfo): Promise<PurgeResultInfo>;
 /** `/sources` 的答复：探测结果 + 四选一的展示状态。 */
 export interface SourcesPayload {
     readonly wslAvailable: boolean;

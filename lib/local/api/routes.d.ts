@@ -12,7 +12,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { type AttachInput, type DirListing, type RemoteFacts, type SourceReport, type WorkspaceAddInput, type WslWakeResult } from '../../shared/api.ts';
-import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts';
+import { type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts';
 import { type SyncBackend } from '../plugin-sync/service.ts';
 /** 只依赖 webServer 的 register：这样路由层不绑死 cordis 的具体类型。 */
 export interface RemoteCrWebServer {
