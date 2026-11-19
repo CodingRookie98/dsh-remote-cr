@@ -330,7 +330,7 @@ dsh-remote-cr/
 | 工作区必须是本地目录 | **已定且已验证**：WSL 走 UNC（真本机目录，spike 实测可 create/attach/落盘）、SSH 走锚点（§4.1）。cwd 投影层机制已验证（§4.1 副作用条），**投影覆盖范围已闭合**（V14：全量枚举后运行时只有 `working-directory:current` 与 `sandbox:policy` 两处渲染 cwd，均已覆盖）；**工具参数侧路径已闭合**（V15：UNC cwd 下 POSIX 路径与 UNC 路径天然等价，不需要改写层）。**剩余风险**：远端 Host 等价性、锚点后端的虚拟根映射（§9.2） |
 | 工具/插件命名冲突 | `remote_cr_*` 前缀 + 命名空间检查（旧前缀已随 ADR-0006 退役） |
 | Windows/WSL 网络细节 | localhost 转发策略、发行版自动启动、防火墙提示 |
-| 维护成本 | 先窄后宽：M1 WSL → M2 SSH → M5 Docker（§14）；复用成熟实现的设计而非代码 |
+| 维护成本 | 只做两条后端：M1 WSL → M2 SSH（**Docker 已取消**，§14 / [ADR-0008](../decisions/ADR-0008-drop-docker-backend.md)）；复用成熟实现的设计而非代码 |
 | 单通道被 WS 独占后无法复用 | 见 §8.3：WS upgrade 后 agent 是否还能承载业务流量**未验证**（ZCode 是 upgrade 完即独占）；M0 spike 必须验 |
 | 同一远端被两个本地 DSH 实例连接 | 会产生并发部署/配置写入冲突。ZCode 用 `mkdir` 抢锁 + 30s 心跳 + 600s stale 抢占解决；dsh-remote-cr 单用户场景**暂不做**，M0 判定是否需要 |
 | WSL 代理网关改写在 mirrored networking 下多余 | Windows 11 22H2+ 的 mirrored 模式下 WSL 可直接访问宿主 loopback；实现要「先探测再改写」，改写失败保留原值。**M1 实测后：网关档（②）已退役**，默认走 ③ stdio 桥、① 当 mirrored 下的优化，此条只剩「别把 ① 写成硬前提」这一层含义（§7.0 M1 段） |
@@ -358,9 +358,10 @@ dsh-remote-cr/
 |---|---|---|---|---|---|---|
 | 1 | **WSL2** | M1 | UNC 直挂 | 与反向通路同一定档：③ stdio 桥默认 / ① `mirrored` 直通优化 / ② 网关退役（§7.0 M1 段） | **默认 stdio 桥（③）**，`mirrored` 直通（①）为优化，网关（②）已于 2026-10-30 退役（§7.0 M1 段） | 无（同机同用户） |
 | 2 | **SSH** | M2 | 本地锚点 | `ssh -L`（单通道，见 §8.3） | `ssh -R`，**同一条连接**（§7.0） | 私钥 / 私钥+口令 / 密码 / agent |
-| 3 | **Docker** | M5 | 本地锚点 | `docker exec -i` + stdio 桥 | 同左（stdio 桥） | 本机 docker 权限 |
+| 3 | ~~**Docker**~~ | ~~M5~~ **已取消（2026-11-19）** | 本地锚点（历史规格） | `docker exec -i` + stdio 桥 | 同左（stdio 桥） | 本机 docker 权限 |
 
-**Docker 接口位（A11）**：后端枚举含 `docker`，`create-backend` 对其**显式抛未实现**，UI 显示灰显「计划中 M5」。接口形状与 WSL/SSH 同构，照抄 ZCode `SourceServerTransportAdapter`：`probe / createFileTransfer / installOrUpdate / ensureDaemon / openChannel / exec / cancel / dispose`。这样 M5 接入时**不改上层契约**。
+**Docker 接口位（A11）**：后端枚举含 `docker`，`create-backend` 对其**显式抛未实现**，UI 灰显并注明「暂不支持」。接口形状与 WSL/SSH 同构，照抄 ZCode `SourceServerTransportAdapter`：`probe / createFileTransfer / installOrUpdate / ensureDaemon / openChannel / exec / cancel / dispose`。**2026-11-19：M5 取消（[ADR-0008](../decisions/ADR-0008-drop-docker-backend.md)）**——接口位保留，不再计划实现；若复活，仍从这组接口接入，不改上层契约。
 
 > 用户 2026-10-26 改口：Docker 从 ADR-0002 的「v1 不做」升为「**最后做**」。ADR-0002 需相应修订。
+> **2026-11-19 再次改口：取消 M5（[ADR-0008](../decisions/ADR-0008-drop-docker-backend.md)）**——本表第 3 行降为历史规格，接口位保留、不再计划实现。
 

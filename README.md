@@ -163,15 +163,15 @@ docs/          调研、设计、决策、计划与审查归档
 
 ## 文档
 
-- [文档索引](./docs/README.md) · **[排查手册](./docs/troubleshooting.md)**（按症状查，含 66 个错误码索引）
+- [文档索引](./docs/README.md) · **[排查手册](./docs/troubleshooting.md)**（按症状查，含 73 个错误码索引）
 - 设计：[需求与验收标准](./docs/design/requirements.md) · [总体架构](./docs/design/architecture.md) · [UI 设计](./docs/design/ui-design.md) · [里程碑](./docs/design/milestones.md)
-- 决策：[ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md)（B 型）· [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md)（嵌入路线）· [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md)（插件同步）· [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md)（工作区入口）· [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)（命名）· [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md)（双语分层）
+- 决策：[ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md)（B 型）· [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md)（嵌入路线）· [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md)（插件同步）· [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md)（工作区入口）· [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)（命名）· [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md)（双语分层）· [ADR-0008](./docs/decisions/ADR-0008-drop-docker-backend.md)（Docker 取消）
 - 调研：[架构模型判定](./docs/research/01-architecture-models.md) · [竞品与生态](./docs/research/05-ecosystem-and-value-2026-11.md) · [DSH 扩展点与硬限制](./docs/research/04-dsh-extension-points.md)
 - 审查：[0.4.0 的八轮对抗审查归档](./docs/project/reviews/2026-11-15-remote-cr-rename-i18n-ui/)
 
 ## 已知限制
 
-- **Docker**：界面灰显，实装排到 M5
+- **Docker**：**已取消**（2026-11-19，[ADR-0008](./docs/decisions/ADR-0008-drop-docker-backend.md)）——四选一里仍灰显「暂不支持」以保持既有选择契约，不交付可用链路
 - **宿主版本不一致只有 registry 一条路**：同步对话框会显示「本地 x / 远端 y」并允许把远端升到本地版本（`dsh plugin` 之外的另一条动作，**装完要重连才生效**）；
   远端跑**检出**、或本地是**未发布的开发构建**时明确拒绝并给原因（`checkout-mode` / `host-version-unavailable`），不做检出切换与文件搬运
 - **没有自动版本对齐**：跨 `engines.dsh` 区间的升级一律拒绝（`out-of-range`），且升级永远不会自动发生

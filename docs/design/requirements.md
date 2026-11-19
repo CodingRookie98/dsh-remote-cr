@@ -42,12 +42,12 @@
 | A7 | 断线恢复 | 网络中断/远端重启后，工作区状态可见、可一键重连，远端进程可回收（不留孤儿） |
 | A8 | 失败可诊断 | 每阶段失败有结构化错误码 + 可复制日志 + 重试入口；不出现「远端不可用却本地执行」 |
 | A9 | 后端矩阵 | WSL2 与 SSH 两条链路都达到 A1–A8（按 WSL → SSH 顺序交付）。**A9 是 M2 的验收项，不是 M1 的**：M1 只签 A1–A8 的 WSL 轮，SSH 轮欠账记在 M2，M2 未补齐则 M2 不得出口 |
-| A11 | Docker 接口位 | 后端枚举含 `docker`，`create-backend` 对其显式抛「未实现」，UI 显示为不可选并标注计划里程碑；接口形状与 WSL/SSH 同构（probe / installOrUpdate / ensureDaemon / openChannel / exec），使 M5 接入不改上层契约 |
+| A11 | Docker 接口位 | 后端枚举含 `docker`，`create-backend` 对其显式抛「未实现」，UI 显示为不可选并注明「暂不支持」；接口形状与 WSL/SSH 同构（probe / installOrUpdate / ensureDaemon / openChannel / exec）。**2026-11-19 用户裁决：Docker 后端不再交付（M5 取消，见 [ADR-0008](../decisions/ADR-0008-drop-docker-backend.md)）**——A11 只剩「枚举与接口位不改动」这一层，不再承诺未来接入 |
 | A10 | 版本兼容 | 声明支持的 DSH 版本矩阵；升级宿主后跑兼容检查；不兼容时**拒绝连接**并说明「当前版本 / 最低版本 / 应升级哪一端」；兼容但版本不同时**只给非阻塞提示**，不阻断连接 |
 
 ## 5. 非目标（v1 明确不做）
 
-1. ~~**Docker** 后端~~ → **改为 M5 交付**（2026-10-26 用户改口：WSL 先做、SSH 次之、**Docker 最后做**）。v1 仍不交付 Docker 可用链路，但接口位与 UI 占位必须在 M1 前留好，见 A11 与 `ADR-0005` §决策 4。
+1. **Docker** 后端 —— **不做**。口径沿革：2026-10-26 曾改为「M5 最后做」；**2026-11-19 用户裁决取消 M5**，见 [ADR-0008](../decisions/ADR-0008-drop-docker-backend.md)。接口位与灰显按 A11 保留，不交付可用链路。
 2. 完整 IDE 能力（Monaco/LSP/调试器）。
 3. 多人协作 / 共享会话。
 4. 纯 headless 部署（无本地 GUI）。

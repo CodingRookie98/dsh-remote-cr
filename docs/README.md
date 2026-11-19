@@ -27,7 +27,7 @@
 | [requirements.md](./design/requirements.md) | 需求、用户故事、验收标准、非目标 |
 | [architecture.md](./design/architecture.md) | 总体架构、嵌入路线、后端抽象、凭据代理、安装器、后端矩阵（§14） |
 | [ui-design.md](./design/ui-design.md) | **插件功能与页面 UI**：槽位落点、「远端工作台」面板、添加工作区（§4 四选一已被 §10 双栏工作台取代）、状态视觉映射、同步面板 |
-| [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M5） |
+| [milestones.md](./design/milestones.md) | 里程碑与验收清单（M0–M4；**M5 Docker 已取消**，见 ADR-0008） |
 | [keep-alive.md](./design/keep-alive.md) | **驻留模式**：`keepAlive` 控制行、实例登记、TTL、与 A7「不留孤儿」的冲突 |
 
 ## ops/ 与 release/
@@ -42,10 +42,13 @@
 | 文件 | 决策 |
 |---|---|
 | [ADR-0001-host-on-remote.md](./decisions/ADR-0001-host-on-remote.md) | B 型（宿主远端） |
-| [ADR-0002-backends-wsl-ssh.md](./decisions/ADR-0002-backends-wsl-ssh.md) | WSL + SSH 双后端（Docker 已改为 M5，见 ADR-0005） |
+| [ADR-0002-backends-wsl-ssh.md](./decisions/ADR-0002-backends-wsl-ssh.md) | WSL + SSH 双后端（Docker 先改为 M5，后于 2026-11-19 取消，见 ADR-0008） |
 | [ADR-0003-embedding-strategy.md](./decisions/ADR-0003-embedding-strategy.md) | 嵌入路线：**采用 C 型**（复用官方 Remote 内核 + 自建 transport adapter） |
 | [ADR-0004-plugin-sync.md](./decisions/ADR-0004-plugin-sync.md) | 插件同步：远端原生安装优先、三分类、不覆盖、凭据不同步 |
 | [ADR-0005-workspace-entry-ui.md](./decisions/ADR-0005-workspace-entry-ui.md) | 工作区入口与身份：另起「远端工作台」面板、顶掉 directoryFlow、WSL=UNC / SSH=锚点 |
+| [ADR-0006-rename-runtime-identifiers.md](./decisions/ADR-0006-rename-runtime-identifiers.md) | 运行时标识统一为 `remote-cr`（含迁移边界：旧名只在 `src/local/migration/`） |
+| [ADR-0007-i18n-layering.md](./decisions/ADR-0007-i18n-layering.md) | 双语分层：共享层只产出 id，客户端字典负责文案 |
+| [ADR-0008-drop-docker-backend.md](./decisions/ADR-0008-drop-docker-backend.md) | **放弃 Docker 后端（M5 取消）**；接口位与灰显保留，只改文案与验收口径 |
 
 ## proposals/ — 方案 RFC（评审中的契约变更）
 
