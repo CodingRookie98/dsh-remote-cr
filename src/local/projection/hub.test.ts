@@ -230,7 +230,8 @@ test('recycle 抛错也必须删 entry（否则端口与引用永久卡死）', 
       }) as unknown as ProjectionService,
   )
   await hub.attach(A, { remotePath: '/a', localPath: LOCAL })
-  assert.equal((await hub.releaseAll(A)).recycled, true)
+  // 回收失败要**抛出去**（P4 P1-2），但 entry 与端口仍必须收回——否则端口永久被算作占用。
+  await assert.rejects(() => hub.releaseAll(A), /recycle boom/)
   assert.equal(hub.entries().length, 0)
 })
 

@@ -522,18 +522,32 @@ export class ProjectionService {
     const live = this.#live
     this.#setLive(undefined)
     this.#stopDriver()
-    this.#dropDetached()
-    if (live === undefined) return
-    this.#retired.add(live.connection)
+    const detached = this.#dropDetached()
+    await this.#reclaim(live?.connection)
+    if (detached !== undefined) await this.#reclaim(detached)
+  }
+
+  /** 非回收路径用：丢掉留存连接并就地 retire（不 await，进程退出/断开时不需要等）。 */
+  #retireDetached(): void {
+    const connection = this.#dropDetached()
+    if (connection !== undefined) this.#retire(connection)
+  }
+
+  /**
+   * 真收一条连接并**确认收干净**：`dispose()` 的返回值有语义（`false` = 看门狗没在窗口内退出），
+   * 与取消路径 `service.ts` 的契约一致——只 catch reject 会把「没退干净」当成成功（P4 P1-3）。
+   */
+  async #reclaim(connection: RemoteConnection | undefined): Promise<void> {
+    if (connection === undefined) return
+    this.#retired.add(connection)
+    let clean = true
     try {
-      await live.connection.dispose()
+      clean = (await connection.dispose()) !== false
     } catch (error) {
-      throw new RemoteCrError({
-        code: 'remote/recycle-incomplete',
-        detail: '结束远端时没能确认远端进程已退出：' + (error instanceof Error ? error.message : String(error)),
-        nextActions: ['再点一次「结束远端」', '或到远端手动检查进程'],
-      })
+      clean = false
+      throw incomplete(error)
     }
+    if (!clean) throw incomplete(undefined)
   }
 
   /** 进程退出：释放连接（不标 offline，因为没人会再看这份内存表）。 */
@@ -636,6 +650,13 @@ export class ProjectionService {
     return this.#store.removeWorkspace(workspaceId)
   }
 
+  /**
+   * 「结束远端」：真收掉远端进程，并**确认收干净**。
+   *
+   * 与 `recycle()` 只差在「连接层用 `stopRemote()` 还是 `dispose()`」：
+   * 前者是显式停远端（含驻留实例），后者是本地放手。两者都统一走 `#reclaim` 的
+   * 「`dispose()` 返回值也要看」契约——只 catch reject 会把「没退干净」当成功（P4 P1-3）。
+   */
   async stopRemote(): Promise<void> {
     const live = this.#live
     const detached = this.#detached
@@ -645,8 +666,13 @@ export class ProjectionService {
     for (const entry of [live, detached]) {
       if (entry === undefined) continue
       this.#retired.add(entry.connection)
-      if (typeof entry.connection.stopRemote === 'function') await entry.connection.stopRemote()
-      else await entry.connection.dispose()
+      // `stopRemote()` 是显式停远端（无返回值）；`dispose()` 会带回「是否收干净」，要看。
+      if (typeof entry.connection.stopRemote === 'function') {
+        await entry.connection.stopRemote()
+        continue
+      }
+      const clean = (await entry.connection.dispose()) !== false
+      if (!clean) throw incomplete(undefined)
     }
   }
 
@@ -721,13 +747,21 @@ export class ProjectionService {
     this.#setDetached(entry)
   }
 
-  /** 真收掉留存连接（目标变了、用户断开、进程退出时才调）。 */
-  #dropDetached(): void {
+  /**
+   * 真收掉留存连接（目标变了、用户断开、进程退出时才调）。
+   *
+   * 返回**被移除的那条连接**而不是就地 dispose：调用方（`recycle`）要能 await 它——
+   * 不 await 就是「先 resolved 再删远端」在 detached 路径上原样复发（P4 P1-4）。
+   * 非回收路径（disconnect / 目标切换 / dispose）仍然就地同步 retire，行为不变。
+   */
+  #dropDetached(): RemoteConnection | undefined {
     const entry = this.#detached
     this.#setDetached(undefined)
     // 记下「这条已经 dispose 了」：取消回滚若把 detachedBefore 值快照写回去，
     // 死连接会复活成 `#live`（R1 #5 D7/D8）。
-    if (entry !== undefined) this.#retire(entry.connection)
+    if (entry === undefined) return undefined
+    if (this.#retired.has(entry.connection)) return undefined
+    return entry.connection
   }
 
   #startDriver(target: ConnectTarget): void {
@@ -800,7 +834,7 @@ export class ProjectionService {
       this.#setDetached(undefined)
     } else if (detached !== undefined) {
       // 留着一条别的 target 的残连接没有意义。
-      this.#dropDetached()
+      this.#retireDetached()
     }
     return this.#connect(target)
   }
@@ -829,10 +863,10 @@ export class ProjectionService {
           this.#stopDriver()
           return { connection: detached.connection, created: false }
         } catch {
-          this.#dropDetached()
+          this.#retireDetached()
         }
       } else {
-        this.#dropDetached()
+        this.#retireDetached()
       }
     }
     if (live !== undefined) {
@@ -942,6 +976,16 @@ export function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
   return false
 }
 
+
+/** 统一的「没退干净」错误：`recycle()` 的 reject 与 `dispose()===false` 走同一条码。 */
+function incomplete(cause: unknown): RemoteCrError {
+  const reason = cause instanceof Error ? cause.message : cause === undefined ? '远端进程未在窗口内退出' : String(cause)
+  return new RemoteCrError({
+    code: 'remote/recycle-incomplete',
+    detail: '结束远端时没能确认远端进程已退出：' + reason,
+    nextActions: ['再点一次「结束远端」', '或到远端手动检查进程'],
+  })
+}
 
 /** 读流帧里的错误（网关/远端拒绝）；不是错误帧就 undefined。 */
 function readFrameError(frame: unknown): string | undefined {

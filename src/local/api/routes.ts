@@ -1236,7 +1236,7 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   /**
    * 移除一个投影工作区（RFC-0007 A：工作区级引用）。
    *
-   * 只删本地投影，**不删远端工作区**；移走最后一个时这台 target 就回收（同「结束远端」）。
+   * 只删本地投影：**不删远端工作区、也不回收远端进程**（回收只由「结束远端」触发，见下方注释）。
    */
   mount('/workspace/remove', ['POST'], async (req, res) => {
     const body = (await readJsonBody(req)) as { workspaceId?: unknown; target?: unknown } | null
@@ -1257,11 +1257,9 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
         nextActions: ['刷新面板'],
       })
     }
-    // 移走最后一个工作区 → 这台不再被使用：回收远端、删 entry、还端口。
-    if (hub !== undefined && service.snapshot().workspaces.length === 0) {
-      const entry = hub.entries().find((candidate) => candidate.service === service)
-      if (entry !== undefined) hub.releaseAll(entry.target)
-    }
+    // **刻意不在这里回收远端**（P4 P2-1）：移除是「列表操作」，回收是「结束远端」的事。
+    // 绑死的话，用户只是清一下列表就会连带杀掉远端还在跑的会话，而「断开」的既有语义恰恰是
+    // 「保留温热进程、重连只要 52ms」。收干净只留一个入口：面板的「结束远端」。
     sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(service)))
   })
 

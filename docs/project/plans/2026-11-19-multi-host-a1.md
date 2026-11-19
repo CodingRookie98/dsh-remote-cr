@@ -80,6 +80,22 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
   ② 该 pid 在远端 `/proc/<pid>` 存在；③ `releaseAll` 之后 **pid 消失**（`recycled: true`）。
 - 同时留下一条**如实记录**：pid 死后登记文件仍在（预期——远端用户数据保留，由 RFC-0006 残留清理显式收拾），探针只记录不断言。
 
+**A/B 独立复审（判不可签）的 5 条 P1 已修（2026-11-19）**：
+
+| 编号 | 问题 | 修法 |
+|---|---|---|
+| P1-1 | `/workspace/remove` 没 `await`：响应先回、entry 后删，窗口期内 `serviceFor` 会复用正在回收的引擎，随后被 `#dropEntry` 连带删掉 | `releaseAll` **先摘除 entry 再 await recycle**；路由补 `await` |
+| P1-2 | `releaseAll` 吞掉 `recycle()` 的拒绝并**无条件**报 `recycled:true` → `remote/recycle-incomplete` 在产品路径不可达 | 不吞错：失败仍归还端口但**抛出**，路由据错误码回错误信封 |
+| P1-3 | `recycle()` 只看 reject，`dispose()===false`（看门狗没在窗口内退出）被当成功 | 统一 `#reclaim`：`clean = (await dispose()) !== false`，不干净抛 `remote/recycle-incomplete` |
+| P1-4 | `#dropDetached()` 就地 dispose 不留句柄 → 留存连接的死活在 recycle 里无人 await | `#dropDetached()` 返回连接，`recycle` 里 `await`；非回收路径改用 `#retireDetached()` |
+| P1-5 | `shared/api.ts` 的 `references` 注释仍写「接入次数」 | 改为「这台投影里还剩几个工作区」并说明回收入口 |
+
+**语义收敛（复审 P2-1）**：`/workspace/remove` **不再回收远端**——移除是列表操作，回收只由「结束远端」触发。
+理由：绑死会让「清一下列表」连带杀掉远端还在跑的会话，而既有「断开」语义恰恰是保留温热进程（重连 52 ms）。
+
+**补的回归判据**：`dispose()===false` → `remote/recycle-incomplete`（含干净对照组）、留存连接必须 await、`/stop` 回收失败回错误码、`/workspace/remove` 只删投影不回收、`removeWorkspace` 级联删会话、未知工作区断言到**码**（原来只断 `ok:false`，stub 抛 TypeError 也算通过）。
+另删除 `lib/` 里 8 个 `refcount.*` 陈旧产物（源码已删、产物没清，且会被 `files` 打包）。
+
 **残留（P2，已记录）**：~~`release` 目前只有探针在调用~~ → **已接产品路径**：`/stop`（面板「结束远端」）与「移除最后一个工作区」都会走到 `releaseAll`。
 
 **A3 第二轮 Delta（2026-11-19，判不可签）已修**：
