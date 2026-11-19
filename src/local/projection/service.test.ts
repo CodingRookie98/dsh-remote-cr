@@ -14,7 +14,7 @@ import test from 'node:test'
 
 import { RemoteCrError } from '../backend/errors.ts'
 import type { ProjectionRpc, StreamEvent, StreamHandle } from './remote.ts'
-import { ProjectionService, defaultWarmupMs, type ConnectTarget } from './service.ts'
+import { ProjectionService, defaultWarmupMs, refreshKey, type ConnectTarget } from './service.ts'
 import { TERMINAL_WARMUP_MS } from './probe.ts'
 import { ProjectionStore } from './store.ts'
 import type { RemoteSessionSummary } from './attach.ts'
@@ -648,6 +648,13 @@ test('取消发生在 attach 段：本次新建的连接要被 dispose，而不�
 function sessionRow(running: boolean): RemoteSessionSummary {
   return { sessionId: 'sess-1', updatedAt: Date.parse('2026-11-19T03:04:05.000Z'), running, blank: false }
 }
+
+test('refreshKey 与 sameTarget 同形：换端口或换检出根就是另一个键（P4 P2-1）', () => {
+  const base = { backend: 'wsl' as const, distro: 'ubuntu_dev', port: 8899, remoteRoot: '/home/dev/h' }
+  assert.equal(refreshKey(base), refreshKey({ ...base }), '完全相同 → 同一个键（单飞才成立）')
+  assert.notEqual(refreshKey(base), refreshKey({ ...base, port: 8900 }), '同发行版换端口 = 另一台')
+  assert.notEqual(refreshKey(base), refreshKey({ ...base, remoteRoot: '/home/dev/other' }), '换检出根 = 另一台')
+})
 
 test('刷新把远端的 running true→false 贴回快照：RPC 序列恰为 session/list（没写 workspace/create）', async () => {
   const store = new ProjectionStore()

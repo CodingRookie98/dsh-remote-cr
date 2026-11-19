@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createRefreshScheduler, shouldPoll, type RefreshTimer } from './poll.ts'
+import { applyPollState, createRefreshScheduler, shouldPoll, type RefreshTimer } from './poll.ts'
 
 /** 一次排上的定时器（句柄就是对象本身，方便按身份清表）。 */
 interface Armed {
@@ -57,6 +57,23 @@ test('⓪ shouldPoll：可见且已连接才跑（隐藏 / 断连都必须停，
   assert.equal(shouldPoll({ connected: true, visible: false }), false, '隐藏时停')
   assert.equal(shouldPoll({ connected: false, visible: true }), false, '断连时停')
   assert.equal(shouldPoll({ connected: false, visible: false }), false)
+})
+
+test('⓪b applyPollState：能跑就 start+kick，不能跑就 stop（四处接线里可执行的那一处）', () => {
+  const calls: string[] = []
+  const control = {
+    start: () => calls.push('start'),
+    stop: () => calls.push('stop'),
+    kick: () => calls.push('kick'),
+  }
+  assert.equal(applyPollState(control, { connected: true, visible: true }), 'running')
+  assert.deepEqual(calls, ['start', 'kick'], '可见且已连接：起链并立刻补一次')
+  calls.length = 0
+  assert.equal(applyPollState(control, { connected: true, visible: false }), 'stopped')
+  assert.deepEqual(calls, ['stop'], '隐藏：必须真的停（不是「到点跳过」）')
+  calls.length = 0
+  assert.equal(applyPollState(control, { connected: false, visible: true }), 'stopped')
+  assert.deepEqual(calls, ['stop'], '断连：必须真的停')
 })
 
 test('① 可见时到点才跑：start 只排链，到点跑一次并重排', async () => {

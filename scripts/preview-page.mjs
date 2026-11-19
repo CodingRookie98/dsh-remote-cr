@@ -134,10 +134,11 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/projection/refresh' && method === 'POST') {
     if (fixtures.refreshFails === true) {
       refreshFailed = true;
-      return { ok: false, code: 'remote/disconnected', detail: '预览：后台刷新失败（夹具）', nextActions: ['重试'] };
+      // 码要挑一条**与现场一致**的：此刻面板是连着的，用 remote/disconnected 会让截图写「连接已断开」。
+      return { ok: false, code: 'remote/unknown', detail: '预览：后台刷新失败（夹具）', nextActions: ['重试'] };
     }
     refreshFailed = false;
-    return { ok: true, value: fixtures.refreshSnapshot ?? fixtures.projection };
+    return { ok: true, value: fixtures.projection };
   }
   if (path === '/remote-cr/api/plugin-sync') {
     if (method === 'GET' && fixtures.syncPlanError) return { ok: false, ...fixtures.syncPlanError };

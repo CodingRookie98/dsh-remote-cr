@@ -45,7 +45,7 @@ import {
 } from './api.ts'
 import { copyText, messageOf, SyncDialog, useWizard } from './components.ts'
 import { filterSessions } from './filter.ts'
-import { createRefreshScheduler, shouldPoll, type RefreshScheduler } from './poll.ts'
+import { applyPollState, createRefreshScheduler, type RefreshScheduler } from './poll.ts'
 import { createRefreshRunner } from './refresh-runner.ts'
 import { lastSessionActionFailure, subscribeSessionActions } from './session-actions.ts'
 import {
@@ -463,12 +463,8 @@ export function RemoteCrPanel(): unknown {
     schedulerRef.current = scheduler
     const host = visibilityHost()
     const sync = (): void => {
-      if (shouldPoll({ connected: liveSnapshot.current?.connected === true, visible: panelVisible() })) {
-        scheduler.start()
-        scheduler.kick()
-        return
-      }
-      scheduler.stop()
+      // 判断与动作都收在 `applyPollState` 里：这一处接线有单测（P4 Delta 的 P2）。
+      applyPollState(scheduler, { connected: liveSnapshot.current?.connected === true, visible: panelVisible() })
     }
     sync()
     host?.addEventListener?.('visibilitychange', sync)
@@ -484,12 +480,7 @@ export function RemoteCrPanel(): unknown {
   useEffect(() => {
     const scheduler = schedulerRef.current
     if (scheduler === null) return
-    if (snapshotConnected && panelVisible()) {
-      scheduler.start()
-      scheduler.kick()
-      return
-    }
-    scheduler.stop()
+    applyPollState(scheduler, { connected: snapshotConnected, visible: panelVisible() })
   }, [snapshotConnected])
 
   const refresh = useMemo(

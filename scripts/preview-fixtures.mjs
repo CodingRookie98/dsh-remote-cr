@@ -590,8 +590,9 @@ export const PREVIEW_SCENES = [
     hideFlow: true,
     steps: [
       { wait: '[data-remote-cr="session-filter"]', timeoutMs: 10000 },
-      // 调度器默认 5 s 到点：这是唯一一条真的等它自己触发的场景。
-      { sleep: 6000 },
+      // 触发点是「连上即 kick()」（面板在连接就绪时立刻补一次），不是 5 s 周期；
+      // 周期语义由 poll.test.ts ①–⑨ 覆盖。这里只等一次往返完成（P4 Delta P3）。
+      { sleep: 1500 },
       { wait: '[data-remote-cr="panel-stale"]', timeoutMs: 8000 },
       { wait: '[data-remote-cr="panel-error"]', timeoutMs: 8000 },
       { sleep: 200 },
