@@ -12,7 +12,7 @@
 
 ## 🚀 Active Checkpoint
 
-- **当前阶段**: P3.5 集成验证完成 → P4.1 定向红队（Batch D 按用户裁决暂不做，见 §5）
+- **当前阶段**: P4.1 定向红队**不可签（3 条阻断）→ 已全修** → 等 Delta 复审（Batch D 按用户裁决暂不做，见 §5）
 - **当前子任务**: 无
 - **重试计数**: 0/3
 - **外层循环**: 0/5
@@ -139,6 +139,17 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 - [ ] 全量门禁 + `build` / `build:client` + L4 预览 + 两目标真机；产物可复现（重跑构建后 `git status` 为空）。
 
 ### P4 对抗式终审
+
+**P4.1 定向红队（2026-11-19）：不可签，3 条阻断。** 处置如下（Lead 亲自复核并重跑判据）：
+
+| 阻断 | 判据 | 修法 | 反证 |
+|---|---|---|---|
+| B1 客户端刷新失败链零测试 | 把失败分支改成 `setSnapshot(null)`（R1 明令禁止的「失败清表」）后 837 条仍全绿 | 把执行体从 React 抽到 `src/client/refresh-runner.ts`（注入 `refresh`/`reread`/`applySnapshot`/`applyError`），三条纪律各有用例；面板只保留注入与渲染 | 新增 6 条用例；变异掉补读 → L4 链场景红 |
+| B2 L4 完全不触达 `POST /projection/refresh` | 扫 31 份场景 json：0 次刷新请求、0 个 `panel-error`；跑得稍慢就会渲染一条无人断言的 `preview/unmocked` 假错误而仍判通过 | ①预览服务端补该端点 + 「刷新失败 → `/projection` 返回 `stale:true`」的宿主语义；②新增场景 `panel-refresh-failed`（等调度器 5 s 真触发，断言 `panel-stale` + `panel-error`）；③harness 增加 `preview/unmocked` 门禁 | 夹具 `refreshFails:false` → 场景报「目标标记没命中 + 缺必需标记」；恢复后 28 场景全绿 |
+| B3 契约漂移：RFC R3「隐藏/断连时停」未实现 | 实现只是「隐藏时到点跳过」，定时器空转；计划单方面改了措辞而 RFC 未动 | 按 RFC 实现：`shouldPoll({connected, visible})` 纯函数 + 面板在 `visibilitychange` 与连接状态变化时 `start/kick/stop` | 新增 ⓪ 用例；隐藏→`stop`、断连→`stop` 各有分支 |
+
+采纳的非阻断：P1-1 失败不再覆盖别人的错误与重试意图（按身份写）；P1-2 补读只在没有 attach 时进行；P2-1 `refreshKey` 与 `sameTarget` 同形（加端口与检出根）；P2-2 `kick` 不重置退避（改注释）；P3-1 `runAndReschedule` 补代数守卫；P3-3 远端没给时间戳时保留上一帧已知 `updatedAt`。
+
 
 - [ ] **P4.1** 定向红队（A–C 批）→ 若含 Batch D，升级为 `dual-round-review` 全量双轮。
 - [ ] **P4.2** 阻断修复 + Delta Re-Loop（≤5）。

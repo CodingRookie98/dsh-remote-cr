@@ -109,6 +109,12 @@ function loadScript(url) {
 
 // ── 2. fetch 拦截 ───────────────────────────────────────────────────────
 
+/**
+ * 宿主在刷新失败后会把 stale 置 true 且保留旧帧；预览按同一语义走，
+ * 不然 panel-stale 只能靠夹具直接给 `stale:true`，测不到「失败 → stale → 徽标」这条链（P4 B2）。
+ */
+let refreshFailed = false;
+
 function respond(fixtures, method, url) {
   const path = url.pathname;
   if (path === '/remote-cr/api/sources') return { ok: true, value: fixtures.sources };
@@ -121,7 +127,18 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/workspace' && method === 'POST') return { ok: true, value: fixtures.workspace };
   if (path === '/remote-cr/api/flow' || path === '/remote-cr/api/flow/cancel') return { ok: true, value: fixtures.flow };
   if (path === '/remote-cr/api/workspaces') return { ok: true, value: fixtures.workspaces };
-  if (path === '/remote-cr/api/projection') return { ok: true, value: fixtures.projection };
+  if (path === '/remote-cr/api/projection') {
+    const value = refreshFailed ? { ...fixtures.projection, stale: true } : fixtures.projection;
+    return { ok: true, value };
+  }
+  if (path === '/remote-cr/api/projection/refresh' && method === 'POST') {
+    if (fixtures.refreshFails === true) {
+      refreshFailed = true;
+      return { ok: false, code: 'remote/disconnected', detail: '预览：后台刷新失败（夹具）', nextActions: ['重试'] };
+    }
+    refreshFailed = false;
+    return { ok: true, value: fixtures.refreshSnapshot ?? fixtures.projection };
+  }
   if (path === '/remote-cr/api/plugin-sync') {
     if (method === 'GET' && fixtures.syncPlanError) return { ok: false, ...fixtures.syncPlanError };
     return method === 'GET' ? { ok: true, value: fixtures.syncPlan } : { ok: true, value: { results: fixtures.syncResults } };
@@ -153,7 +170,7 @@ function installFetchInterceptor(fixtures) {
     const url = new URL(raw, location.href);
     const method = (init && init.method) || (input && input.method) || 'GET';
     const envelope = respond(fixtures, String(method).toUpperCase(), url);
-    state.requests.push({ method: String(method).toUpperCase(), path: url.pathname + url.search, ok: envelope.ok !== false });
+    state.requests.push({ method: String(method).toUpperCase(), path: url.pathname + url.search, ok: envelope.ok !== false, ...(typeof envelope.code === 'string' ? { code: envelope.code } : {}) });
     if (url.pathname === '/remote-cr/api/list') {
       state.timings.fetches.push({ path: url.pathname + url.search, at: Math.round(performance.now() * 10) / 10 });
     }

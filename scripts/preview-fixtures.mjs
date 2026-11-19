@@ -578,6 +578,25 @@ export const PREVIEW_SCENES = [
       { sleep: 200 },
     ],
   },
+  {
+    // RFC R1 的**整条链**（P4 B2）：调度器 5 s 到点 → POST 刷新失败 → 客户端补读 /projection
+    // → 宿主把 stale 置 true → 徽标亮起，同时错误块给出可重试的失败面。
+    // 夹具里 `refreshFails: true`，`/projection` 会跟着这次失败返回 stale:true。
+    id: 'panel-refresh-failed',
+    label: '面板：后台刷新失败（错误块 + 数据已过期徽标，整条链）',
+    theme: 'light',
+    targets: ['[data-remote-cr="panel-stale"]', '[data-remote-cr="panel-error"]'],
+    requireMarkers: ['panel-stale', 'panel-error'],
+    hideFlow: true,
+    steps: [
+      { wait: '[data-remote-cr="session-filter"]', timeoutMs: 10000 },
+      // 调度器默认 5 s 到点：这是唯一一条真的等它自己触发的场景。
+      { sleep: 6000 },
+      { wait: '[data-remote-cr="panel-stale"]', timeoutMs: 8000 },
+      { wait: '[data-remote-cr="panel-error"]', timeoutMs: 8000 },
+      { sleep: 200 },
+    ],
+  },
 ];
 
 export function findScene(id) {
@@ -819,6 +838,8 @@ export function sceneFixtures(sceneId) {
     cancel: cancelledSnapshot(),
     workspaces: workspaceRecords(),
     projection: projectionSnapshot('connected', id === 'panel-stale'),
+    // 刷新失败夹具：让「失败 → 宿主 stale → 补读 → 徽标」这条链在真浏览器里跑一遍（P4 B2）。
+    refreshFails: id === 'panel-refresh-failed',
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 同步对话框夹具（RFC-0003 需求①）：两种可同步 + 一条已最新 + 一条不可同步
     syncPlan: {
