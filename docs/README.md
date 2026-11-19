@@ -36,6 +36,7 @@
 |---|---|
 | [ops/SECRETS.md](./ops/SECRETS.md) | **开源前敏感信息规则**：禁止项、占位符约定、检查命令、历史重写记录 |
 | [release/plugin-listing.md](./release/plugin-listing.md) | 上架 dsh-plugin.org 的材料（一句话、分类、与 A 型差异、已知限制、提交步骤） |
+| [security/review-2026-11-19.md](./security/review-2026-11-19.md) | **安全评审**：凭据边界 / 隧道 / iframe / 远端权限四条边界的不变量与证据，含 3 条低风险与 4 条未验证 |
 | [release/compatibility-matrix.md](./release/compatibility-matrix.md) | **兼容矩阵**：声明区间、已验版本与证据、`pnpm check:compat` 口径、为什么常规 CI 不跑真机兼容 |
 
 ## decisions/ — ADR

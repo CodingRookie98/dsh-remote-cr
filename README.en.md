@@ -33,7 +33,7 @@ Most remote plugins in the DSH marketplace are **type A (remote execution)**: th
 **Workspace entry** — takes over the official `directoryFlow` (both the sidebar and the empty-conversation holes), keeping a single native GUI
 - Modal two-pane layout: sources on the left (local / WSL distros / SSH remotes / Docker), the directory browser on the right
 - Breadcrumbs + editable path + go-up + refresh; `↑ ↓` move, `Enter` enters, `Backspace` goes up, `/` focuses the path field, `Esc` closes
-- Unavailable sources are greyed out with the reason and a copyable fix command (for example `wsl --install`); Docker is an M5 item and is greyed out today
+- Unavailable sources are greyed out with the reason and a copyable fix command (for example `wsl --install`); Docker is **dropped** (ADR-0008) and stays greyed out as "not offered"
 
 **WSL**
 - Wake before browsing: `wsl.exe -d <distro> --exec true` must pass before the directory browser opens; on failure it stays put and shows a diagnosis card instead of dropping you into the directory page
@@ -48,6 +48,23 @@ Most remote plugins in the DSH marketplace are **type A (remote execution)**: th
 **General**
 - Credentials never leave the machine: the remote only holds placeholder tokens
 - Failures are always structured (`code` + `detail` + `nextActions`), copyable, retryable, never silently degraded
+
+**Live session state**
+- While the panel is visible and connected, it re-reads `session/list` every 5 s and patches the projection in place (no reordering, no deletions)
+- Hidden tab or disconnected remote: the chain stops; failures back off 5 → 30 s and keep the last good frame, marked `stale` ("data is stale")
+- Session filter above the list (case-insensitive substring) with an explicit empty state — filtering never reorders rows
+
+**Diagnostics**
+- The panel runs the same `runDoctor` as `pnpm doctor` and shows every check (`package` / `entry` / `exports` / `client-bundle` / `patch` / `engines` / `state-root` / `legacy-root`) with its status
+- "Copy report" copies the exact CLI report text; failures are shown inside the diagnostics block, never in the shared error slot
+
+**Remote residue (uninstall hygiene)**
+- Inspect (read-only) the remote `~/.dsh-remote-cr/staging/<id>` and `instances/<id>.json`: size in KB, which instance records are alive
+- Purge is explicit and two-step (click once to arm, once to confirm), refuses while the target is connected or another write is in flight,
+  only touches this target's paths, reports per-item failures, and **keeps `staging` while a resident instance is still using it**
+
+**Multiple hosts**
+- The projection service is now a container: each target gets its own engine (own store, connection, reconnect driver); the panel lists registered hosts with per-host workspace/session counts
 
 ## Requirements
 
@@ -169,7 +186,7 @@ docs/          research, design, decisions, plans and review archives
 
 ## Known limitations
 
-- **Docker**: greyed out in the UI; implementation is scheduled for M5
+- **Docker**: dropped (ADR-0008); the option stays greyed out as "not offered" to keep the existing selection contract
 - **No version probe**: an old remote plus a new local host looks like `remote/port-in-use` (`remote/version-mismatch` does not exist)
 - **WSL cannot keep alive**: when the `wsl.exe` handle exits, distro-side children go with it (`keepAlive` is an optional capability)
 - **Cancellation is tiered**: `probe/bootstrap/launch/tunnel` are cancellable; `attach` RPC is best effort
