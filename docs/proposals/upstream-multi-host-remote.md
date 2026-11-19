@@ -64,3 +64,17 @@
 - 测试：host 隔离、事件分桶、断线重连、未注册 host 的结构化错误。
 
 预计 ≤ 400 行（含测试），不动 Host 侧契约。
+## 6. 附录：最小改动点（逐文件，2026-11-19 静态核对）
+
+| 文件 | 现状 | 改动 |
+|---|---|---|
+| `packages/api/gateway/src/client/index.ts:135` | `export const inject = ['typert', 'connection']` —— 单 connection | 改为注入一个 **host 注册表**（默认只有 `local`，由应用装配时把现有 connection 填进去）；`apply` 里的取用点按 host 分派 |
+| 同文件 `:160-219` | `connection.openWebSocket(path)` / `connection.rpc.open('/api', endpoint, ...)` / `connection.start(...)` / `connection.generation` 直接用 `this.connection` | 每个取用点换成 `this.hostFor(hostId)`；`$mount` 与 `openRemoteStream` 增加可选 `host`（缺省 `'local'`） |
+| `packages/api/remotes/src/client/index.ts:209` | `ctx.remote.$mount(contribution)` | 透传 `host`；未指定时仍挂本地 |
+| `packages/client/connection/src/index.ts:226+` | `createConnection(options)` 已被应用装配调用一次 | **签名不变**；注册表按需再调一次（每个 host 一份 options，退避/重连语义复用） |
+| 新增 `packages/api/gateway/src/client/hosts.ts`（约 60 行） | — | `RemoteHostRegistry`：`register({ id, label, createConnection })` / `get(id)` / `$snapshot`；应用装配把现有 connection 以 `'local'` 注册进去 |
+
+**可行性论据**：传输层没有阻塞——本仓库的 `src/local/projection/remote.ts` 已经用**同一套线上协议**（`POST /api/<endpoint>` + `WS /api/remote.mux`）直连远端 `dsh web` 并成功调用 `session/list`、`workspace/create`。P1 缺的只是 **client 侧把那一条 connection 变成可命名的一员**，不是协议能力。
+
+**未验证**：以上行号只做静态核对，**未编译、未跑测试、未改上游**。落地时先加「注册表只含 local」的重构提交（行为不变），再加 `host` 参数（缺省 local），两步都可单独回滚。
+
