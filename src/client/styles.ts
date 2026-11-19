@@ -340,6 +340,25 @@ export const PANEL_CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+[data-remote-cr='panel'] [data-remote-cr='panel-residue'] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+[data-remote-cr='panel'] [data-remote-cr='residue-head'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-remote-cr='panel'] [data-remote-cr='residue-report'] {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--tp-muted);
+}
+[data-remote-cr='panel'] [data-remote-cr='residue-error'] { color: var(--tp-err); font-size: 12px; }
+
 [data-remote-cr='panel'] [data-remote-cr='panel-diagnostics'] {
   display: flex;
   flex-direction: column;

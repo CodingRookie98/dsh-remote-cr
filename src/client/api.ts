@@ -15,7 +15,12 @@
  */
 
 import { API_PREFIX } from '../shared/api.ts'
-import type { ImportableWorkspaceInfo } from '../shared/api.ts'
+import type {
+  ImportableWorkspaceInfo,
+  PurgeResultInfo,
+  RemoteTargetInfo,
+  ResidueReportInfo,
+} from '../shared/api.ts'
 import { t } from './i18n.ts'
 
 /** 宿主半挂载的前缀；与 `src/local/api/routes.ts` 共用同一个常量。 */
@@ -113,6 +118,16 @@ export async function callApi<T>(
 export async function readDoctor(): Promise<import('../shared/api.ts').DoctorReportInfo> {
   // callApi 自己会拼 API_PREFIX；这里只给路径（拼两遍会得到 /remote-cr/api/remote-cr/api/...）。
   return await callApi<import('../shared/api.ts').DoctorReportInfo>('/doctor')
+}
+
+/** `GET /maintenance/residue`：远端残留只读盘点（RFC-0006 Phase 2）。 */
+export async function readResidue(target: RemoteTargetInfo): Promise<ResidueReportInfo> {
+  return await callApi<ResidueReportInfo>('/maintenance/residue', { query: { target: JSON.stringify(target) } })
+}
+
+/** `POST /maintenance/purge`：显式清理（必须 confirm；连接中会被后端拒绝）。 */
+export async function purgeResidue(target: RemoteTargetInfo): Promise<PurgeResultInfo> {
+  return await callApi<PurgeResultInfo>('/maintenance/purge', { method: 'POST', body: { target, confirm: true } })
 }
 
 /** `/sources` 的答复：探测结果 + 四选一的展示状态。 */

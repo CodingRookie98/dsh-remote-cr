@@ -13,6 +13,8 @@ import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   DoctorReportInfo,
+  PurgeResultInfo,
+  ResidueReportInfo,
   ImportableWorkspaceInfo,
   ProbeOutcome,
   ProjectedSessionInfo,
@@ -34,6 +36,8 @@ import {
   probeRemoteSession,
   readProjection,
   readDoctor,
+  readResidue,
+  purgeResidue,
   reconnectRemote,
   refreshProjection,
   stopRemote,
@@ -412,6 +416,13 @@ export function RemoteCrPanel(): unknown {
   /** 请求序号：连点时只让最后一次落地，避免旧响应覆盖新结果（P4 建议 5）。 */
   const doctorSeq = useRef(0)
 
+  /** 远端残留（RFC-0006 Phase 2）：盘点只读、清理要两步确认。 */
+  const [residue, setResidue] = useState<ResidueReportInfo | null>(null)
+  const [residueBusy, setResidueBusy] = useState(false)
+  const [residueError, setResidueError] = useState<string | null>(null)
+  const [purgeArmed, setPurgeArmed] = useState(false)
+  const [purgeResult, setPurgeResult] = useState<PurgeResultInfo | null>(null)
+
   const liveSnapshot = useRef<ProjectionSnapshotInfo | null>(null)
   liveSnapshot.current = snapshot
 
@@ -513,6 +524,46 @@ export function RemoteCrPanel(): unknown {
   useEffect(() => {
     void loadDoctor()
   }, [])
+
+  /** 远端残留的盘点目标：只有「接过的这个 target」才有意义（没接过就不知道该清谁）。 */
+  const residueTarget = snapshot?.target ?? null
+
+  const checkResidue = async (): Promise<void> => {
+    if (residueTarget === null) return
+    setResidueBusy(true)
+    try {
+      setResidue(await readResidue(residueTarget))
+      setResidueError(null)
+      setPurgeResult(null)
+      setPurgeArmed(false)
+    } catch (caught) {
+      setResidue(null)
+      setResidueError(failureOf(caught).detail)
+    } finally {
+      setResidueBusy(false)
+    }
+  }
+
+  /** 两步确认：第一次点只「上膛」，第二次才真删（RFC-0006 D2）。 */
+  const purge = async (): Promise<void> => {
+    if (residueTarget === null) return
+    if (!purgeArmed) {
+      setPurgeArmed(true)
+      return
+    }
+    setPurgeArmed(false)
+    setResidueBusy(true)
+    try {
+      const result = await purgeResidue(residueTarget)
+      setPurgeResult(result)
+      setResidue(null)
+      setResidueError(null)
+    } catch (caught) {
+      setResidueError(failureOf(caught).detail)
+    } finally {
+      setResidueBusy(false)
+    }
+  }
 
   // 连接状态变化也要跟着起/收链：断连即停、重连后立刻补一次（RFC R3 的另一半）。
   // 只在真的变化时动手：挂载时 sync() 已经起过链，这里再 kick 一次会让首屏多打一条刷新。
@@ -1013,6 +1064,60 @@ export function RemoteCrPanel(): unknown {
 
   const doctorStatusLabel = (status: 'ok' | 'warn' | 'fail'): string =>
     status === 'ok' ? t('panel.diagnosticOk') : status === 'warn' ? t('panel.diagnosticWarn') : t('panel.diagnosticFail')
+  const residueBox = residueTarget === null ? null : h(
+    'div',
+    { 'data-remote-cr': 'panel-residue' },
+    h(
+      'div',
+      { 'data-remote-cr': 'residue-head' },
+      h('span', { 'data-remote-cr': 'residue-title' }, t('panel.residueTitle')),
+      h(
+        'button',
+        { type: 'button', 'data-remote-cr': 'residue-check', disabled: residueBusy, onClick: () => void checkResidue() },
+        residueBusy ? t('panel.residueChecking') : t('panel.residueCheck'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-remote-cr': 'residue-purge',
+          disabled: residueBusy || residue === null,
+          onClick: () => void purge(),
+        },
+        purgeArmed ? t('panel.residuePurgeArmed') : t('panel.residuePurge'),
+      ),
+    ),
+    residueError === null
+      ? null
+      : h('div', { 'data-remote-cr': 'residue-error', role: 'status' }, residueError),
+    residue === null
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'residue-report' },
+          h(
+            'span',
+            { 'data-remote-cr': 'residue-staging' },
+            t('panel.residueStaging', { kb: String(residue.staging.kb), exists: residue.staging.exists ? t('panel.residueYes') : t('panel.residueNo') }),
+          ),
+          h(
+            'span',
+            { 'data-remote-cr': 'residue-instances' },
+            t('panel.residueInstances', {
+              count: String(residue.instances.files.length),
+              dead: String(residue.instances.files.filter((file) => !file.alive).length),
+            }),
+          ),
+        ),
+    purgeResult === null
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'residue-result' },
+          t('panel.residuePurgeDone', { count: String(purgeResult.removed.length), kb: String(purgeResult.freedKb) }),
+        ),
+  )
+
   const doctorBox = h(
     'div',
     { 'data-remote-cr': 'panel-diagnostics' },
@@ -1295,6 +1400,7 @@ export function RemoteCrPanel(): unknown {
             : sessionRows),
         ),
         doctorBox,
+        residueBox,
         probeBox,
       ),
     ),

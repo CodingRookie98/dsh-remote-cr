@@ -594,6 +594,26 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // RFC-0006 Phase 2：盘点 → 两步确认 → 清理结果。清理按钮第一次点只上膛，第二次才真删。
+    id: 'panel-residue',
+    label: '面板：远端残留（盘点 + 两步确认清理）',
+    theme: 'light',
+    targets: ['[data-remote-cr="panel-residue"]', '[data-remote-cr="residue-check"]', '[data-remote-cr="residue-result"]'],
+    // residue-report 是**过程态**（清理成功后按设计消失）：它由步骤里的 wait 保证，
+    // 不能写进 requireMarkers，否则成功路径永远判缺失。
+    requireMarkers: ['panel-residue', 'residue-result'],
+    hideFlow: true,
+    steps: [
+      { wait: '[data-remote-cr="residue-check"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="residue-check"]' },
+      { wait: '[data-remote-cr="residue-report"]', timeoutMs: 10000 },
+      { click: '[data-remote-cr="residue-purge"]' },
+      { click: '[data-remote-cr="residue-purge"]' },
+      { wait: '[data-remote-cr="residue-result"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
     // 诊断失败必须在诊断区里响（P4 B1）：不是空态、也不占共享错误槽。
     id: 'panel-diagnostics-failed',
     label: '面板：诊断失败（诊断区内报错，不占共享错误块）',
@@ -874,6 +894,26 @@ export function sceneFixtures(sceneId) {
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
     // 诊断夹具（RFC-0005）：一份含 ok / warn / fail 的报告，用来断言逐条状态渲染。
     doctorFails: id === 'panel-diagnostics-failed',
+    // 远端残留（RFC-0006 Phase 2）：一份含「活着的实例 + 已死登记」的盘点结果。
+    residue: {
+      targetId: 'wsl:' + DISTRO,
+      staging: { path: '/home/hui/.dsh-remote-cr/staging/abc123', exists: true, kb: 204800 },
+      instances: {
+        path: '/home/hui/.dsh-remote-cr/instances',
+        files: [
+          { name: 'abc123.json', kb: 4, pid: 4242, alive: true },
+          { name: 'dead.json', kb: 4, pid: 999999, alive: false },
+        ],
+      },
+      checkedAt: '2026-11-19T00:00:00.000Z',
+    },
+    purge: {
+      removed: [
+        { kind: 'staging', path: '/home/hui/.dsh-remote-cr/staging/abc123', kb: 204800 },
+        { kind: 'instance', path: 'dead.json', kb: 4 },
+      ],
+      freedKb: 204804,
+    },
     doctor: {
       checks: [
         { id: 'package', status: 'ok', detail: 'dsh-remote-cr@0.4.0' },

@@ -155,6 +155,8 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/plugin-sync/optout') {
     return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
   }
+  if (path === '/remote-cr/api/maintenance/residue') return { ok: true, value: fixtures.residue };
+  if (path === '/remote-cr/api/maintenance/purge' && method === 'POST') return { ok: true, value: fixtures.purge };
   if (path === '/remote-cr/api/doctor') {
     // 失败夹具：面板必须在诊断区里响（P4 B1），而不是显示空态。
     if (fixtures.doctorFails === true) {
