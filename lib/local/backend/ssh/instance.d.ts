@@ -24,4 +24,9 @@ export declare function parseInstanceOutput(stdout: string, expectedPort: number
 export declare function isInstanceExpired(instance: RemoteInstance, nowMs: number, ttlMs?: number): boolean;
 /** 回收一个驻留实例（只 kill pid；不删登记文件，留给诊断）。 */
 export declare function buildKillInstanceScript(pid: number): string;
+/**
+ * 杀完之后**确认 pid 真的没了**：`kill -9` 返回 0 只说明信号发出去了。
+ * 打 `PID_GONE` / `PID_ALIVE` 两种标记，调用方据此决定要不要报 `remote/recycle-incomplete`（P4 P2-3）。
+ */
+export declare function buildKillAndVerifyScript(pid: number): string;
 //# sourceMappingURL=instance.d.ts.map
