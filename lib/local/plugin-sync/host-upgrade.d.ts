@@ -33,7 +33,13 @@ export declare function buildRegistryProbeScript(request: {
 }): string;
 /** 安装脚本：引导器那份 + 装完自报版本（上层据此判定「真的换成了」）。 */
 export declare function buildHostInstallScript(request: Omit<HostUpgradeRequest, 'exec'>): string;
-/** 从安装输出里取「装完自报的版本」；没有标记就当作没验过。 */
+/**
+ * 从安装输出里取「装完自报的版本」；没有标记就当作没验过。
+ *
+ * 不是只看标记前一行（R2-S5）：`dsh --version` 在异常情况下可能多打一行（例如 `build abc`），
+ * 那样会把一次成功的安装判成「自报版本不符」，用户只能反复重试同一个假失败。
+ * 从标记往上扫最近一条**像 semver 的行**，扫不到才算没验过。
+ */
 export declare function parseInstalledVersion(stdout: string): string | null;
 export declare function upgradeRemoteHost(request: HostUpgradeRequest): Promise<{
     readonly version: string;
