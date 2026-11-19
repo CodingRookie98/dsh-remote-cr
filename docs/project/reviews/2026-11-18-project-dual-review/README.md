@@ -3,6 +3,7 @@
 > 基线 `2270c71`。Schema = code，Mode = Full（R1 红队 → R2 架构师元审判）。
 > 子模型：本会话没有 LLM provider 选择权（`list_subagent_models` 为空、指定 provider 一律 `not allowed`），两轮都用会话默认路由；GLM-5.3 的尝试记录见 `.goal-loop/dispatch-ledger.md`。
 > 归档形态：**transcribed**（子智能体返回文本，主智能体逐字转录）。
+> **裁决后增量（2026-11-19 回填）**：`2270c71..d305ea4` 及其后的收尾提交已关闭上述阻断与全部 backlog，本文件 §「本轮修复」与 §「变异反证」是**当时**的记录；条目当前状态见文末。
 
 ## R1（红队 + 第一性原理）
 
@@ -40,4 +41,17 @@
 ## 未验证 / 留 backlog
 
 - 并发下的真实故障形态（半装 vs 其一成功）只有命令级与 HTTP 级证据，未在真机 npm 上复现。
-- S1 profile、S2 流式进度、S5、S6（`failSync` 无 L4 场景）、S7 契约类型清单、S8、S9、S10 optout 原子写、S11 状态根常量：按 R2 排序留 backlog。
+- **backlog 已清零（2026-11-19 回填）**：
+
+| 条目 | 落地 |
+|---|---|
+| S2 流式进度 | `b932a5d`（逐条进度轮询 + `/plugin-sync/progress`） |
+| S3 一个码背三义 | `4f4013e`（忙 → 独立码 `remote/plugin-sync-busy`） |
+| S5 `parseInstalledVersion` | `2481f04`（向上扫最近的 semver，不再只认标记前一行） |
+| S6 `failSync` 无 L4 场景 | `ae53876`（预览场景 `sync-failed` + 四标记） |
+| S7 契约类型清单滞后 | `2481f04`（契约与 `shared/plugin-sync.ts` 对齐） |
+| S8 文档计数漂移 | 已对齐（`check:errors` 73 条与 README 一致） |
+| S9 `SYNC_REASON_KEYS.none` 语义错位 | `ae53876`（独立键） |
+| S10 optout 非原子写 | `ae53876`（原子写） |
+| S11 状态根名硬编码 | `ae53876`（改用 `HOME_DIR_NAME`） |
+| **S1 `profile` 死透传** | **2026-11-19 收尾**：删 `routes.ts` 的死展开 + 删 `SyncRoutesOptions.profile` + 路由级用例「带 `profile` 参数改不了 profile」；变异反证（plan 的 profile 改常量 → 红） |

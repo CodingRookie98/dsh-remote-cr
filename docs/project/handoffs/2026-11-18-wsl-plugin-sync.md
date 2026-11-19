@@ -2,16 +2,20 @@
 
 > 写于 2026-11-18。上一个会话已完成「远端插件同步 + 远端工作区区分」两项需求并通过三轮审查（Delta-2 可签）。
 > 本文件只讲接下来要做什么、怎么验、有哪些坑；完整设计见下方「先读这些」。
+>
+> **时效说明（2026-11-19 回填）**：本文件写于 2026-11-18。其后 T7（WSL 插件同步）、宿主版本对齐、R1/R2 双轮审查与 R2 backlog 已全部闭环。
+> 当前基线：**805 tests / 0 fail**、错误码 **73** 条、`master` 已推送并与 `origin/master` 同步、工作树干净。
+> §0 的基线与 §3 的待办已按现状更新；§6.5 / §6.6 保留为**当日完成记录**（里面的数字是当时的，不是基线），最新收尾见 §6.7。
 
 ## 0. 一分钟上手
 
 ```bash
 cd D:/workspace/projects/dsh-remote-cr
-git status -sb              # master 领先 origin/master 38 个提交（未推送）
-pnpm typecheck && pnpm test # 当前基线：741 tests / 0 fail
+git status -sb              # 2026-11-19：master 与 origin/master 已同步，工作树干净
+pnpm typecheck && pnpm test # 当前基线：805 tests / 0 fail（2026-11-19 实测）
 pnpm check:cjk && pnpm check:boot && pnpm check:errors && pnpm check:docs
 pnpm build && pnpm build:client  # lib/ 是入库产物，改完必须重建
-pnpm e2e:preview                 # 真 Chrome，15 场景 + 键盘链路（不进 CI）
+pnpm e2e:preview                 # 真 Chrome，全部预览场景 + 键盘链路（场景数随夹具增长，以 harness 输出为准；不进 CI）
 ```
 
 **先读**：
@@ -75,7 +79,7 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 
 ## 3. 其他待办（按优先级）
 
-1. 推送 master：本地领先 origin/master **38 个提交**。推送前先 git log origin/master..master --oneline 过一遍。
+1. ~~推送 master~~ —— **已完成（2026-11-19）**：`62485c0..d305ea4` 共 61 个提交已推到 `origin/master`。之后每个改动仍按「源码 / 产物」分层提交后立即推送。
 2. 市场 PR #16551：CI 两项已 SUCCESS，等维护者合并；合并后 dsh-plugin-catalog 重建才会显示简介。
 3. 未验证清单（不要当成已支持）：
    - 首次接入自动弹窗的真实时序（预览不执行真实接入）；
@@ -134,16 +138,27 @@ WSL 后端没有 keepAlive：wsl.exe 句柄一退就把 distro 侧子进程带�
 | 版本来源 | 本地：从宿主入口向上找 `@deepseek-ai/dsh` 的 package.json（不 spawn）；远端：plugin-sync reader 同一次 exec 里 `--version`（检出用解释器跑） |
 | 执行 | `POST /plugin-sync/host` → 服务端重算判定 → `npm view <pkg>@<v> version`（失败 → `host-version-unavailable`）→ 复用 `buildDshPackageScript` 安装 → 装完必须自报同一版本（否则 `host-upgrade-failed`） |
 | UI | 对话框 `sync-host` 一段 + 两段式确认按钮；装完提示「重连后生效」（不自动重启）；三个 L4 场景 `sync-host-drift` / `sync-host-installed` / `sync-host-rejected` |
-| 门禁 | **803 tests / 0 fail**；`e2e:preview` **25/25** 场景（新增 `sync-progress`）；错误码索引 73 条（新增 `remote/host-sync-rejected`） |
+| 门禁 | **804 tests / 0 fail**；`e2e:preview` **25/25** 场景（新增 `sync-progress`）；错误码索引 73 条（新增 `remote/host-sync-rejected`） |
 | 审查 | R1 不可签（4 条阻断：lib 未同步 / 探测失败不分因 / 半装谎称检出 / 失败面丢命令与日志）→ 全修 → Delta 复审 **可签** |
 | 待办（非阻断） | `sync-host-failed-next` 可加「li ≥ 1」断言；命令/日志的复制按钮文案共用 `action.copyLog`；「装完版本不符」分支可补 `command` |
 | 变异 | 去掉 checkout 拒绝 → 2 红；忽略 registry 探测结果 → 1 红；忽略「装完版本不符」→ 1 红 |
 | 未验证 | 一次真实的远端宿主升级（`ubuntu_dev` 是检出 → 按设计拒绝）；远端 `npm view` 的网络可达性只有单元证据 |
 
-## 7. 建议的新会话开场
+## 6.7 收尾记录（2026-11-19）
 
-```
-读 docs/project/handoffs/2026-11-18-wsl-plugin-sync.md，按「主任务」给 WSL 目标补插件同步。
-先跑门禁确认基线（741 tests），WSL 分支按方案 A 做（保持句柄 + UI 提示 + 失败可重跑），
-并先跑真机探针确认同步期间 wsl.exe 句柄是否稳定。改完按项目约定分层提交（源码 / lib 分开）。
-```
+| 项 | 结果 |
+|---|---|
+| 推送 | `62485c0..d305ea4` 共 **61 个提交**已推到 `origin/master`，本地与远端同步 |
+| S1（`profile` 死透传） | `syncPlanOf` 里的 `...(syncOptions.profile === undefined ? {} : {})` 已删；`SyncRoutesOptions.profile` 整个字段删除，`wire.ts` 不再下发；新增路由级用例「带 `profile` 查询参数改不了读哪个 profile」。**变异反证**：把 `buildSyncPlan` 的 profile 改成常量 `'admin'` → 该用例红 |
+| lib 残留 | 删除 4 组无源码产物 `lib/local/backend/wsl/remote-dsh.{js,d.ts,test.js,test.d.ts}`（含 map），`src` 侧 0 命中 |
+| 门禁 | `typecheck` 0；**805 tests / 0 fail**；`check:cjk` / `check:errors`（73 条）/ `check:docs` / `check:boot` 全 OK；`build` + `build:client` 重建 |
+| 根因备注 | `tsc` 不清理旧产物，所以源码删了产物还在。本轮只删残留；要根治得给构建加「先清空再编译」并配套失败回滚，另开 |
+
+## 7. 下一步（2026-11-19 之后）
+
+当前**没有阻断型待办**，剩下的是产品面（详见 `docs/design/milestones.md`）：
+
+1. **M3 尾巴**：统一会话列表 / 搜索 / 归档 → 账号用量端点代理或明确降级 → 多 host 引用计数 → doctor 的 GUI 面。
+2. **M4 发布面**：兼容矩阵进 CI、卸载干净验证、安全评审、英文 README。
+3. **M5**：Docker 后端（用户排序里排最后）。
+4. 开新功能片时重走 `goal-loop` 的意图对齐；**不要把本文件 §0/§3 的旧结论当基线**，先跑 §0 的门禁命令确认现状。
