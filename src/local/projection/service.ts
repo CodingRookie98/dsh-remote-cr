@@ -550,8 +550,9 @@ export class ProjectionService {
   /**
    * 结束远端：把当前（含留存）连接真正收掉，并清空槽位与重连驱动。
    *
-   * 与 `dispose()` 的区别：`dispose()` 在驻留模式下只是「放手」；这里永远是真收 ——
-   * 面板上的「结束远端」必须能终止一个没人接回的驻留实例。
+   * 与 `dispose()` 的区别：`dispose()` 是**同步放手**（进程退出路径，没人再看结果）；这里的
+   * `recycle()` 是**异步真收**——它 `await connection.dispose()`，失败抛 `remote/recycle-incomplete`。
+   * 面板上的「结束远端」用它：必须能确认驻留实例真的终止了。
    */
   /**
    * 读远端**已有**的工作区列表（M4-1）。

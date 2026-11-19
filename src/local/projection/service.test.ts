@@ -309,7 +309,7 @@ test('recycle 才真收：进程退出/换 target 时才把远端进程收掉', 
   rpc.failNext(transportLoss())
   await assert.rejects(() => service.attach(TARGET, ATTACH))
   assert.deepEqual(disposals, [], '断线不能 dispose')
-  service.recycle()
+  await service.recycle()
   assert.deepEqual(disposals, [1], 'recycle 才真收')
 })
 

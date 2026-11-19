@@ -97,3 +97,26 @@ test('sessions 按 workspaceId 过滤，且新→旧', () => {
   assert.deepEqual(store.sessions('a').map((entry) => entry.sessionId), ['s3', 's1'])
   assert.deepEqual(store.sessions('missing'), [])
 })
+
+test('removeWorkspace：连它的会话一起删，别的 workspace 的会话不受影响', () => {
+  const store = new ProjectionStore()
+  store.replaceAll(
+    [
+      { id: 'w1', localPath: 'C:/a', remotePath: '/a', backend: 'ssh', distro: null, title: 'a', availability: 'online' },
+      { id: 'w2', localPath: 'C:/b', remotePath: '/b', backend: 'ssh', distro: null, title: 'b', availability: 'online' },
+    ],
+    [
+      session('s1', 'w1'),
+      session('s2', 'w2'),
+    ],
+  )
+  assert.equal(store.removeWorkspace('w1'), true)
+  assert.deepEqual(store.workspaces().map((w) => w.id), ['w2'])
+  assert.deepEqual(
+    store.sessions('w1').map((s) => s.sessionId),
+    [],
+    '被移除 workspace 的会话不许留下孤儿行',
+  )
+  assert.deepEqual(store.sessions('w2').map((s) => s.sessionId), ['s2'])
+  assert.equal(store.removeWorkspace('w1'), false, '重复移除回 false，不假装成功')
+})
