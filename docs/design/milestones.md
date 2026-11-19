@@ -113,6 +113,7 @@
 
 | 任务 | 验收 |
 |---|---|
+| **发布前验证（可复现）** | ✅ `pnpm verify:release [--real] [--host]`：静态门禁 9 + 构建/L4 3 + 真机探针 7 + 真实宿主 1 = **20/0/0**；报告见 [release/verification-2026-11-19.md](../release/verification-2026-11-19.md) |
 | 兼容矩阵（0.2.0 / 0.2.1 线）+ CI | 两端均通过。**2026-11-19 口径**：用户拍板**不进常规 CI**（真机兼容需要 Windows+WSL runner）；改为 `pnpm check:compat` 本地自检 + [兼容矩阵文档](../release/compatibility-matrix.md) + 升宿主 checklist |
 | 安装器/市场发布/文档/中英文 | 新用户按文档可独立完成。**状态**：`README.en.md` 存在并在本轮补齐新功能段落；市场 PR [#16551](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16551) 等维护者合并（外部依赖） |
 | 安全评审（凭据、隧道、iframe、远端权限） | 无高危项。✅ [评审归档](../security/review-2026-11-19.md)：凭据边界四条独立护栏、无 iframe 面、命令全走 `shellQuote`；3 条低风险 + 4 条未验证如实列出 |
