@@ -906,8 +906,10 @@ export function refreshKey(target: ConnectTarget): string {
 export function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean {
   if (left.backend !== right.backend) return false
   if (left.port !== right.port || left.remoteRoot !== right.remoteRoot) return false
-  if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro === right.distro
-  if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias === right.alias
+  // 与 `targetKeyOf` 对齐：WSL 发行版与 SSH 别名都按大小写不敏感比较，
+  // 否则 `Prod` / `prod` 会被当成两台机器（键是同一个、身份判定却不同 → 多余重连）。
+  if (left.backend === 'wsl' && right.backend === 'wsl') return left.distro.toLowerCase() === right.distro.toLowerCase()
+  if (left.backend === 'ssh' && right.backend === 'ssh') return left.alias.toLowerCase() === right.alias.toLowerCase()
   return false
 }
 
