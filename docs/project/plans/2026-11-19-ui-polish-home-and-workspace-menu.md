@@ -2,7 +2,7 @@
 
 > - 需求来源：用户 YG 2026-11-19 的四条界面反馈（原话见 §1）
 > - 唯一可读真相源：本文件
-> - 关联：[ui-design.md](../../design/ui-design.md) §11、[RFC-0003](../proposals/RFC-0003-plugin-sync-and-remote-workspace-affordance.md)、[上游 hole 提案](../proposals/upstream-workspace-row-holes.md)
+> - 关联：[ui-design.md](../../design/ui-design.md) §11、[RFC-0003](../../proposals/RFC-0003-plugin-sync-and-remote-workspace-affordance.md)、[上游 hole 提案](../../proposals/upstream-workspace-row-holes.md)
 
 ## 🚀 Active Checkpoint
 

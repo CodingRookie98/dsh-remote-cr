@@ -29,7 +29,7 @@
 > - **WSL 代理改写 mirrored 开/关两态 → 降级为「仅 mirrored」**：③ stdio 桥不依赖网络模式，只有 ① 优化档关心 mirrored；**NAT 态未测**（改 `.wslconfig` 会影响宿主全部 distro，本轮不动），如实记为未验证。
 > - **MCP 路径重写 → 推到 M3**：v1 不实现 `rewritePathArgForRemote`；M1 的口径改为「检测到 MCP 配置含本地绝对路径即结构化报错」，不静默错配。
 >
-> 逐项裁决理由与反向条件见 [`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](../project/plans/2026-10-31-m1-wsl-closed-loop.md) §0（B1.1–B1.5）。
+> 逐项裁决理由与反向条件见 `docs/project/plans/2026-10-31-m1-wsl-closed-loop.md` §0（B1.1–B1.5）。
 
 **目标**：确定嵌入路线（ADR-0003）、验通工作区投影层、跑通槽位原型，排除最致命的技术风险。工作区身份方案已于 2026-10-26 定案（WSL=UNC / SSH=锚点，见 `architecture.md` §4.1），M0 只需验投影层。
 
@@ -51,7 +51,7 @@
 
 **目标**：WSL 后端从零到「可用」，达到验收 A1–A8 的 **WSL 轮**。
 
-> **执行计划**：[`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`](../project/plans/2026-10-31-m1-wsl-closed-loop.md)（V1.0.0，Heavy Track）——含 12 项未裁决的书面裁决（§0）、验收口径与不验收项（§1.0）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**本节的验收口径以该计划 §1.0 为准**，两者冲突时改本节而不是改计划的口径（口径只能由用户裁决变更）。
+> **执行计划**：`docs/project/plans/2026-10-31-m1-wsl-closed-loop.md`（V1.0.0，Heavy Track）——含 12 项未裁决的书面裁决（§0）、验收口径与不验收项（§1.0）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**本节的验收口径以该计划 §1.0 为准**，两者冲突时改本节而不是改计划的口径（口径只能由用户裁决变更）。
 
 > **进度（2026-10-31）**：地基五条已 spike 实测成立，见 `spikes/m1/README.md`——三条来自 WSL 闭环（UNC 工作区读写闭环、**反向通路逐档定档（③ stdio 桥默认 / ① `mirrored` 优化 / ② 网关已退役）**、两级 dispose），另外两条是 **ADR-0003 第二层阈值**：**T5 跨机字节**（`spikes/m1/cross-machine-t5/`，12/12 断言 + 负控，官方 `installConnection` + 自定义 `fetch`/`createWebSocket` 打到 WSL 内 `dsh web`，远端会话/文件/目录/逻辑流全部取回）与 **T6 跨机失败可见**（`spikes/m1/cross-machine-t6/`，9/9 断言 + 负控，版本不匹配 / 远端无 Node / 断线三条失败路径各有实跑证据）。**C 型至此两层阈值全满足**，ADR-0003 的降级分支（「内核 + 自建 RPC 封装」1200–1600 行）不触发。**产品行为（「远端工作台」面板、插件注册、凭据替换、断线重连）尚未开始**，本节任务表除已标注「已 spike 实测」的验收片段外仍全部未勾选。
 
@@ -92,7 +92,7 @@
 | **A8 失败可诊断（SSH 向导）：结构化码 + 可复制日志 + 重试入口** | 失败要给可读的码与下一步，能在 GUI 内复制、点重试恢复，且不出现「远端不可用却本地执行」。✅ **真机取证（同上 8/8；负控失败集恰为 `G-A8-1/2/3`）**：用远端不存在的目录 ⇒ `remote/workspace-invalid-path` + detail（含远端 `workspace/invalid-path` 原文）+ nextActions `["查看远端日志","重试"]`；错误框有复制按钮；点「重试」**真的发出新一次 `/attach`**（`attachCalls: 4→5`）并恢复——不是只看「页面还在」；关宿主后远端 `:8961` 无孤儿 |
 | **A7 断线恢复（SSH）：状态可见 + 自动退避 + 无孤儿** | 断线后条目可见（标离线）、自动重连按 2s/4s/8s 走、退出不留孤儿。✅ **真机取证（2026-11-13，`gcp`，`spikes/m2/ssh-e2e/reconnect.ts` 正向 7/7 + 负控 4/7，失败集恰为 `A7-3/A7-3b/A7-4`）**：杀远端 dsh ⇒ `remote/tunnel-unavailable`、`link=retrying`、投影全 offline（条目保留）；**未手动干预**，2s 档自动重连 18340 ms 连回、端口 3550 ms 重新监听、投影 251 ms 重建且 id 不变；recycle 后 3113 ms 端口释放。**口径**：验的是「远端进程被杀」；链路丢包与整机重启的握手时序未验证 |
 
-**出口**：同一套 UI 与语义下，SSH 达到 A1–A8。**2026-11-13 签署（有条件）**：A1–A8 在 SSH 上逐条有真机证据（本表 ✅ + 计划文档 §3 的 S10-A…S10-O），按 `requirements.md` A5 的**取消能力分级**口径签署；签署归档 [`reviews/2026-11-13-m2-exit-signoff`](../project/reviews/2026-11-13-m2-exit-signoff/README.md) §3 的未验证子句与 §4.4 的 D7 / M3 / D4 / D5 **转 M3 输入**。**这不是 Zero Blockers 的结论**：R1 五轮均判「不是 Zero Blockers」，每轮缺陷都已处置或按上述口径显式豁免；**A9 记为「有条件达成」**（WSL 轮的 M1 与 SSH 轮按同一口径放行）。
+**出口**：同一套 UI 与语义下，SSH 达到 A1–A8。**2026-11-13 签署（有条件）**：A1–A8 在 SSH 上逐条有真机证据（本表 ✅ + 计划文档 §3 的 S10-A…S10-O），按 `requirements.md` A5 的**取消能力分级**口径签署；签署归档 `reviews/2026-11-13-m2-exit-signoff` §3 的未验证子句与 §4.4 的 D7 / M3 / D4 / D5 **转 M3 输入**。**这不是 Zero Blockers 的结论**：R1 五轮均判「不是 Zero Blockers」，每轮缺陷都已处置或按上述口径显式豁免；**A9 记为「有条件达成」**（WSL 轮的 M1 与 SSH 轮按同一口径放行）。
 
 ## M3 · 「丝滑」打磨（2–3 周）
 

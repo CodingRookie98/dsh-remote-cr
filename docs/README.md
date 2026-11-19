@@ -3,7 +3,7 @@
 > 本目录记录 `dsh-remote-cr` 的调研、设计与决策。写文档的规则：**结论先行、证据可复现、未验证的明确标注**。
 
 > **命名沿革**：本项目曾用名 `dsh-teleport`，面板曾叫「瞬移」，运行时标识前缀曾为 `teleport`。2026-11-15 按 [ADR-0006](./decisions/ADR-0006-rename-runtime-identifiers.md) 统一为 `remote-cr` / 「远端工作台」（Remote Workbench）。
-> **历史快照不改名**：`research/`、`project/reviews/`、`project/plans/2026-11-15 之前` 是带日期的取证记录，里面的旧名是当时的原话，改写等于伪造记录；现行文档（`design/`、`decisions/`、`proposals/`、README）已全部改名。
+> **历史快照不改名**：`research/` 是带日期的调研记录，里面的旧名是当时的原话，改写等于伪造记录；现行文档（`design/`、`decisions/`、`proposals/`、README）已全部改名。
 
 ## research/ — 调研与实测
 
@@ -67,19 +67,17 @@
 
 ## project/ — 项目运行记录（非长期知识）
 
-> 交接文档：[`handoffs/2026-11-18-wsl-plugin-sync.md`](./project/handoffs/2026-11-18-wsl-plugin-sync.md) —— 给 WSL 目标补插件同步（含实现要点、验收、踩坑清单与可复用探针）。
+> **2026-11-19 清理**：审查归档（`reviews/`，52 份）与已完成计划（12 份）**已移出仓库**——过程价值已经结束，留着只会让人以为那是现行契约。
+> 需要原文时走 git 历史：`git log --diff-filter=D --oneline -- docs/project/`。
 
 | 文件 | 内容 |
 |---|---|
-| [m0-spike/README.md](../spikes/m0/README.md) | **交接单**：项目状态、两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、环境事实、重跑 spike 步骤与踩坑 |
-| [plans/2026-11-14-add-workspace-ui-redesign.md](./project/plans/2026-11-14-add-workspace-ui-redesign.md) | **「添加工作区」重做（唯一真相源）**：P-1 三条路线取舍、WSL 报错的四条根因与真机证据、P1 测试裁定（L0–L3 + 负控）、P2 原子任务表、滚动执行记录 |
-| [plans/2026-10-31-m1-wsl-closed-loop.md](./project/plans/2026-10-31-m1-wsl-closed-loop.md) | **M1 执行计划（唯一真相源）**：12 项未裁决的书面裁决（§0 A1–A6 / B1–B6）、验收口径与明确不验收项（§1.0）、依赖选型与严禁事项（§1.2/§1.3）、L0–L3 精确验证命令（§2）、P3.0–P5 原子任务表（§3）。**动 M1 代码前先读它** |
-| [m1-spike/README.md](../spikes/m1/README.md) | **交接单**：M1 地基五条实测（UNC 读写闭环 / 反向通路逐档定档：③ stdio 桥默认、① `mirrored` 优化、② 网关退役 / 两级 dispose / T5 跨机字节 / T6 跨机失败可见）、桥的代价形态（区间，不承诺倍数）、对实现的三个落点、未验证 6 条；子包 [`wsl-closed-loop/`](../spikes/m1/wsl-closed-loop/README.md)、[`cross-machine-t5/`](../spikes/m1/cross-machine-t5/README.md)、[`cross-machine-t6/`](../spikes/m1/cross-machine-t6/README.md) 为可复跑探针 |
-| [reviews/2026-10-19-design-baseline/](./project/reviews/2026-10-19-design-baseline/) | 上一轮双轮审查归档（历史，不改） |
-| [reviews/2026-10-30-m1-reverse-path/](./project/reviews/2026-10-30-m1-reverse-path/) | 反向通路交付单元的双轮审查归档（裁决 ✅ 准予交付；4 条黄灯已修复、4 条 ⚖️ 交人类已在 M1 计划 §0 收口） |
+| [plans/README.md](./project/plans/README.md) | **当前计划索引**：只剩两份在办计划（B 的落地记录、面板视觉 v2） |
+| [handoffs/2026-11-19-doc-implementation-drift.md](./project/handoffs/2026-11-19-doc-implementation-drift.md) | **文档漂移报告**：计划/设计与实现不一致的 7 条（含已修与待确认状态） |
+| [m0-spike/README.md](../spikes/m0/README.md) | M0 交接单：两轮 grilling 裁决、M0 十六条验证结论（V1–V16）、重跑步骤 |
+| [m1-spike/README.md](../spikes/m1/README.md) | M1 交接单：五条地基实测、反向通路定档、未验证 6 项 |
 
-> **代码不在 `docs/` 下**：spike 插件与 CDP 探针是可执行代码，位于仓库根的 [`spikes/`](../spikes/README.md)；本目录只放文档，`project/` 只保留不可执行的审查归档。
-
+> **代码不在 `docs/` 下**：spike 插件与 CDP 探针是可执行代码，位于仓库根的 [`spikes/`](../spikes/README.md)。
 ## 阅读顺序建议
 
 1. 新人/新 agent：根 `README.md` → 本文件 → `AGENTS.md`；

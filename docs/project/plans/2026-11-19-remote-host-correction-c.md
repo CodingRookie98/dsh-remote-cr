@@ -1,7 +1,7 @@
 # 计划：远端宿主纠正（B）与远端会话进侧栏（C）
 
 > - 需求来源：用户 YG 2026-11-19「WSL 工作区仍是本地宿主，直接做 C」
-> - 需求确认：[RFC-0008](../proposals/RFC-0008-remote-session-in-sidebar.md)（本文件 §6 记录其阻断取证）
+> - 需求确认：[RFC-0008](../../proposals/RFC-0008-remote-session-in-sidebar.md)（本文件 §6 记录其阻断取证）
 > - 唯一可读真相源：本文件
 
 ## 🚀 Active Checkpoint

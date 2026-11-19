@@ -2,7 +2,7 @@
 
 - 状态：**Accepted**（2026-11-15，用户书面授权推翻 AGENTS.md §1「命名分层铁律」）
 - 日期：2026-11-15
-- 关联：[RFC-0002](../proposals/RFC-0002-remote-cr-rename-i18n-ui.md)、计划 [2026-11-15-remote-cr-rename-i18n-ui](../project/plans/2026-11-15-remote-cr-rename-i18n-ui.md)、[ADR-0004](ADR-0004-plugin-sync.md)
+- 关联：[RFC-0002](../proposals/RFC-0002-remote-cr-rename-i18n-ui.md)、计划 2026-11-15-remote-cr-rename-i18n-ui、[ADR-0004](ADR-0004-plugin-sync.md)
 
 ## 1. 背景
 

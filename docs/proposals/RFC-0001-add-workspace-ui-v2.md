@@ -2,7 +2,7 @@
 
 - 状态：**In Review**（P0 出口；待 User Nod）
 - 日期：2026-11-14
-- 关联：[ADR-0005](../decisions/ADR-0005-workspace-entry-ui.md)、[ui-design.md](../design/ui-design.md)、计划 [2026-11-14-add-workspace-ui-redesign](../project/plans/2026-11-14-add-workspace-ui-redesign.md)
+- 关联：[ADR-0005](../decisions/ADR-0005-workspace-entry-ui.md)、[ui-design.md](../design/ui-design.md)、计划 2026-11-14-add-workspace-ui-redesign
 - 通道：Heavy Track（client 组件 / 宿主路由 / WSL 后端 / 共享契约 四层）
 
 ## 1. 问题陈述

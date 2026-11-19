@@ -7,11 +7,24 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](./package.json)
 [![DSH](https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.0%20%3C0.3.0-6f42c1.svg)](./package.json)
 
-由 [@CodingRookie98](https://github.com/CodingRookie98) 维护 · [更新日志](./CHANGELOG.md) · [排查手册](./docs/troubleshooting.md) · [决策记录](./docs/decisions/) · [审查归档](./docs/project/reviews/) · [Issue](https://github.com/CodingRookie98/dsh-remote-cr/issues)
+由 [@CodingRookie98](https://github.com/CodingRookie98) 维护 · [更新日志](./CHANGELOG.md) · [排查手册](./docs/troubleshooting.md) · [决策记录](./docs/decisions/) · 审查归档 · [Issue](https://github.com/CodingRookie98/dsh-remote-cr/issues)
 
 > DeepSeek Harness（DSH）的远程开发插件：**把整个宿主搬到远端（WSL2 / SSH），本地只留一个原生 GUI 和钥匙。**
 >
 > 形态对标 VS Code Remote-SSH / Zed Remote —— 但搬过去的不是「命令」，是 agent 运行时本身。
+
+> ### ⚠️ 项目状态（2026-11-19）：实验性，暂不建议用于生产
+>
+> 项目当前卡在**架构级瓶颈**上，不是缺功能：DSH 的 client RPC 图在应用装配期绑定单一 host，插件没有任何扩展点能让**远端会话进入本地侧栏**。取证（含 cordis 实测）见 [插件能力边界报告](./docs/design/plugin-capability-boundary.md)，上游请求见 [deepseek-harness discussion #13824](https://github.com/deepseek-ai/deepseek-harness/discussions/13824)。
+>
+> | | 状态 |
+> |---|---|
+> | 远端 dsh 启动 / 隧道 / 凭据反向代理 | ✅ 真机验证 |
+> | 面板内的远端工作区与会话投影、向导完成即接入（B） | ✅ 已实现 |
+> | 工作区行 ⋯ 菜单的远端动作、会话行「远端」徽标 | ✅ 已实现（宿主需提供 `contextMenus`） |
+> | 远端会话出现在**侧栏会话列表** | ❌ 架构上做不到（见边界报告） |
+> | 在**侧栏**点开远端会话并对话 | ❌ 同上 |
+> | Docker 后端 / Edge·Firefox / 读屏路径 / SSH 部分失败分支 | ⚠️ 未支持或未完整测试 |
 
 <img src="https://raw.githubusercontent.com/CodingRookie98/dsh-remote-cr/master/docs/assets/panel-remote-cr.png" alt="「远端工作台」面板：状态带 + 两级主从（主机 → 投影工作区 / 会话）" width="1200"/>
 
@@ -41,7 +54,7 @@ DSH 插件市场里的远程插件多为 **A 型（远端执行）**：agent、�
 - 唤醒可取消：客户端 `abort` → 宿主 `close` → kill `wsl.exe`，不留跑满超时的孤儿进程
 
 **SSH 与投影**
-- 面板填目标并接入：远端注册工作区、投影会话回本地列表，与本地工作区同视图
+- 面板填目标并接入：远端注册工作区、会话投影**到本插件自己的面板**（注意：**不是**侧栏会话列表，见「已知限制」第一条）
 - 断线自动重连（2s / 4s / 8s ×3 后退避到 2 分钟）；「结束远端」显式收掉远端进程
 - 导入远端已有工作区：列出可导入项 → 选择 → 注册
 
@@ -116,7 +129,9 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 
 1. **接入远端**：打开「远端工作台」面板 → 填 SSH 目标（或选 WSL 发行版）→ 接入。首次会分阶段显示引导进度，可取消。
 2. **添加工作区**：点官方「Add workspace」，或面板里的添加入口 → 左栏选来源 → 右栏选目录 → 「添加此目录」。
-3. **跑长任务**：会话运行在远端，关掉本地窗口任务继续；回来时重连复用同一实例，会话 id 不变。
+3. **跑长任务**：在面板里对远端工作区点「新建会话」——那条会话的 agent 在远端跑，关掉本地窗口任务继续；回来时重连复用同一实例，会话 id 不变。
+
+> ⚠️ 从**侧栏**点开向导添加的 UNC 工作区并新建会话，得到的是**本地会话**（cwd 指到 UNC）。远端会话只在「远端工作台」面板里。
 
 ## 工作原理
 
@@ -178,10 +193,13 @@ docs/          调研、设计、决策、计划与审查归档
 - 设计：[需求与验收标准](./docs/design/requirements.md) · [总体架构](./docs/design/architecture.md) · [UI 设计](./docs/design/ui-design.md) · [里程碑](./docs/design/milestones.md)
 - 决策：[ADR-0001](./docs/decisions/ADR-0001-host-on-remote.md)（B 型）· [ADR-0003](./docs/decisions/ADR-0003-embedding-strategy.md)（嵌入路线）· [ADR-0004](./docs/decisions/ADR-0004-plugin-sync.md)（插件同步）· [ADR-0005](./docs/decisions/ADR-0005-workspace-entry-ui.md)（工作区入口）· [ADR-0006](./docs/decisions/ADR-0006-rename-runtime-identifiers.md)（命名）· [ADR-0007](./docs/decisions/ADR-0007-i18n-layering.md)（双语分层）· [ADR-0008](./docs/decisions/ADR-0008-drop-docker-backend.md)（Docker 取消）
 - 调研：[架构模型判定](./docs/research/01-architecture-models.md) · [竞品与生态](./docs/research/05-ecosystem-and-value-2026-11.md) · [DSH 扩展点与硬限制](./docs/research/04-dsh-extension-points.md)
-- 审查：[0.4.0 的八轮对抗审查归档](./docs/project/reviews/2026-11-15-remote-cr-rename-i18n-ui/)
+- 状态与边界：[插件能力边界报告](./docs/design/plugin-capability-boundary.md) · [RFC-0008（侧栏远端会话）](./docs/proposals/RFC-0008-remote-session-in-sidebar.md) · [文档漂移报告](./docs/project/handoffs/2026-11-19-doc-implementation-drift.md)
 
 ## 已知限制
 
+- **侧栏入口不是远端**（最重要的一条）：向导添加的 WSL 目录在本机注册表里是一条 UNC 工作区，从侧栏打开它建的会话跑在**本地宿主**，只是 cwd 指到了 UNC。远端宿主会话只能从「远端工作台」面板创建/查看。根因与三条路径见 [RFC-0008](./docs/proposals/RFC-0008-remote-session-in-sidebar.md)。
+- **面板内不能读远端会话历史、也不能发消息**：`session/events` 需要 durable address + cursor + wire-event 解码，等于在插件里复刻 session-controller 的 client 层；只做发送则用户看不到回复。评估见 [RFC-0008 §4.6](./docs/proposals/RFC-0008-remote-session-in-sidebar.md)。
+- **工作区行菜单依赖宿主提供 `contextMenus`**：老宿主上不会注册那三项，面板与其它能力不受影响。
 - **Docker**：**已取消**（2026-11-19，[ADR-0008](./docs/decisions/ADR-0008-drop-docker-backend.md)）——四选一里仍灰显「暂不支持」以保持既有选择契约，不交付可用链路
 - **宿主版本不一致只有 registry 一条路**：同步对话框会显示「本地 x / 远端 y」并允许把远端升到本地版本（`dsh plugin` 之外的另一条动作，**装完要重连才生效**）；
   远端跑**检出**、或本地是**未发布的开发构建**时明确拒绝并给原因（`checkout-mode` / `host-version-unavailable`），不做检出切换与文件搬运
