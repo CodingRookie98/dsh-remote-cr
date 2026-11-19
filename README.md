@@ -62,7 +62,7 @@ DSH 插件市场里的远程插件多为 **A 型（远端执行）**：agent、�
 
 ```bash
 # 固定版本（推荐）
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.4.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.5.0'
 
 # 或链接本地检出（开发）
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
@@ -71,6 +71,16 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 装完重启 `dsh web`（或 DSH Desktop），侧栏出现「远端工作台」即可使用。本包 `private: true`，通过 GitHub tag / 本地 link 分发，不走 npm publish。
 
 > 插件市场的卡片简介来自社区目录 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)，我们已备好投稿材料（[`docs/release/market-listing.md`](./docs/release/market-listing.md)）；投稿合并前，市场里这张卡片只会显示包名与链接。
+
+## 从 0.4.0 升级到 0.5.0
+
+0.5.0 **不破坏兼容**：运行时标识、配置位置、补丁行 id 都没变，直接换 tag 即可。
+
+行为上有三处收紧，升级前值得知道：
+
+1. **「结束远端」现在是真收**：会等远端进程确认退出；失败回 `remote/recycle-incomplete`（可再点一次重试），不再「看起来成功」。
+2. **反向隧道被服务端放宽时拒绝连接**：若远端 sshd 是 `GatewayPorts yes`，我们写的 `-R 127.0.0.1:0` 会被放宽成 `0.0.0.0`，此时接入直接失败并提示改回 `GatewayPorts no`（这条隧道是远端回到本机凭据代理的通道）。
+3. **`hidepid=2` 宿主上的远端残留清理一条都不删**：那种宿主里别人的进程既看不见、`kill -0` 又 EPERM，「看不见」不再当「已死」。
 
 ## 从 0.3.0 升级到 0.4.0
 

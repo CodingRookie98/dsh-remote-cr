@@ -1,6 +1,6 @@
 # 上架材料 · dsh-plugin.org
 
-> **状态**：当前版本 `0.4.0`（2026-11-18）。仓库已公开、topic 已加，站点 review 待回；更新与上架步骤见 §8 / §9 / §10。仓库地址 `CodingRookie98/dsh-remote-cr`。
+> **状态**：当前版本 `0.5.0`（2026-11-19）。仓库已公开、topic 已加，站点 review 待回；更新与上架步骤见 §8 / §9 / §10。仓库地址 `CodingRookie98/dsh-remote-cr`。
 >
 > 注意：本站（dsh-plugin.org）与插件市场卡片**不是同一套**。卡片简介来自 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 目录，投稿材料见 [market-listing.md](./market-listing.md)。
 
@@ -78,6 +78,15 @@ dsh-plugin.org **不收表单**：流程是「公开仓库 + 打 `dsh-plugin` to
 | 待人工 | 推送分支与 tag（`git push origin master --follow-tags`）；站点 review 通过后回填 listing URL |
 
 发布前门禁（本地实测）：`pnpm typecheck` 0 · `pnpm test` 624 全绿 · `build`/`build:client` 通过且重建为 no-op（产物与源码同步）。
+
+## 10.5 v0.5.0 发布（2026-11-19）
+
+| 步骤 | 状态 |
+|---|---|
+| 版本号 | `0.5.0`（minor，**非破坏性**：运行时标识/配置位置/补丁行 id 均未变） |
+| 变更说明 | [CHANGELOG.md](../../CHANGELOG.md) 的 `[0.5.0]`：多 host 切换 / 端口避让 / 工作区级引用 / 三处行为收紧 / 发布验证入口 |
+| 验证 | `pnpm verify:release --real --host` **20/0/0**，报告见 [verification-2026-11-19.md](./verification-2026-11-19.md) |
+| 市场 | 投稿 PR [#16551](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16551) 仍等维护者合并（外部依赖） |
 
 ## 10. v0.4.0 发布（2026-11-18）
 

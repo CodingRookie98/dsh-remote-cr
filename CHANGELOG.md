@@ -3,17 +3,28 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 0.x 期间的次版本号可能包含不兼容变更；破坏性改动会在条目里明说。
 
-## [Unreleased]
+## [0.5.0] - 2026-11-19
 
-> 版本号尚未 bump（`package.json` 仍是 0.4.0）。以下能力已在 master，发版时按 minor 处理。
+> 非破坏性（minor）：运行时标识、配置位置、补丁行 id 都没变，**从 0.4.0 直装即可**。
+> 行为上有两处收紧，升级前请看一眼「行为变更」一节。
 
 ### 新增
 
 - **会话新鲜度（RFC-0004）**：面板可见且已连接时每 5 s 重读一次 `session/list` 并**原地**贴回投影（不删、不增、不重排）；隐藏或断连立即停链；失败退避 5 → 30 s 封顶并保留旧帧、标 `stale`（「数据已过期」）。会话标题过滤 + 空态。
 - **诊断中心（RFC-0005）**：面板内跑与 `pnpm run doctor` 同一个 `runDoctor`（`pnpm doctor` 是 pnpm 自带命令，会跑它自己的体检），逐项显示状态，「复制报告」与 CLI 文本逐字一致；诊断失败只在诊断区内报错，不占用共享错误槽。
 - **远端残留盘点与清理（RFC-0006）**：只读盘点 `staging/<id>` 与 `instances/<id>.json`；清理需两步确认、目标未连接、进程内互斥，且**有活驻留实例时保留 staging**，逐条删除失败会上报。
-- **多 host 容器（RFC-0007 A1）**：`ProjectionHub` 按 target 持有多个投影引擎；新增 `GET /projection/targets`，`GET /projection?target=` 可读指定那台；面板列出已登记主机。
+- **多 host（RFC-0007 A1–A3）**：`ProjectionHub` 按 target 持有多个投影引擎；新增 `GET /projection/targets`，`GET /projection?target=` 可读指定那台；面板列出已登记主机并可**点击切换**（当前读的是哪台由 `projection-target` 标明）。
+- **端口避让**：同主机、同端口的第二个 target 会自动顺延到 8941–8961 池内空闲端口；跨后端同机（判不出同机时）靠「撞 `remote/port-in-use` → 换端口重试一次」兜住。
+- **工作区级引用**：`references` 改为「这台投影里还剩几个工作区」（从投影表派生，不维护计数器）；面板每个投影工作区多一个「移除」（只删列表，不杀远端进程）。
+- **发布验证入口**：`pnpm verify:release [--real] [--host]` 一条命令跑完静态门禁 / 浏览器预览 / 真机探针 / 真实宿主（20 项，见 [验证报告](./docs/release/verification-2026-11-19.md)）。
 - **兼容自检**：`pnpm check:compat` 读 `engines.dsh` 与本机宿主版本给出 `ok / out-of-range / unknown`，口径见 `docs/release/compatibility-matrix.md`。
+
+### 行为变更（升级前请看）
+
+- **「结束远端」现在是真收**：优先 `connection.stopRemote()`（复用/驻留实例按登记 pid 杀），失败抛 `remote/recycle-incomplete` 而不是回成功；失败后可直接再点一次重试。
+- **反向隧道被放宽时拒绝连接**：服务端 `GatewayPorts yes` 会把我们写的 `-R 127.0.0.1:0` 放宽成 `0.0.0.0`（真机实测）。现在建立后回查远端实际监听地址，任一条不是回环就关掉隧道并报 `remote/tunnel-exposed`。
+- **`hidepid=2` 宿主上的残留清理一条都不删**：那种宿主里别人的 pid 既看不见、`kill -0` 又 EPERM，「看不见」不再当成「已死」（真机容器实测过旧逻辑会删活实例）。
+- **移除工作区不回收远端**：移除只是列表操作；要收进程请点「结束远端」。
 
 ### 修复
 
@@ -22,7 +33,8 @@
 
 ### 文档
 
-- 新增 [安全评审归档](./docs/security/review-2026-11-19.md)、[兼容矩阵](./docs/release/compatibility-matrix.md)、RFC-0004/0005/0006/0007 与对应计划。
+- 新增 [安全评审归档](./docs/security/review-2026-11-19.md)、[兼容矩阵](./docs/release/compatibility-matrix.md)、[发布验证报告](./docs/release/verification-2026-11-19.md)、RFC-0004/0005/0006/0007 与对应计划。
+- 修 `pnpm doctor` 被 pnpm 自带同名命令截走的问题：文档统一 `pnpm run doctor`，并加 `doctor:remote` 别名。
 
 ## [0.4.0] - 2026-11-15
 

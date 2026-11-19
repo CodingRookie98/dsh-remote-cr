@@ -79,7 +79,7 @@ Most remote plugins in the DSH marketplace are **type A (remote execution)**: th
 
 ```bash
 # Pinned version (recommended)
-dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.4.0'
+dsh plugin --profile web add 'github:CodingRookie98/dsh-remote-cr#v0.5.0'
 
 # Or link a local checkout (development)
 dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remote-cr'
@@ -88,6 +88,16 @@ dsh plugin --profile web add 'dsh-remote-cr@link:D:/workspace/projects/dsh-remot
 Restart `dsh web` (or DSH Desktop) afterwards; the "Remote Workbench" entry appears in the sidebar. The package is `private: true` and ships through GitHub tags / local links, not npm publish.
 
 > The marketplace card blurb comes from the community catalog [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin). Our submission is prepared ([docs/release/market-listing.md](./docs/release/market-listing.md)); until it merges, the card shows only the package name and link.
+
+## Upgrading from 0.4.0 to 0.5.0
+
+0.5.0 is **not breaking**: runtime identifiers, config locations and patch-line ids are unchanged — just switch the tag.
+
+Three behaviours tightened; worth knowing before you upgrade:
+
+1. **"Stop remote" now really stops it**: it waits for confirmation that the remote process is gone, and reports `remote/recycle-incomplete` on failure (retryable) instead of pretending success.
+2. **A widened reverse tunnel is refused**: with `GatewayPorts yes` on the remote sshd, our `-R 127.0.0.1:0` gets widened to `0.0.0.0`; the attach then fails and tells you to set `GatewayPorts no` (that tunnel is the path back to the local credential proxy).
+3. **Remote residue purge removes nothing on `hidepid=2` hosts**: other users' processes are both invisible and unkillable there, so "invisible" is no longer treated as "dead".
 
 ## Upgrading from 0.3.0 to 0.4.0
 
