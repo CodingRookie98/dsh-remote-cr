@@ -58,6 +58,10 @@ type RetryIntent = {
 } | {
     readonly kind: 'probe';
     readonly sessionId: string;
+}
+/** 后台刷新失败：没有表单可重放，重试就是让调度器立刻补一次。 */
+ | {
+    readonly kind: 'refresh';
 };
 export declare function RemoteCrPanel(): unknown;
 export {};
