@@ -1,131 +1,131 @@
 {
-  "at": "2026-11-19T12:57:29.966Z",
-  "real": false,
-  "host": false,
-  "alias": "syy_wsl_ubuntu_LAN",
-  "passed": 12,
-  "skipped": 8,
+  "at": "2026-11-19T13:05:55.203Z",
+  "real": true,
+  "host": true,
+  "alias": "wsl_local",
+  "passed": 20,
+  "skipped": 0,
   "failed": 0,
   "results": [
     {
       "name": "typecheck",
       "status": "PASS",
       "detail": "",
-      "ms": 10634
+      "ms": 10512
     },
     {
       "name": "test",
       "status": "PASS",
-      "detail": "ℹ duration_ms 14497.3647",
-      "ms": 16755
+      "detail": "ℹ duration_ms 13881.5755",
+      "ms": 15652
     },
     {
       "name": "check:cjk",
       "status": "PASS",
       "detail": "check-client-cjk: OK（根 client + shared；白名单 2 个文件）",
-      "ms": 2113
+      "ms": 2385
     },
     {
       "name": "check:errors",
       "status": "PASS",
       "detail": "error-index: OK（79 条与字典一致）",
-      "ms": 1443
+      "ms": 1433
     },
     {
       "name": "check:docs",
       "status": "PASS",
       "detail": "check-doc-images: OK（本地 0 张 / 本仓库 raw 2 张 / 第三方外链 10 张）",
-      "ms": 1272
+      "ms": 1313
     },
     {
       "name": "check:boot",
       "status": "PASS",
       "detail": "check-boot-constraints: OK（行 id remote-cr；engines.dsh = >=0.2.1-rc.0 <0.3.0）",
-      "ms": 1282
+      "ms": 1407
     },
     {
       "name": "check:load",
       "status": "PASS",
       "detail": "check-load-smoke: OK（28 条路由 / 30 个 effect）",
-      "ms": 1568
+      "ms": 1558
     },
     {
       "name": "check:compat",
       "status": "PASS",
       "detail": "compat: verdict = unknown",
-      "ms": 1469
+      "ms": 1427
     },
     {
       "name": "doctor",
       "status": "PASS",
       "detail": "结论：可以正常加载",
-      "ms": 1264
+      "ms": 1363
     },
     {
       "name": "build",
       "status": "PASS",
       "detail": "",
-      "ms": 12544
+      "ms": 13197
     },
     {
       "name": "build:client",
       "status": "PASS",
       "detail": "build-client: 31 modules -> lib\\client.js (302108 B)",
-      "ms": 6317
+      "ms": 6470
     },
     {
       "name": "e2e:preview",
       "status": "PASS",
       "detail": "preview-wizard: 通过",
-      "ms": 48266
+      "ms": 47066
     },
     {
       "name": "probe:reclaim",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "回收探针：通过 3 / 失败 0",
+      "ms": 33315
     },
     {
       "name": "probe:cross-host",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "多 host 探针：通过 5 / 失败 0",
+      "ms": 42331
     },
     {
       "name": "probe:same-host",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "多 host 探针：通过 3 / 失败 0",
+      "ms": 14068
     },
     {
       "name": "probe:cross-backend",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "跨后端探针：通过 6 / 失败 0",
+      "ms": 201914
     },
     {
       "name": "probe:route-stop",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "路由级 /stop 探针：通过 6 / 失败 0",
+      "ms": 21593
     },
     {
       "name": "probe:residue-wsl",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "残留探针：通过 4 / 失败 0",
+      "ms": 4375
     },
     {
       "name": "probe:residue-ssh",
-      "status": "SKIP",
-      "detail": "未传 --real",
-      "ms": 0
+      "status": "PASS",
+      "detail": "残留探针：通过 4 / 失败 0",
+      "ms": 917
     },
     {
       "name": "verify:real-host",
-      "status": "SKIP",
-      "detail": "未传 --real --host",
-      "ms": 0
+      "status": "PASS",
+      "detail": "verify-real-host: OK",
+      "ms": 12814
     }
   ]
 }
