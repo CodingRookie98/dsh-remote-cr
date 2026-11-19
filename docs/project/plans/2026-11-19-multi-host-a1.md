@@ -87,6 +87,8 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 - N7：`release` 对 refs=0 的僵尸 entry 直接删除并归还端口（同 distro 顺延场景会制造这种 entry）。
 - 探针去掉同义反复（`closedFirst = recycled ? 0 : -1`），S3 改为断言 entry 消失；远端进程计数只记录不断言。
 
+**口径更正（第三次）**：Delta-3 提交信息写 902 tests，实测 **905 / 0 fail**（901 + 2 路由 + 2 hub）。三次都是先写提交信息后跑门禁；规矩已记在本文件，仍复发一次，说明要改的是**流程顺序**而不是提醒。
+
 ## 4. 风险
 
 | 项 | 处置 |
