@@ -156,7 +156,11 @@ export class ProjectionHub {
       return { remaining: 0, recycled: false }
     }
     if (!outcome.recycle) return { remaining: outcome.remaining, recycled: false }
-    entry.service.recycle()
+    try {
+      entry.service.recycle()
+    } catch {
+      // recycle 抛错也要把 entry 删掉：留着会让端口与引用永久卡死（真机踩过：stub 少了 recycle 就直接抛）。
+    }
     // **必须删 entry**（P4 B4）：只回收端口而留 entry，`#effectiveOf` 的 taken 会一直算上僵尸端口，
     // 同主机第 22 个 target 就会假池满（实测）。
     this.#dropEntry(key)

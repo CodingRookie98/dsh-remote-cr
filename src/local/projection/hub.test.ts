@@ -190,6 +190,23 @@ test('M7 端口归还：21 台同时在场 → 全部释放 → 再来一轮仍�
   assert.equal(hub.entries().length, 21, '第二轮同样能拿满 21 个')
 })
 
+test('recycle 抛错也必须删 entry（否则端口与引用永久卡死）', async () => {
+  const hub = new ProjectionHub(
+    () =>
+      ({
+        attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+        recycle: () => {
+          throw new Error('recycle boom')
+        },
+        dispose() {},
+        snapshot: () => ({ workspaces: [], sessions: [], connected: false, target: null, link: 'idle', envPolicy: null, attach: null, stale: false }),
+      }) as unknown as ProjectionService,
+  )
+  await hub.attach(A, { remotePath: '/a', localPath: 'C:/a' })
+  assert.deepEqual(hub.release(A), { remaining: 0, recycled: true })
+  assert.equal(hub.entries().length, 0)
+})
+
 test('N7 只建过引擎（refs=0）的僵尸：release 要删 entry 并归还端口', async () => {
   const hub = new ProjectionHub(() => stubService())
   hub.serviceFor(A)

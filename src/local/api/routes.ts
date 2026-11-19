@@ -1239,7 +1239,14 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
 
   mount('/stop', ['POST'], async (req, res) => {
     const body = (await readJsonBody(req)) as { target?: unknown } | null
-    await serviceOrFocus(body?.target).stopRemote()
+    const service = serviceOrFocus(body?.target)
+    await service.stopRemote()
+    // 「结束远端」= 这个 target 我不再用了：把引用放掉（最后一个引用才 recycle）+ 删 entry + 还端口。
+    // 否则 references 永远停在 attach 次数，端口也一直被算作占用（RFC-0007 A3 遗留 2）。
+    if (hub !== undefined) {
+      const entry = hub.entries().find((candidate) => candidate.service === service)
+      if (entry !== undefined) hub.release(entry.target)
+    }
     sendJson(res, 200, okEnvelope({ stopped: true }))
   })
 

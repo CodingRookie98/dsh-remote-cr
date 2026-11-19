@@ -313,6 +313,29 @@ test('/disconnect?target=：只断开指定那台，不动 focus（P4 A3-B2）',
 })
 
 
+test('/stop：结束远端要放掉引用（entry 消失、端口归还），否则 references 永远是 attach 次数', async () => {
+  const target: ConnectTarget = { backend: 'ssh', alias: 'demo', port: 22, remoteRoot: '/home/hui/a' }
+  const stub = {
+    attach: async () => ({ created: true, workspace: {}, sessions: [] }),
+    stopRemote: async () => undefined,
+    recycle: () => undefined,
+    snapshot: () => ({ workspaces: [], sessions: [], connected: true, target, link: 'connected', envPolicy: null, attach: null, stale: false }),
+    get connected() {
+      return true
+    },
+  } as unknown as ProjectionService
+  const hub = new ProjectionHub(() => stub)
+  await hub.attach(target, { remotePath: '/a', localPath: 'C:/a' })
+  assert.equal(hub.entries().length, 1)
+  const result = await rig({}, { hub }).call({
+    path: '/stop',
+    method: 'POST',
+    body: JSON.stringify({ target }),
+  })
+  assert.equal(result.status, 200)
+  assert.equal(hub.entries().length, 0, '结束远端之后不该再留着这台')
+})
+
 test('/disconnect 的未知 target：结构化报错，不许静默回落到 focus（P4 M5）', async () => {
   const calls: string[] = []
   const hub = new ProjectionHub(
