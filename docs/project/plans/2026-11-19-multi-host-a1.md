@@ -127,6 +127,11 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 | `/stop` 失败可重试 | 失败时把连接放回 `#detached`（`#retired` 撤回），第二次「结束远端」会真的再收一次 | service 用例：第一次 false、第二次 true，`attempts === 2` |
 | 复用分支 clean | 新增 `buildKillAndVerifyScript`：`kill -9` 后轮询 `/proc`，回 `PID_GONE` / `PID_ALIVE`；`live` 据 `PID_GONE` 决定 clean | instance 用例（脚本含 `/proc` 与两种标记）+ 真机 |
 
+**新增运行时加载冒烟（`pnpm check:load`，2026-11-19）**：`check:boot` 只做静态事实检查，不 import 我们的代码，
+「编译产物 import 就炸」「apply() 里初始化抛错」它一条都看不见。新脚本用最小 ctx 替身（`webServer.register` / `effect` / `on`）真的跑一遍 `apply()`：
+实测 **28 条路由 / 30 个 effect**，并断言「挂载数 == 返回清单长度」「hub 建出来了」。写它的过程本身就抓到两个宿主 API 依赖（`ctx.webServer.register`、`ctx.on`）。
+它**不**替代真机宿主验证（那要起完整 DSH）；它把「一加载就崩」挡在门禁里。
+
 **仍未做（记账）**：恢复探针打的是 `hub.releaseAll`（与 `/stop` 现在走同一条路径），没有经过 HTTP 路由层——路由层的 await/错误传播由 `routes.test.ts` 覆盖。`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
 ### hidepid=2 容器判活（未验证项 2）的真机结论（2026-11-19）
