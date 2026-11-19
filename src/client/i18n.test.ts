@@ -12,7 +12,6 @@ test('zh 是键集真相源：en 必须逐一覆盖，且两条都不许空串',
 test('没绑宿主 locale 服务时回落 zh，绝不把 key 直接印到界面', () => {
   resetLocaleBinding()
   assert.equal(t('panel.title'), '远端工作台')
-  assert.equal(t('panel.icon'), '远')
 })
 
 test('绑定后按宿主返回值取文案：语言切换不需要重新绑定', () => {

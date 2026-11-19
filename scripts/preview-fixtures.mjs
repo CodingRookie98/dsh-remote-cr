@@ -855,7 +855,8 @@ function projectionSnapshot(link, stale = false) {
   };
 }
 
-const WAKE_OK = { distro: DISTRO, ok: true, ms: 1840, diagnosis: null };
+// home：宿主在同一趟 `sh -c 'printf %s "$HOME"'` 里带回来的远端家目录 —— 浏览起点。
+const WAKE_OK = { distro: DISTRO, ok: true, ms: 1840, diagnosis: null, home: DISTRO_HOME };
 
 const WAKE_FAILED = {
   distro: DISTRO,

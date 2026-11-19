@@ -254,6 +254,19 @@ function readSshSources(input: { readonly homeDir: string; readonly configFile?:
   }
 }
 
+/**
+ * 把 `printf %s "$HOME"` 的输出收拾成可用的绝对路径。
+ *
+ * 三种退化都要挡住：空输出、不是以 `/` 开头（说明 shell 没读到家目录）、含 NUL/CR
+ * （`wsl.exe` 的输出偶尔带 CRLF）。挡不住就返回 null，让客户端退回 `/`——
+ * 一个错的起点会让用户以为「我的家目录没了」。
+ */
+export function posixHomeOf(text: string): string | null {
+  const value = text.replace(/\0/g, '').replace(/\r/g, '').trim()
+  if (value === '' || !value.startsWith('/')) return null
+  return value.length > 1 ? value.replace(/\/+$/, '') : value
+}
+
 /** 读远端环境事实：`node -e <script>`，只认恰好一行 JSON。 */
 export async function readRemoteFacts(
   executable: string,
@@ -309,7 +322,9 @@ export function createHostDeps(
     },
     wakeDistro: async (distro, signal) => {
       const startedAt = Date.now()
-      const checked = await runInDistroChecked(executable, distro, ['true'], {
+      // 唤醒与「读家目录」合成一趟：`sh -c` 起得来就说明发行版可用，顺带把 `$HOME` 带回来，
+      // 省掉第二次 `wsl.exe`（真机上每次冷启动要 0.3–1.5 s）。
+      const checked = await runInDistroChecked(executable, distro, ['sh', '-c', 'printf %s "$HOME"'], {
         timeoutMs: WAKE_TIMEOUT_MS,
         ...(signal === undefined ? {} : { signal }),
       })
@@ -318,6 +333,7 @@ export function createHostDeps(
         ok: checked.result.exitCode === 0,
         ms: Date.now() - startedAt,
         diagnosis: checked.diagnosis,
+        home: checked.result.exitCode === 0 ? posixHomeOf(checked.result.stdoutText) : null,
       }
     },
   }

@@ -24,6 +24,19 @@ export interface SshSourcesOptions {
   readonly exists?: (path: string) => boolean
 }
 
+/**
+ * 由 config 里的 `User` 推出远端家目录的**候选值**。
+ *
+ * 为什么只做候选：真家目录可能不遵循 `/home/<user>`（LDAP、`/var/home` 等），
+ * 面板把它填进输入框、用户可改；真正的 `$HOME` 要等接入后执行 `printf %s "$HOME"` 才知道。
+ * 没写 `User` 时返回 null——不猜，让用户自己填（猜错比留空更坏）。
+ */
+export function remoteHomeHint(user: string | undefined): string | null {
+  const name = typeof user === 'string' ? user.trim() : ''
+  if (name === '') return null
+  return name === 'root' ? '/root' : '/home/' + name
+}
+
 export function defaultSshConfigFile(homeDir: string): string {
   return join(homeDir, '.ssh', 'config')
 }
@@ -55,11 +68,15 @@ export function listSshSources(options: SshSourcesOptions): SshSourceReport {
     homeDir: options.homeDir,
     file,
   })
-  const targets: SshTargetInfo[] = listed.targets.map((target) => ({
-    alias: target.alias,
-    port: target.port,
-    hasIdentityFile: target.identityFiles.length > 0,
-  }))
+  const targets: SshTargetInfo[] = listed.targets.map((target) => {
+    const home = remoteHomeHint(target.user)
+    return {
+      alias: target.alias,
+      port: target.port,
+      hasIdentityFile: target.identityFiles.length > 0,
+      ...(home === null ? {} : { defaultRemotePath: home }),
+    }
+  })
   return {
     configFile: file,
     readable: read.files.length > 0,

@@ -29,9 +29,11 @@ test('把 config 里的主机列成来源：带端口与「有没有 IdentityFil
   const report = listSshSources({ homeDir: HOME, ...io })
   assert.equal(report.configFile, defaultSshConfigFile(HOME))
   assert.equal(report.readable, true)
+  // defaultRemotePath 是「添加工作区」时预填路径框的候选家目录（由 config 的 User 推出）。
+  // 它不是凭据字段：不含主机名、私钥路径，也不参与认证；下一条用例仍然守着那条边界。
   assert.deepEqual(report.targets, [
-    { alias: 'gcp', port: 2222, hasIdentityFile: true },
-    { alias: 'lab', port: 22, hasIdentityFile: false },
+    { alias: 'gcp', port: 2222, hasIdentityFile: true, defaultRemotePath: '/home/hui' },
+    { alias: 'lab', port: 22, hasIdentityFile: false, defaultRemotePath: '/root' },
   ])
   assert.deepEqual(report.problems, [])
 })

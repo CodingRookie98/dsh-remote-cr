@@ -18,6 +18,7 @@
 | [2026-11-19-m3-diagnostics-center.md](./2026-11-19-m3-diagnostics-center.md) | M3 诊断中心（RFC-0005：面板内 doctor） | 已交付（红队两轮，最终可签） |
 | [2026-11-19-m4-uninstall-residue.md](./2026-11-19-m4-uninstall-residue.md) | M4 卸载干净（RFC-0006 Phase 1+2） | Phase 1/2 已交付；P4 三阻断已修（v2），等 Delta 复审 |
 | [2026-11-19-multi-host-a1.md](./2026-11-19-multi-host-a1.md) | 多 host A1（RFC-0007 方案 A：ProjectionHub 容器） | P3 开工 |
+| [2026-11-19-ui-polish-home-and-workspace-menu.md](./2026-11-19-ui-polish-home-and-workspace-menu.md) | 面板视觉 v2 · 家目录起点 · 工作区行远端菜单（用户四条反馈） | 已落地（927 测试 / 32 预览场景全绿）；contextMenus 真机未验证 |
 
 ## 约定
 

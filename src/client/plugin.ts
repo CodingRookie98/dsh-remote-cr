@@ -13,8 +13,10 @@ import { DirectoryFlow, sessionBadge, sessionReconnectItem } from './components.
 import { RemoteCrIcon, RemoteCrPanel } from './panel-view.ts'
 import type { SlotRecord } from './diagnostics.ts'
 import { HALF, describeSelf } from './half.ts'
-import { bindLocale, registerDictionaries, type LocaleFace } from './i18n.ts'
+import { bindLocale, registerDictionaries, t, type LocaleFace } from './i18n.ts'
+import { disconnectRemoteOf, readProjection, reconnectRemoteOf, stopRemoteOf } from './api.ts'
 import { registerSlots, type RegistrationContext } from './registration.ts'
+import { workspaceMenuContribution, type ContextMenusFace } from './workspace-menu.ts'
 import { ensurePanelStyles } from './styles.ts'
 import { wizardStore } from './wizard-store.ts'
 
@@ -32,6 +34,8 @@ type ClientContext = RegistrationContext & {
   readonly slots: RegistrationContext['slots'] & DiagnosticSlots
   /** 宿主 locale 服务；宿主未挂载 `dsh-client-locale` 时为 undefined（回落 zh）。 */
   readonly locale?: LocaleFace
+  /** 宿主右键菜单服务；老宿主没有时为 undefined（只是少三项菜单条目）。 */
+  readonly contextMenus?: ContextMenusFace
 }
 
 const IDLE_FLOW: FlowState = { status: 'idle', phase: 'probe', completed: [], error: undefined }
@@ -51,6 +55,43 @@ export function apply(ctx: ClientContext): void {
   bindLocale(ctx.locale)
   // 幂等：样式只挂一次；插槽没有给第三方 CSS 的入口，所以用 <style> + data-remote-cr 选择器。
   ensurePanelStyles()
+  /**
+   * 工作区行的 ⋯ 菜单动作。
+   *
+   * 只在宿主提供了 `contextMenus` 时组装：没有该服务的宿主上，菜单少三项，
+   * 但面板、向导、会话徽标全都照常 —— 降级面越小越好。
+   * `resolve` 里现读一次投影（打开菜单是低频动作，值得这次往返），
+   * 读失败返回 null，由纯函数退化成「不给项」。
+   */
+  const menus = ctx.contextMenus
+  const workspaceMenu =
+    menus === undefined
+      ? undefined
+      : workspaceMenuContribution({
+          snapshot: async () => {
+            try {
+              const snapshot = await readProjection()
+              return {
+                connected: snapshot.connected,
+                target: snapshot.target ?? null,
+                workspaces: snapshot.workspaces.map((entry) => ({ localPath: entry.localPath })),
+              }
+            } catch {
+              return null
+            }
+          },
+          labels: {
+            reconnect: t('panel.reconnect'),
+            disconnect: t('panel.disconnect'),
+            stop: t('panel.stopRemote'),
+          },
+          handlers: {
+            reconnect: (target) => reconnectRemoteOf(target),
+            disconnect: (target) => disconnectRemoteOf(target),
+            stop: (target) => stopRemoteOf(target),
+          },
+        })
+
   const mounted = registerSlots(ctx, {
     panel: RemoteCrPanel,
     icon: RemoteCrIcon,
@@ -58,6 +99,7 @@ export function apply(ctx: ClientContext): void {
     // 会话行徽标：DSH 侧栏渲染时按 sessionId 注入 props（RFC-0003 R2-3）
     sessionBadge,
     sessionReconnectItem,
+    ...(workspaceMenu === undefined ? {} : { workspaceMenu }),
   })
 
   const diagnostics = {

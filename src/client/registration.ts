@@ -10,6 +10,8 @@
  */
 
 import { t } from './i18n.ts'
+import type { ContextMenusFace } from './workspace-menu.ts'
+import type { workspaceMenuContribution } from './workspace-menu.ts'
 
 /** 一个可注册的 slot 洞。 */
 export interface SlotRegistration {
@@ -32,6 +34,14 @@ export interface SlotRegistry {
 export interface RegistrationContext {
   readonly slots: SlotRegistry
   effect(execute: () => () => void, label: string): unknown
+  /**
+   * 宿主右键菜单服务。
+   *
+   * **可选**：`@deepseek-ai/dsh-client-ui-context-menu` 是内置 UI 包，正常都在；
+   * 但老宿主没有它时，我们少三项菜单条目就够了，不该让整个插件加载失败
+   * （那会让面板直接消失，比缺三项严重得多）。
+   */
+  readonly contextMenus?: ContextMenusFace
 }
 
 /** 三个要被挂上去的组件。 */
@@ -43,6 +53,11 @@ export interface RemoteCrComponents {
   readonly sessionBadge: unknown
   /** 会话行 ⋯ 菜单里的「重新连接」（RFC-0003 R2-4）。 */
   readonly sessionReconnectItem: unknown
+  /**
+   * 工作区行 ⋯ 菜单里的远端动作。由 `plugin.ts` 组装（要拿到真实的 api 与字典），
+   * 这里只负责挂上去：宿主没提供 `contextMenus` 时它是 undefined。
+   */
+  readonly workspaceMenu?: ReturnType<typeof workspaceMenuContribution>
 }
 
 /** 面板与图标共用的 id/key；两者必须一致，否则侧栏点了没反应（M0 实测 V2）。 */
@@ -164,6 +179,18 @@ export function registerSlots(ctx: RegistrationContext, components: RemoteCrComp
       ),
     'dsh-remote-cr: directory flow takeover',
   )
+
+  // 工作区行 ⋯ 菜单：上游没有工作区行的 slot hole（见
+  // docs/proposals/upstream-workspace-row-holes.md），但把行菜单收敛到了
+  // contextMenus，于是这三项可以不改上游地落进去。
+  const menus = ctx.contextMenus
+  if (menus !== undefined && components.workspaceMenu !== undefined) {
+    const contribution = components.workspaceMenu
+    ctx.effect(
+      () => track('workspaceMenu', own(() => menus.register(contribution))),
+      'dsh-remote-cr: workspace menu',
+    )
+  }
 
   return mounted
 }
