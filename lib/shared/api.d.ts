@@ -194,6 +194,12 @@ export interface HostEntryInfo {
     readonly connected: boolean;
     readonly workspaces: number;
     readonly sessions: number;
+    /** 实际连接用的端口（同主机撞端口时会顺延）。 */
+    readonly port: number;
+    /** 端口是否被顺延过（用户要能看出「和为什不是我填的 8899」）。 */
+    readonly portAdjusted: boolean;
+    /** 当前有几个工作区引用它；归零才回收远端。 */
+    readonly references: number;
 }
 /** `GET /maintenance/residue` 的应答体。 */
 export interface ResidueReportInfo {
