@@ -16,7 +16,8 @@
 | [2026-11-18-remote-host-version-alignment.md](./2026-11-18-remote-host-version-alignment.md) | 远端宿主版本对齐（只做 registry 路径） | 已交付（R1 四条阻断修复 → Delta 可签）；真实远端升级未验证 |
 | [2026-11-19-m3-long-task-closure.md](./2026-11-19-m3-long-task-closure.md) | M3 长任务闭环（RFC-0004：新鲜度 / 过滤 / 真机验收 / 多 host 条件批） | 已合并（合并提交 `8f6a9ed`；Batch D 未开工） |
 | [2026-11-19-m3-diagnostics-center.md](./2026-11-19-m3-diagnostics-center.md) | M3 诊断中心（RFC-0005：面板内 doctor） | 已交付（红队两轮，最终可签） |
-| [2026-11-19-m4-uninstall-residue.md](./2026-11-19-m4-uninstall-residue.md) | M4 卸载干净（RFC-0006 Phase 1：零残留验证 + 边界契约） | Phase 1 完成；Phase 2（residue/purge）待开工 |
+| [2026-11-19-m4-uninstall-residue.md](./2026-11-19-m4-uninstall-residue.md) | M4 卸载干净（RFC-0006 Phase 1+2） | Phase 1/2 已交付；P4 三阻断已修（v2），等 Delta 复审 |
+| [2026-11-19-multi-host-a1.md](./2026-11-19-multi-host-a1.md) | 多 host A1（RFC-0007 方案 A：ProjectionHub 容器） | P3 开工 |
 
 ## 约定
 

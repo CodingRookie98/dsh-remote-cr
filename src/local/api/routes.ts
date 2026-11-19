@@ -48,9 +48,10 @@ import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, s
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
 import { sameTarget, type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts'
+import { ProjectionHub } from '../projection/hub.ts'
 import { applySyncPlan, buildSyncPlan, readSyncProgress, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
-import type { DoctorReportInfo, PurgeResultInfo, ResidueReportInfo } from '../../shared/api.ts'
+import type { DoctorReportInfo, HostEntryInfo, PurgeResultInfo, ResidueReportInfo } from '../../shared/api.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
 import { formatDoctorReport, installedRoot, runDoctor } from '../doctor.ts'
 import {
@@ -139,6 +140,11 @@ export interface RouteOptions {
    * 四选一与目录浏览，不该被投影的依赖拖着走。
    */
   readonly projection?: ProjectionService
+  /**
+   * 多 host 容器（RFC-0007 A1）：按 target 持有多个引擎。
+   * 省略时用「单服务适配器」把 `projection` 包成只含一台的容器 —— 老装配与老测试零改动。
+   */
+  readonly hub?: ProjectionHub
   /**
    * 插件同步的接线（RFC-0003）。省略时四条 `/plugin-sync*` 路由明确报「未接线」，
    * 而不是返回空 plan 让面板显示「已同步」。
@@ -617,9 +623,17 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   // 四条路由分开而不是合成一条：/attach 会起远端进程，/session 与 /probe 只做
   // 一次 RPC。合起来的话「读面板」这种只读动作也会被拖进连接生命周期。
 
+  /**
+   * 多 host 容器：显式注入优先；否则把单服务包成只含一台的容器（老装配零改动）。
+   * 所有「带 target」的入口都走它，`/attach` 因此可以在不同 target 上并行持有多个引擎。
+   */
+  const hub: ProjectionHub | undefined =
+    options.hub ??
+    (options.projection === undefined ? undefined : new ProjectionHub(() => options.projection as ProjectionService))
+
   /** 投影服务没接线时明确报错——假装成功会让面板显示一个空列表，看不出问题。 */
   const requireProjection = (): ProjectionService => {
-    const service = options.projection
+    const service = options.projection ?? hub?.focused() ?? undefined
     if (service === undefined) {
       throw new RemoteCrError({
         code: 'remote/unknown',
@@ -654,8 +668,56 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     }
   }
 
-  mount('/projection', ['GET'], async (_req, res) => {
-    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(requireProjection())))
+  /** `?target=` 的解析：只用于「读某一台」。坏了要报错，不能静默回落到另一台。 */
+  const targetParamOf = (raw: string | null): ConnectTarget | null => {
+    if (raw === null) return null
+    try {
+      return readTarget(JSON.parse(raw))
+    } catch {
+      throw new RemoteCrError({
+        code: 'remote/unknown',
+        detail: 'target 不是合法的目标编码',
+        nextActions: ['从面板重新读取投影'],
+      })
+    }
+  }
+
+  mount('/projection', ['GET'], async (_req, res, url) => {
+    const target = targetParamOf(url.searchParams.get('target'))
+    if (target === null) {
+      sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(requireProjection())))
+      return
+    }
+    const scoped = hub?.peek(target) ?? null
+    if (scoped === null) {
+      throw new RemoteCrError({
+        code: 'remote/unknown',
+        detail: '这台目标还没有接入过：先接入再读投影',
+        nextActions: ['先点「接入」', '或去掉 target 读最近连接的那一台'],
+      })
+    }
+    sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(scoped)))
+  })
+
+  // 多 host 一览（RFC-0007 A1）：容器里每台的状态与条目数，UI 的 A2 会消费它。
+  mount('/projection/targets', ['GET'], async (_req, res) => {
+    const entries = hub?.entries() ?? []
+    sendJson(
+      res,
+      200,
+      okEnvelope<HostEntryInfo[]>(
+        entries.map((entry) => {
+          const snapshot = entry.service.snapshot()
+          return {
+            key: entry.key,
+            target: toTargetInfo(entry.target),
+            connected: entry.service.connected,
+            workspaces: snapshot.workspaces.length,
+            sessions: snapshot.sessions.length,
+          }
+        }),
+      ),
+    )
   })
 
   // 刷新：读一次离远端，把 `running` 这类会变的事实贴回投影表（R1）。
@@ -1013,7 +1075,8 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
   })
 
   mount('/attach', ['POST'], async (req, res) => {
-    const service = requireProjection()
+    // 接入走容器：不同 target 各自一个引擎（单服务装配下容器只含一台，行为不变）。
+    const service = hub ?? requireProjection()
     const input = await completeAttachInput(await readJsonBody(req), options.resolveAnchorPath)
     // 检查与置位之间**不许有 await**：中间隔一个 `readJsonBody` 就是 TOCTOU —— 两个请求都能
     // 通过检查，第二个覆盖 controller，第一个从此不可取消（R1 #2 N1）。

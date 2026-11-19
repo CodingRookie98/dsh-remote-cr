@@ -1,6 +1,6 @@
 # RFC-0007 · 多 host：从单槽到「多登记 + 单活」还是真并发分槽
 
-- 状态：**In Review（P-1/P0 出口，等 User Nod）**
+- 状态：**Accepted（2026-11-19 用户拍板方案 A：真并发分槽；分期见 §6）**
 - 日期：2026-11-19
 - 关联：`docs/design/milestones.md` M3「多工作区/多 host 同时在线、引用计数」、`src/local/projection/service.ts`（单槽）、`src/local/api/routes.ts`（无 target 参数）、RFC-0004 §1.4
 
@@ -44,7 +44,20 @@
 | R4 | 同一 target 的 sessionId 与另一 target 重名时互不覆盖（按 target 分区） |
 | R5 | 真机：WSL + SSH 两台之间来回切 3 次，无孤儿进程、无端口残留 |
 
-## 5. 待裁决
+## 5.5 裁决（2026-11-19）
+
+用户选 **A 真并发分槽**。里程碑那句「同时在线、引用计数」**不改**，按 A 交付。
+
+## 6. A 的分期（避免一次大爆炸）
+
+| 期 | 内容 | 出口判据 |
+|---|---|---|
+| **A1（本片）** | `ProjectionHub`：按 target 持有**多个** `ProjectionService`（各自 store / 连接 / 重连驱动）；`/attach` 经 hub 选服务；新增 `GET /projection/targets`；`/projection`、`/disconnect`、`/reconnect`、`/projection/refresh` 支持可选 `?target=` | 两台 target 能同时 attach（单元 + 假连接）；单 target 行为逐字不变（既有 864 条全绿） |
+| **A2** | 面板：主机列表 + 切换 + 每台独立状态点；投影按 target 分组 | L4 场景 `panel-hosts-multi`；切换不改条目归属 |
+| **A3** | 端口分配器（8941–8961）+ 引用计数（最后一个引用才 recycle）+ 多 target 真机验证 | 真机两 target 同时在线、端口不撞、退出无孤儿 |
+
+> 说明：A1 里 `ProjectionService` 本身**不改**（它已经是「一台远端一个引擎」），新增的是「多个引擎的容器」；
+> 这样 A2/A3 都是增量，而不是在 858 行的状态机上再动刀。
 
 - 选 A / B / C；
 - 若选 B：是否接受里程碑改写（把「同时在线」改成「登记 + 单活」）。

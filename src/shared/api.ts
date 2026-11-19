@@ -206,6 +206,15 @@ export interface ResidueInstanceFileInfo {
   readonly version: number | null
 }
 
+/** 多 host 容器里的一台（RFC-0007 A1：`GET /projection/targets`）。 */
+export interface HostEntryInfo {
+  readonly key: string
+  readonly target: RemoteTargetInfo
+  readonly connected: boolean
+  readonly workspaces: number
+  readonly sessions: number
+}
+
 /** `GET /maintenance/residue` 的应答体。 */
 export interface ResidueReportInfo {
   readonly targetId: string
