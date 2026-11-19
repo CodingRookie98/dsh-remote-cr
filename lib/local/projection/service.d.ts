@@ -301,6 +301,19 @@ export declare class ProjectionService {
  */
 export declare function defaultWarmupMs(target: ConnectTarget | null): number;
 export declare function attachDeps(target: ConnectTarget, rpc: ProjectionRpc, store: ProjectionStore): AttachDeps;
+/**
+ * 刷新单飞用的稳定 target 键。
+ *
+ * 与 `plugin-sync` 的 `targetId` 同风格（`wsl:<distro>` / `ssh:<alias>`），但只求
+ * 「同一 target 稳定相同」，不求跨进程唯一：它只活在 `RefreshGuard` 的 Map 里，
+ * 不进任何持久化状态。发行版名按小写归一（`wsl.exe -d` 本身大小写不敏感），
+ * 否则 `ubuntu` 与 `Ubuntu` 会被当成两台机器、各刷一遍。
+ *
+ * 为什么按键而不是写死一个常量：服务目前是单槽（`#live` 只有一个连接），所有刷新
+ * 实际上落同一个键，写成常量也「能跑」；但换 target 时，旧 target 那次还在飞的刷新
+ * 会挡住新 target 的第一次刷新，而 Batch D 把单槽拆成分槽后常量还得再改回来。
+ */
+export declare function refreshKey(target: ConnectTarget): string;
 /** 两台远端是否「同一条连接」。换后端就是另一台，哪怕端口与检出根一模一样。 */
 export declare function sameTarget(left: ConnectTarget, right: ConnectTarget): boolean;
 //# sourceMappingURL=service.d.ts.map

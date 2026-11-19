@@ -63,4 +63,21 @@ export declare function shouldPoll(state: {
     readonly connected: boolean;
     readonly visible: boolean;
 }): boolean;
+/** 调度器的控制面（只为 `applyPollState` 可测而抽的最小接口）。 */
+export interface PollControl {
+    start(): void;
+    stop(): void;
+    kick(): void;
+}
+/**
+ * 把「该不该跑」落成实际动作：能跑就 `start()` + 立刻补一次；不能跑就 `stop()`。
+ *
+ * 抽这一层的原因：`shouldPoll` 只回答了「该不该」，而让调度器真的起/停的那四处调用原先直接写在
+ * 面板的 effect 里 —— 删掉其中任何一处 `stop()`，845 条测试与 L4 全绿（P4 Delta 的 P2）。
+ * 现在面板两处都只调这一个函数，真假两分支各有用例。
+ */
+export declare function applyPollState(scheduler: PollControl, state: {
+    readonly connected: boolean;
+    readonly visible: boolean;
+}): 'running' | 'stopped';
 //# sourceMappingURL=poll.d.ts.map
