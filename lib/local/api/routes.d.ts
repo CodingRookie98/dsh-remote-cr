@@ -137,6 +137,14 @@ export declare function readSources(executable: string, ssh?: {
 }): Promise<SourceReport>;
 /** 本机 home：优先 `USERPROFILE`（Windows 服务账户下 `os.homedir()` 未必对），退到 `os.homedir()`。 */
 export declare function defaultHomeDir(): string;
+/**
+ * 把 `printf %s "$HOME"` 的输出收拾成可用的绝对路径。
+ *
+ * 三种退化都要挡住：空输出、不是以 `/` 开头（说明 shell 没读到家目录）、含 NUL/CR
+ * （`wsl.exe` 的输出偶尔带 CRLF）。挡不住就返回 null，让客户端退回 `/`——
+ * 一个错的起点会让用户以为「我的家目录没了」。
+ */
+export declare function posixHomeOf(text: string): string | null;
 /** 读远端环境事实：`node -e <script>`，只认恰好一行 JSON。 */
 export declare function readRemoteFacts(executable: string, distro: string, signal?: AbortSignal): Promise<RemoteFacts>;
 /** 本机分支的默认起点：用户主目录。取不到就退到系统盘根。 */

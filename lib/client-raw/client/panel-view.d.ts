@@ -25,7 +25,17 @@ export interface PanelFailure {
      */
     readonly intent?: RetryIntent;
 }
-/** 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。 */
+/**
+ * 侧栏图标：与 `main` 面板同 id/key 配对（M0 实测 V2，缺一个另一个就不显示）。
+ *
+ * 图形而不是文字。侧栏是一列 16–20px 的图标墙，在那里放一个「远」字有两个问题：
+ * 一是中文字形与相邻的线性图标不是同一套视觉语言（用户原话：太土），二是汉字的
+ * 度量随字体变化，同一个 18px 格子里会时大时小。这里用「本地端点 ─┄ 远端端点」
+ * 两个圆点加一条虚线：读作「连到远端」，且只用 currentColor，深浅主题都自动跟随。
+ *
+ * 属性名用 kebab-case：真实 React 与预览垫片（scripts/preview-react-shim.mjs）
+ * 都按 `setAttribute` 落盘，SVG 的属性名大小写敏感，`strokeWidth` 在这里是死属性。
+ */
 export declare function RemoteCrIcon(): unknown;
 /**
  * 主面板：向导进度 + 已添加的目录 + 已投影的远端工作区与会话 + 会话取证。

@@ -39,12 +39,15 @@ export declare const zh: {
     readonly 'panel.diagnosticOk': "正常";
     readonly 'panel.diagnosticWarn': "警告";
     readonly 'panel.diagnosticFail': "必须修";
-    readonly 'panel.icon': "远";
     readonly 'panel.hostsTitle': "主机";
     readonly 'panel.projectedTitle': "已投影";
     readonly 'panel.sessionsTitle': "会话";
     readonly 'panel.emptyWorkspaces': "还没有添加目录";
     readonly 'panel.emptyProjected': "远端还没有投影的工作区";
+    readonly 'panel.addCta': "添加工作区";
+    readonly 'panel.addCtaHint': "本机目录、WSL 发行版或 SSH 主机上的目录；加完会出现在左侧栏";
+    readonly 'panel.importCta': "从远端导入";
+    readonly 'panel.workspaceLocalOnly': "本机目录";
     readonly 'panel.emptySessions': "还没有远端会话";
     readonly 'panel.stale': "数据已过期";
     readonly 'panel.staleHint': "最近一次刷新失败了，表里仍是上一帧（远端恢复后会自动重试）";

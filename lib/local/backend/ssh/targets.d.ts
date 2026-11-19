@@ -18,6 +18,14 @@ export interface SshSourcesOptions {
     readonly readFile?: (path: string) => string;
     readonly exists?: (path: string) => boolean;
 }
+/**
+ * 由 config 里的 `User` 推出远端家目录的**候选值**。
+ *
+ * 为什么只做候选：真家目录可能不遵循 `/home/<user>`（LDAP、`/var/home` 等），
+ * 面板把它填进输入框、用户可改；真正的 `$HOME` 要等接入后执行 `printf %s "$HOME"` 才知道。
+ * 没写 `User` 时返回 null——不猜，让用户自己填（猜错比留空更坏）。
+ */
+export declare function remoteHomeHint(user: string | undefined): string | null;
 export declare function defaultSshConfigFile(homeDir: string): string;
 /**
  * 列出可连的 SSH 目标。

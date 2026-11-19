@@ -48,6 +48,14 @@ export interface SshTargetInfo {
     readonly port: number;
     /** 有没有配 `IdentityFile`：没有也不代表连不上（可能走 ssh-agent），只作提示。 */
     readonly hasIdentityFile: boolean;
+    /**
+     * 远端家目录的**候选默认值**（由 config 的 `User` 推出：`/home/<user>`，root 为 `/root`）。
+     *
+     * 只用于「添加工作区」时预填路径框，**不参与认证**；没写 `User` 时为 undefined，
+     * 由用户自己填。刻意不叫 `user`：这份对象会进浏览器（铁律 3），
+     * 名字里带账号字段会诱导后来的人把它当身份用。
+     */
+    readonly defaultRemotePath?: string;
 }
 /** SSH 来源的探测结果。读不到 config 是**正常情况**（大多数用户没写过），不是错误。 */
 export interface SshSourceReport {
@@ -350,5 +358,12 @@ export interface WslWakeResult {
     readonly ms: number;
     /** 成功时为 null。 */
     readonly diagnosis: WslDiagnosis | null;
+    /**
+     * 唤醒成功时在同一趟 `sh` 里读到的远端 `$HOME`（如 `/home/hui`）。
+     *
+     * 「添加工作区」的起点必须是**用户家目录**而不是 `/`：POSIX 根下面全是系统目录，
+     * 用户每次都要点三层才到自己的项目。老宿主不返回该字段，客户端退回 `/`。
+     */
+    readonly home?: string | null;
 }
 //# sourceMappingURL=api.d.ts.map

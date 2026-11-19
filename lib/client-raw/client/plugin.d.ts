@@ -9,6 +9,7 @@
  */
 import { type LocaleFace } from './i18n.ts';
 import { type RegistrationContext } from './registration.ts';
+import { type ContextMenusFace } from './workspace-menu.ts';
 /** 依赖的宿主服务。`layout` 让面板进得了主区，`slots` 是注册入口。 */
 export declare const inject: readonly ["slots", "layout", "locale"];
 /** 面板与图标共用的 id/key；从 `registration.ts` 透出，保持单一来源。 */
@@ -22,5 +23,7 @@ type ClientContext = RegistrationContext & {
     readonly slots: RegistrationContext['slots'] & DiagnosticSlots;
     /** 宿主 locale 服务；宿主未挂载 `dsh-client-locale` 时为 undefined（回落 zh）。 */
     readonly locale?: LocaleFace;
+    /** 宿主右键菜单服务；老宿主没有时为 undefined（只是少三项菜单条目）。 */
+    readonly contextMenus?: ContextMenusFace;
 };
 export declare function apply(ctx: ClientContext): void;
