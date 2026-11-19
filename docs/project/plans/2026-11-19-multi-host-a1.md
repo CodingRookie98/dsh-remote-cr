@@ -132,6 +132,23 @@ A1 只做**容器**：`ProjectionHub` 按 target 持有多个 `ProjectionService
 实测 **28 条路由 / 30 个 effect**，并断言「挂载数 == 返回清单长度」「hub 建出来了」。写它的过程本身就抓到两个宿主 API 依赖（`ctx.webServer.register`、`ctx.on`）。
 它**不**替代真机宿主验证（那要起完整 DSH）；它把「一加载就崩」挡在门禁里。
 
+### 真机宿主验证（2026-11-19，已完成）
+
+`scripts/verify-real-host.sh`（需要一份 DSH 检出：`DSH_CLI=<harness>/apps/cli/lib/bin.js`）：
+
+1. `dsh plugin --profile web add <本仓库>` 把插件 link 进临时 `DSH_HOME`；
+2. `dsh --profile web --no-open --port N --host 127.0.0.1` 起**完整宿主**（真实插件加载器 + webServer + 连接围栏）；
+3. 用启动时打印的 `?token=` 换 cookie，再打我们的 API。
+
+实测（宿主 `@deepseek-ai/dsh` **0.2.2-rc.4**，我们 `0.4.0`）：
+
+```
+sources 200 · doctor 200 · projection 200 · projection/targets 200 · workspaces 200
+宿主内 doctor：八项全 ok，结论「可以正常加载」
+```
+
+顺带证实两件事：① 没有 cookie 时我们的路由回的是**自己的** `remote/auth-failed` 信封（不是 404），说明路由确实挂上了、guard 也真的在跑；② `engines.dsh` 的区间对真实宿主版本成立。
+
 **仍未做（记账）**：恢复探针打的是 `hub.releaseAll`（与 `/stop` 现在走同一条路径），没有经过 HTTP 路由层——路由层的 await/错误传播由 `routes.test.ts` 覆盖。`/stop` 失败重试只覆盖「连接还能再收一次」，不覆盖「远端进程需人工清理」的情况。
 
 ### hidepid=2 容器判活（未验证项 2）的真机结论（2026-11-19）
