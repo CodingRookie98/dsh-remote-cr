@@ -14,6 +14,8 @@
 /** 简体中文字典（键集真相源）。 */
 export declare const zh: {
     readonly 'panel.title': "远端工作台";
+    readonly 'panel.hostsRegistered': "已登记主机";
+    readonly 'panel.hostCounts': "{workspaces} 工作区 · {sessions} 会话";
     readonly 'panel.diagnosticsTitle': "诊断";
     readonly 'panel.diagnosticsRerun': "重新检查";
     readonly 'panel.diagnosticsChecking': "检查中…";
