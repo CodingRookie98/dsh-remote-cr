@@ -53,6 +53,11 @@ Phase 2 = G3：`GET /maintenance/residue` 与 `POST /maintenance/purge`（两步
 
 N5（面板两步确认 0 覆盖 + target 漂移）：抽出 `nextPurgeClick` 纯函数 + 3 条用例；残留面按 targetKey 重置，失败时清旧报告。
 
+**Delta-2（2026-11-19）**：P1「有活驻留实例仍删 staging」已修（`planPurge` 见 alive 即 `removeStaging=false` 并回传 `skipped: 'resident-alive'`）；
+另补 6 条「变异不红」的判据（version 规则 / 锁 / failures / 判活失败 / 面板调用点 / target 重置），并修 `$HOME` 守卫与 WSL distro 级 busy 判定。
+沙箱真脚本 **8/8**（有活实例 → staging 保留、只删死登记；去掉活登记后才删 staging）。
+**口径更正**：delta-2 的提交信息里写了 879 tests，实测为 **877 / 0 fail**（差额是我算错，不是用例缺失）。
+
 v2 真机：沙箱 **5/5**（死登记删掉、活登记与字段乱序的活登记都保留、无失败项）；只读盘点 WSL **4/4**、SSH **4/4**（1.18 GB staging 正确解析）。
 
 ## 4. 风险与未验证
