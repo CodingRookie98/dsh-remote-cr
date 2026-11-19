@@ -24,7 +24,8 @@ import {
 
 /** target 的稳定键：与 `sameTarget` 同形（后端 + 标识 + 端口 + 检出根）。 */
 export function targetKeyOf(target: ConnectTarget): string {
-  const identity = target.backend === 'wsl' ? 'wsl:' + target.distro.toLowerCase() : 'ssh:' + target.alias
+  // SSH 别名大小写不敏感（与 `sameHostOf` 一致）：`Prod` 与 `prod` 是同一台机器，不该各建一个引擎。
+  const identity = target.backend === 'wsl' ? 'wsl:' + target.distro.toLowerCase() : 'ssh:' + target.alias.toLowerCase()
   return identity + '|' + String(target.port) + '|' + target.remoteRoot
 }
 

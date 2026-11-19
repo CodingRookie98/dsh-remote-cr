@@ -331,7 +331,7 @@ test('/disconnect 的未知 target：结构化报错，不许静默回落到 foc
   })
   const envelope = result.json as { ok: boolean; code?: string }
   assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/unknown')
+  assert.equal(envelope.code, 'remote/not-attached')
   assert.deepEqual(calls, [], '未知 target 不许把请求打到 focus 上')
 })
 
@@ -349,7 +349,7 @@ test('/projection?target=：没接过的目标要结构化报错，不静默回�
   })
   const envelope = result.json as { ok: boolean; code?: string }
   assert.equal(envelope.ok, false)
-  assert.equal(envelope.code, 'remote/unknown')
+  assert.equal(envelope.code, 'remote/not-attached')
 })
 
 // ── 远端残留（RFC-0006 Phase 2）──────────────────────────────────────────

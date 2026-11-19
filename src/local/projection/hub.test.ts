@@ -219,6 +219,7 @@ test('sameHostOf：WSL 与 SSH 别名都大小写不敏感（P4 B6）', () => {
 
 test('targetKeyOf 与 sameTarget 同形：端口/检出根不同就是不同键', () => {
   assert.equal(targetKeyOf(A), targetKeyOf({ ...A }))
+  assert.equal(targetKeyOf(A), targetKeyOf({ ...A, alias: 'A' }), 'SSH 别名大小写归一（P4 N9）')
   assert.notEqual(targetKeyOf(A), targetKeyOf({ ...A, port: 9999 }))
   assert.notEqual(targetKeyOf(A), targetKeyOf({ ...A, remoteRoot: '/home/hui/other' }))
 })
