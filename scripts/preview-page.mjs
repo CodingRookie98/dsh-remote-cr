@@ -155,6 +155,7 @@ function respond(fixtures, method, url) {
   if (path === '/remote-cr/api/plugin-sync/optout') {
     return { ok: true, value: { targets: fixtures.syncOptout ?? [] } };
   }
+  if (path === '/remote-cr/api/doctor') return { ok: true, value: fixtures.doctor };
   if (path === '/remote-cr/api/workspace/importable') return { ok: true, value: fixtures.importable };
   if (path.endsWith('/wake')) return { ok: true, value: fixtures.wake };
   return {

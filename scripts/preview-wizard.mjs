@@ -933,7 +933,8 @@ async function main() {
   // 把声明绑到 hideFlow 之类的场景字段上，删两行 fixtures 就能回到「13/13 绿、无顺序门禁」。
   // 期望顺序是**代码常量**，不是场景数据：写在 fixtures 里的话，把它缩成 ['panel-head'] 仍然绿（Delta-3 N3）。
   const REQUIRED_ORDER_SCENES = [
-    { id: 'panel', order: ['panel-head', 'panel-body', 'panel-hosts', 'panel-detail'], sectionTitleCount: 3 },
+    // 主机 / 已投影 / 会话 / 诊断 四块（RFC-0005 加了诊断区，这里跟着 +1；少一块或重复都算红）。
+    { id: 'panel', order: ['panel-head', 'panel-body', 'panel-hosts', 'panel-detail'], sectionTitleCount: 4 },
   ];
   for (const requirement of (options.only === null ? REQUIRED_ORDER_SCENES : REQUIRED_ORDER_SCENES.filter((item) => item.id === options.only))) {
     const scene = PREVIEW_SCENES.find((candidate) => candidate.id === requirement.id);

@@ -579,6 +579,19 @@ export const PREVIEW_SCENES = [
     ],
   },
   {
+    // RFC-0005：诊断区逐条渲染 ok/warn/fail，并给出「重新检查 / 复制报告」两个动作。
+    id: 'panel-diagnostics',
+    label: '面板：诊断区（逐条状态 + 复制报告）',
+    theme: 'light',
+    targets: ['[data-remote-cr="panel-diagnostics"]', '[data-remote-cr="diagnostics-copy"]'],
+    requireMarkers: ['panel-diagnostic', 'diagnostics-rerun', 'diagnostics-copy'],
+    hideFlow: true,
+    steps: [
+      { wait: '[data-remote-cr="panel-diagnostic"]', timeoutMs: 10000 },
+      { sleep: 200 },
+    ],
+  },
+  {
     // RFC R1 的**整条链**（P4 B2）：调度器 5 s 到点 → POST 刷新失败 → 客户端补读 /projection
     // → 宿主把 stale 置 true → 徽标亮起，同时错误块给出可重试的失败面。
     // 夹具里 `refreshFails: true`，`/projection` 会跟着这次失败返回 stale:true。
@@ -842,6 +855,17 @@ export function sceneFixtures(sceneId) {
     // 刷新失败夹具：让「失败 → 宿主 stale → 补读 → 徽标」这条链在真浏览器里跑一遍（P4 B2）。
     refreshFails: id === 'panel-refresh-failed',
     importable: { workspaces: [{ workspaceId: 'ws-remote-1', path: '/home/hui/legacy', title: 'legacy' }] },
+    // 诊断夹具（RFC-0005）：一份含 ok / warn / fail 的报告，用来断言逐条状态渲染。
+    doctor: {
+      checks: [
+        { id: 'package', status: 'ok', detail: 'dsh-remote-cr@0.4.0' },
+        { id: 'entry', status: 'ok', detail: 'lib/index.js' },
+        { id: 'state-root', status: 'warn', detail: 'C:/Users/hui/.dsh-remote-cr 可写（预览）' },
+        { id: 'legacy-root', status: 'fail', detail: '旧状态根仍在：C:/Users/hui/.dsh-legacy-root（确认无回滚需求后可删）' },
+      ],
+      report: 'dsh-remote-cr doctor\n  ok   package — dsh-remote-cr@0.4.0\n\n结论：2 项必须修',
+      generatedAt: '2026-11-19T00:00:00.000Z',
+    },
     // 同步对话框夹具（RFC-0003 需求①）：两种可同步 + 一条已最新 + 一条不可同步
     syncPlan: {
       targetId: 'wsl:' + (id === 'sync-dialog' || id === 'sync-no-runtime' ? 'ubuntu_dev' : 'preview'),
