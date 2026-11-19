@@ -16,6 +16,8 @@ export declare const zh: {
     readonly 'panel.title': "远端工作台";
     readonly 'panel.hostsRegistered': "已登记主机";
     readonly 'panel.hostCounts': "{workspaces} 工作区 · {sessions} 会话";
+    readonly 'panel.hostPort': "端口 {port} · 引用 {refs}";
+    readonly 'panel.hostPortAdjusted': "端口 {port}（已顺延）· 引用 {refs}";
     readonly 'panel.diagnosticsTitle': "诊断";
     readonly 'panel.diagnosticsRerun': "重新检查";
     readonly 'panel.diagnosticsChecking': "检查中…";
