@@ -47,12 +47,13 @@ import { listDistroDirectory, listLocalDirectory } from './browse.ts'
 import { errorEnvelope, isLoopbackRequest, okEnvelope, readJsonBody, sendJson, sendMethodNotAllowed } from './envelope.ts'
 import { readTarget } from '../projection/live.ts'
 import { assertRemoteExecution } from '../projection/probe.ts'
-import type { ConnectTarget, ProjectionService, SshConnectTarget } from '../projection/service.ts'
+import { sameTarget, type ConnectTarget, type ProjectionService, type SshConnectTarget } from '../projection/service.ts'
 import { applySyncPlan, buildSyncPlan, readSyncProgress, type SyncBackend, type SyncPlanView } from '../plugin-sync/service.ts'
 import type { SyncEntry } from '../../shared/plugin-sync.ts'
-import type { DoctorReportInfo } from '../../shared/api.ts'
+import type { DoctorReportInfo, PurgeResultInfo, ResidueReportInfo } from '../../shared/api.ts'
 import { readOptout, setMuted } from '../plugin-sync/optout.ts'
 import { formatDoctorReport, installedRoot, runDoctor } from '../doctor.ts'
+import { buildPurgeScript, buildResidueScript, parsePurge, parseResidue } from '../maintenance/residue.ts'
 import { readLocalBundles } from '../plugin-sync/local.ts'
 import { upgradeRemoteHost } from '../plugin-sync/host-upgrade.ts'
 import { acquireWrite, releaseWrite } from '../plugin-sync/locks.ts'
@@ -657,6 +658,90 @@ export function registerRemoteCrRoutes(ctx: RemoteCrHostContext, options: RouteO
     // 原始 code —— 面板据此区分「远端拒了」与「隧道断了」，两种下一步完全不同。
     await service.refreshSessions()
     sendJson(res, 200, okEnvelope<ProjectionSnapshotInfo>(snapshotInfo(service)))
+  })
+
+  // ── 远端残留（RFC-0006 Phase 2）────────────────────────────────────────
+  // 与 plugin-sync 共用执行面（同一套 WSL / SSH exec）：不另造通道，也不要求先「接入」。
+  //   GET  /maintenance/residue?target=…  只读盘点（du / sed / kill -0）
+  //   POST /maintenance/purge             显式清理：必须 confirm，且拒绝在连接中执行
+  const maintenanceBackend = async (target: ConnectTarget): Promise<{ backend: SyncBackend; targetId: string }> => {
+    const sync = options.sync
+    if (sync === undefined) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-unavailable',
+        detail: '远端残留盘点没有接线：宿主半启动时未传入执行面（sync）',
+        nextActions: ['确认插件版本与本地 DSH 一致', '重启 dsh 后重试'],
+      })
+    }
+    return { backend: await sync.resolve(target), targetId: await sync.targetId(target) }
+  }
+
+  const readMaintenanceTarget = (raw: string | null): ConnectTarget => {
+    if (raw === null) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-failed',
+        detail: '缺少 target 查询参数',
+        nextActions: ['从面板重新发起一次盘点'],
+      })
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-failed',
+        detail: 'target 不是合法 JSON',
+        nextActions: ['从面板重新发起一次盘点'],
+      })
+    }
+    return readTarget(parsed)
+  }
+
+  mount('/maintenance/residue', ['GET'], async (_req, res, url) => {
+    const target = readMaintenanceTarget(url.searchParams.get('target'))
+    const { backend, targetId } = await maintenanceBackend(target)
+    const result = await backend.exec(buildResidueScript(backend.homeDir, backend.stagingSuffix), 15_000)
+    if (result.code !== 0) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-failed',
+        detail: '盘点远端残留失败（退出码 ' + String(result.code) + '）',
+        nextActions: ['复制日志看远端原文', '确认远端磁盘与权限后重试'],
+        logTail: result.stderr.slice(-800),
+      })
+    }
+    sendJson(res, 200, okEnvelope<ResidueReportInfo>(parseResidue(result.stdout, targetId, new Date().toISOString())))
+  })
+
+  mount('/maintenance/purge', ['POST'], async (req, res) => {
+    const body = (await readJsonBody(req)) as { target?: unknown; confirm?: unknown } | null
+    const target = readTarget(body?.target)
+    // 先判确认，再判连接：两条都必须过，顺序只影响用户看到哪一条。
+    if (body?.confirm !== true) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-confirm-required',
+        detail: '清理远端残留需要二次确认：请求里必须带 confirm: true',
+        nextActions: ['先看一遍清单，再勾选确认', '或改用面板里的两步确认按钮'],
+      })
+    }
+    const live = options.projection?.snapshot()
+    if (live !== undefined && live.connected && live.target !== null && sameTarget(live.target, target)) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-busy',
+        detail: '这台远端当前是连着的：清理会把正在用的 node/dsh 删掉',
+        nextActions: ['先点「断开」，再清理', '或换一台没用着的目标'],
+      })
+    }
+    const { backend } = await maintenanceBackend(target)
+    const result = await backend.exec(buildPurgeScript(backend.homeDir, backend.stagingSuffix), 60_000)
+    if (result.code !== 0) {
+      throw new RemoteCrError({
+        code: 'remote/maintenance-failed',
+        detail: '清理远端残留失败（退出码 ' + String(result.code) + '）',
+        nextActions: ['复制日志看远端原文', '确认远端磁盘与权限后重试'],
+        logTail: result.stderr.slice(-800),
+      })
+    }
+    sendJson(res, 200, okEnvelope<PurgeResultInfo>(parsePurge(result.stdout)))
   })
 
   // ── 插件同步（RFC-0003）─────────────────────────────────────────────────

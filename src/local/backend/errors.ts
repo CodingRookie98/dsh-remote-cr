@@ -48,6 +48,11 @@ export const ERROR_PHASE: Readonly<Record<string, ConnectionPhase>> = {
   'remote/ssh-target-unresolved': 'probe',
   'remote/workspace-unwritable': 'attach',
   'remote/path-unreadable': 'attach',
+  // 远端残留（RFC-0006 Phase 2）：盘点/清理共用同一个执行面（plugin-sync 的 exec）。
+  'remote/maintenance-unavailable': 'probe',
+  'remote/maintenance-confirm-required': 'probe',
+  'remote/maintenance-busy': 'probe',
+  'remote/maintenance-failed': 'probe',
   'remote/env-conflict': 'probe',
   'remote/cancelled': 'probe',
   'remote/disconnected': 'tunnel',

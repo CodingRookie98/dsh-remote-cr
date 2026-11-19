@@ -195,6 +195,33 @@ export interface DoctorReportInfo {
   readonly generatedAt: string
 }
 
+/** 一条远端实例登记（RFC-0006 盘点的只读形状）。 */
+export interface ResidueInstanceFileInfo {
+  readonly name: string
+  readonly kb: number
+  readonly pid: number | null
+  /** 登记里的 pid 现在是否还活着：活着 = 驻留模式在用的资产，不是垃圾。 */
+  readonly alive: boolean
+}
+
+/** `GET /maintenance/residue` 的应答体。 */
+export interface ResidueReportInfo {
+  readonly targetId: string
+  readonly staging: { readonly path: string; readonly exists: boolean; readonly kb: number }
+  readonly instances: { readonly path: string; readonly files: readonly ResidueInstanceFileInfo[] }
+  readonly checkedAt: string
+}
+
+/** `POST /maintenance/purge` 的应答体：删了什么、释放多少。 */
+export interface PurgeResultInfo {
+  readonly removed: readonly {
+    readonly kind: 'staging' | 'instance'
+    readonly path: string
+    readonly kb: number
+  }[]
+  readonly freedKb: number
+}
+
 /** 面板要的全部投影数据 + 连接状态 + 接入默认值。 */
   /** 远端已有、可导入的工作区（M4-1：DSH 没有 workspace/list，靠 workspace/follow 首帧）。 */
 export interface ImportableWorkspaceInfo {

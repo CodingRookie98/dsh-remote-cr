@@ -66,7 +66,7 @@
 ## 错误码索引
 
 <!-- BEGIN GENERATED: error-codes -->
-<!-- 由 scripts/gen-error-index.mjs 生成，共 73 条；不要手改。 -->
+<!-- 由 scripts/gen-error-index.mjs 生成，共 77 条；不要手改。 -->
 
 | 错误码 | 中文文案 | English | 下一步 |
 |---|---|---|---|
@@ -107,6 +107,10 @@
 | `remote/host-version-unavailable` | registry 上没有这个宿主版本 | The registry has no such host version | 改用已发布的版本 · 检查远端能否访问 registry · 复制日志查看 npm 原文 |
 | `remote/key-passphrase` | 私钥需要口令 | The private key needs a passphrase | 把密钥加进 ssh-agent · 或改用无口令密钥 |
 | `remote/key-unusable` | 私钥不可用（格式或权限） | The private key is unusable (format or permissions) | 把权限改成 600 · 重新生成密钥 |
+| `remote/maintenance-busy` | 这台远端正连着：先断开再清理，别删掉正在用的东西 | This remote is connected: disconnect before purging | 先点「断开」 · 或换一台没用着的目标 |
+| `remote/maintenance-confirm-required` | 清理远端残留需要二次确认（confirm） | Purging remote residue needs explicit confirmation | 在面板里勾选「我确认删除」后重试 · 或先看一遍清单 |
+| `remote/maintenance-failed` | 远端残留操作失败 | Remote residue operation failed | 看远端原文（复制日志）· 确认远端磁盘与权限 · 重试 |
+| `remote/maintenance-unavailable` | 远端残留盘点没有接线：宿主半启动时未传入执行面 | Residue inspection is not wired: the host half started without an exec backend | 确认插件版本与本地 DSH 一致 · 重启 dsh 后重试 |
 | `remote/node-missing` | 远端没有可用的 node（需要 22 或更新） | No usable node on the remote (22 or newer required) | 在远端安装 Node 22 或更新版本 · 确认 node 在 PATH 里 |
 | `remote/not-attached` | 这个工作区还没接入远端 | This workspace is not attached to a remote yet | 先在列表里点「接入远端」 |
 | `remote/password-rejected` | 密码被拒绝 | The password was rejected | 重新输入密码 · 改用密钥认证 |
