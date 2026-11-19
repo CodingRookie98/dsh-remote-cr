@@ -407,6 +407,10 @@ export function RemoteCrPanel(): unknown {
   /** 诊断（RFC-0005）：进面板查一次，之后由「重新检查」手动刷新。 */
   const [doctor, setDoctor] = useState<DoctorReportInfo | null>(null)
   const [doctorBusy, setDoctorBusy] = useState(false)
+  /** 诊断失败只写在诊断区（P4 B1）：写共享错误槽会顶掉 probe/接入的错误，且它的「重试」按意图分派。 */
+  const [doctorError, setDoctorError] = useState<string | null>(null)
+  /** 请求序号：连点时只让最后一次落地，避免旧响应覆盖新结果（P4 建议 5）。 */
+  const doctorSeq = useRef(0)
 
   const liveSnapshot = useRef<ProjectionSnapshotInfo | null>(null)
   liveSnapshot.current = snapshot
@@ -486,14 +490,21 @@ export function RemoteCrPanel(): unknown {
   }, [refreshRunner])
 
   const loadDoctor = async (): Promise<void> => {
+    const seq = doctorSeq.current + 1
+    doctorSeq.current = seq
     setDoctorBusy(true)
     try {
-      setDoctor(await readDoctor())
+      const report = await readDoctor()
+      if (doctorSeq.current !== seq) return
+      setDoctor(report)
+      setDoctorError(null)
     } catch (caught) {
-      // 诊断失败走既有错误块（不新造弹窗）；下一次点「重新检查」就是重试入口。
-      setError(failureOf(caught))
+      if (doctorSeq.current !== seq) return
+      // 失败要响，但**只在这块里响**：既不改共享错误槽，也不把上一次的报告当结果留着。
+      setDoctor(null)
+      setDoctorError(failureOf(caught).detail)
     } finally {
-      setDoctorBusy(false)
+      if (doctorSeq.current === seq) setDoctorBusy(false)
     }
   }
 
@@ -1029,8 +1040,23 @@ export function RemoteCrPanel(): unknown {
         },
         t('panel.diagnosticsCopy'),
       ),
+      doctor === null
+        ? null
+        : h(
+            'span',
+            { 'data-remote-cr': 'diagnostics-at' },
+            t('panel.diagnosticsAt', { time: formatUpdatedAt(doctor.generatedAt) }),
+          ),
     ),
-    ...(doctor === null
+    // 诊断失败**在诊断区里响**：不是空态（那是「还没查过」），也不占共享错误槽。
+    doctorError === null
+      ? null
+      : h(
+          'div',
+          { 'data-remote-cr': 'panel-diagnostics-error', role: 'status' },
+          t('panel.diagnosticsFailed') + '：' + doctorError,
+        ),
+    ...(doctor === null || doctor.checks.length === 0
       ? [h('div', { 'data-remote-cr': 'panel-diagnostics-empty' }, t('panel.diagnosticsEmpty'))]
       : doctor.checks.map((check) =>
           h(

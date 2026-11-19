@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -164,15 +165,24 @@ export function formatDoctorReport(checks: readonly DoctorCheck[]): string {
  * 面板的「诊断」区没必要让用户填路径，也不需要读 `process.cwd()`（那可能是任意目录）。
  * 仍保留注入口：路由测试传临时目录，不碰真实安装。
  */
+export function packageRootOf(moduleUrl: string | URL): string {
+  // 纯函数：只做「模块路径 → 上两级」。抽出来是为了能用 `file://` 样本把**两种布局**
+  // （源码 `src/local/doctor.ts` / 产物 `lib/local/doctor.js`）都钉在测试里 ——
+  // 生产跑的是产物，只测源码布局等于没测（P4 建议 3）。
+  return resolve(dirname(fileURLToPath(moduleUrl)), '..', '..')
+}
+
 export function installedRoot(): string {
-  const here = fileURLToPath(import.meta.url)
-  return resolve(dirname(here), '..', '..')
+  return packageRootOf(import.meta.url)
 }
 
 /** CLI：`node lib/local/doctor.js`（也可 `pnpm doctor`）。 */
 export function doctorMain(argv: readonly string[]): number {
-  const rootDir = argv[0] ?? process.cwd()
-  const homeDir = process.env['USERPROFILE'] ?? process.env['HOME'] ?? ''
+  // 默认包根用与 `/doctor` 同一个 `installedRoot()`：以前是 `process.cwd()`，于是 `pnpm doctor`
+  // 的结论取决于你在哪个目录敲命令，和面板看到的不是一件事（P4 建议 4）。
+  const rootDir = argv[0] ?? installedRoot()
+  // home 回退与路由一致（`USERPROFILE` → `os.homedir()`）：都没有时会探到相对路径 `./.dsh-remote-cr`。
+  const homeDir = process.env['USERPROFILE'] ?? process.env['HOME'] ?? homedir()
   const checks = runDoctor({ rootDir, homeDir })
   console.log(formatDoctorReport(checks))
   return checks.some((check) => check.status === 'fail') ? 1 : 0
