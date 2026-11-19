@@ -52,4 +52,15 @@ export interface RefreshScheduler {
  * @returns 调度器；`delayMs` 是当前间隔的只读视图。
  */
 export declare function createRefreshScheduler(options: RefreshSchedulerOptions): RefreshScheduler;
+/**
+ * 该不该让调度器跑：RFC-0004 R3 的字面口径是「面板可见时启、**隐藏/断连时停**」。
+ *
+ * 抽成纯函数是为了让面板只写一处判断（`shouldPoll(...)`），而不是在事件回调与 effect 里
+ * 各写一半条件——那种写法漏一个分支就是契约漂移（P4 B3：隐藏时原先只是「到点跳过」，
+ * 定时器一直在空转）。
+ */
+export declare function shouldPoll(state: {
+    readonly connected: boolean;
+    readonly visible: boolean;
+}): boolean;
 //# sourceMappingURL=poll.d.ts.map

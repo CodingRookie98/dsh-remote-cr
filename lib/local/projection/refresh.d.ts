@@ -47,7 +47,7 @@ export declare class RefreshGuard {
     #private;
     /** 同一 key 的并发调用共享同一个 promise（单飞），不是拒绝也不是排队。 */
     run<T>(key: string, task: () => Promise<T>): Promise<T>;
-    /** 现在是否有在飞任务（刷新按钮禁用态、轮询的「不要叠请求」都靠它）。 */
+    /** 现在是否有在飞任务。（轮询侧的单飞在 `client/poll.ts` 的 inFlight，这条只给调用方/调试用。） */
     busy(key: string): boolean;
 }
 //# sourceMappingURL=refresh.d.ts.map
