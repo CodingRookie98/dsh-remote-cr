@@ -95,7 +95,7 @@ node spikes/m3-refresh/probe.cjs --ssh syy_wsl_ubuntu_LAN  # L3 · SSH
 
 ### Batch A · 新鲜度（本轮承诺）
 
-- [ ] **P3.1 `refresh.ts` 原语**：`applyRefresh(store, sessions)` 走 `replaceAll`；`RefreshGuard` 按 targetId 单飞；失败保留旧表、置 `stale=true`。
+- [ ] **P3.1 `refresh.ts` 原语**（已交付）：`applySessionRefresh({ store, listed })` 逐条**原地**贴回（`store.patchSession`，**保序**；不用 `replaceAll`——刷新没有 workspace 数据，整体重建会清空工作区表），只更新已知会话、不增不删（`missing` 只计数）；`RefreshGuard` 按 targetId 单飞；失败由上层保留旧表并置 `stale`。
   - 涉及：`src/local/projection/refresh.ts`、`refresh.test.ts`
   - TDD：🔴 失败（无实现）→ 🟢 最简 → 🔵 抽守卫 → ✅ → 💾
   - 验收：`node --test "src/local/projection/refresh.test.ts"`
